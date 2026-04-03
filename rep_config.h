@@ -48,18 +48,18 @@ typedef enum eDrvStatus {
 	DRV_STATUS_ERROR,
 } eDrvStatus;
 
-#define REP_LOG_OUTPUT_PORT           0x02U         // number of active log interfaces
+#define REP_LOG_OUTPUT_PORT           0x01U         // number of active log interfaces
 
 #ifndef REP_LOG_LEVEL
 #define REP_LOG_LEVEL                 REP_LOG_LEVEL_INFO
 #endif
 
 #ifndef REP_MCU_PLATFORM
-#define REP_MCU_PLATFORM              REP_MCU_PLATFORM_GD32
+#define REP_MCU_PLATFORM              REP_MCU_PLATFORM_STM32
 #endif
 
 #ifndef REP_RTOS_SYSTEM
-#define REP_RTOS_SYSTEM               REP_RTOS_FREERTOS
+#define REP_RTOS_SYSTEM               REP_RTOS_NONE
 #endif
 
 
