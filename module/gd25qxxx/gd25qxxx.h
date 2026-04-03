@@ -18,8 +18,7 @@ extern "C" {
 #endif
 
 typedef enum eGd25qxxxDevMap {
-    GD25QXXX_DEV0 = 0,
-    GD25QXXX_DEV1,
+    GD25Q32_MEM = 0,
     GD25QXXX_DEV_MAX,
 } eGd25qxxxMapType;
 

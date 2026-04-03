@@ -13,9 +13,10 @@
 #include <string.h>
 
 #include "console.h"
+#include "rep_config.h"
 #include "system.h"
 
-#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1)
+#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -33,7 +34,7 @@ static void systemDebugTaskUsageSampler(void *parameter);
 
 static eConsoleCommandResult systemDebugConsoleVersionHandler(uint32_t transport, int argc, char *argv[]);
 static eConsoleCommandResult systemDebugConsoleStatusHandler(uint32_t transport, int argc, char *argv[]);
-#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1)
+#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 static eConsoleCommandResult systemDebugConsoleTaskUsageHandler(uint32_t transport, int argc, char *argv[]);
 
 static TaskHandle_t gSystemDebugTaskUsageHandle = NULL;
@@ -53,7 +54,7 @@ static const stConsoleCommand gSystemStatusConsoleCommand = {
     .handler = systemDebugConsoleStatusHandler,
 };
 
-#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1)
+#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 static const stConsoleCommand gSystemTaskUsageConsoleCommand = {
     .commandName = "top",
     .helpText = "top - sample task cpu usage every 50 ms for 1 s",
@@ -294,7 +295,7 @@ static eConsoleCommandResult systemDebugConsoleStatusHandler(uint32_t transport,
 
 bool systemDebugConsoleRegister(void)
 {
-#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1)
+#if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     if (!consoleRegisterCommand(&gSystemVersionConsoleCommand)) {
         return false;
     }
@@ -304,6 +305,16 @@ bool systemDebugConsoleRegister(void)
     }
 
     if (!consoleRegisterCommand(&gSystemTaskUsageConsoleCommand)) {
+        return false;
+    }
+
+    return true;
+#elif (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1)
+    if (!consoleRegisterCommand(&gSystemVersionConsoleCommand)) {
+        return false;
+    }
+
+    if (!consoleRegisterCommand(&gSystemStatusConsoleCommand)) {
         return false;
     }
 

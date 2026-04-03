@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 #ifndef LOG_PORT_INTERFACE_COUNT
-#define LOG_PORT_INTERFACE_COUNT         2U
+#define LOG_PORT_INTERFACE_COUNT         1U
 #endif
 
 #ifndef LOG_PORT_RTT_OUTPUT_ENABLE
