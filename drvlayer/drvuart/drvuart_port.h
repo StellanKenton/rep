@@ -35,7 +35,7 @@ extern "C" {
 #define DRVUART_RECVLEN_DEBUGUART    1024U
 
 typedef enum eDrvUartPortMapTable {
-    DRVUART_DEBUG = 0,      // PA9 PA10
+    DRVUART_WIRELESS = 0,      // PC10 PC11
     DRVUART_MAX,
 } eDrvUartPortMap;
 

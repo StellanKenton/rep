@@ -9,16 +9,8 @@
 #include "bspspi.h"
 
 static stBspSpiCsPin gDrvSpiBus0CsPin = {
-    .gpioRcu = RCU_GPIOE,
-    .gpioPort = GPIOE,
-    .gpioPin = GPIO_PIN_15,
-    .isActiveLow = true,
-};
-
-static stBspSpiCsPin gDrvSpiBus1CsPin = {
-    .gpioRcu = RCU_GPIOA,
-    .gpioPort = GPIOA,
-    .gpioPin = GPIO_PIN_4,
+    .gpioPort = SPI_CS_GPIO_Port,
+    .gpioPin = SPI_CS_Pin,
     .isActiveLow = true,
 };
 
@@ -31,16 +23,6 @@ stDrvSpiBspInterface gDrvSpiBspInterface[DRVSPI_MAX] = {
             .init = bspSpiCsInit,
             .write = bspSpiCsWrite,
             .context = &gDrvSpiBus0CsPin,
-        },
-    },
-    [DRVSPI_BUS1] = {
-        .init = bspSpiInit,
-        .transfer = bspSpiTransfer,
-        .defaultTimeoutMs = DRVSPI_DEFAULT_TIMEOUT_MS,
-        .csControl = {
-            .init = bspSpiCsInit,
-            .write = bspSpiCsWrite,
-            .context = &gDrvSpiBus1CsPin,
         },
     },
 };

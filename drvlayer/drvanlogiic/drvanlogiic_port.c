@@ -13,7 +13,7 @@
 #include "bspanlogiic.h"
 
 stDrvAnlogIicBspInterface gDrvAnlogIicBspInterface[DRVANLOGIIC_MAX] = {
-    [DRVANLOGIIC_BUS0] = {
+    [DRVANLOGIIC_PCA] = {
         .init = bspAnlogIicInit,
         .setScl = bspAnlogIicSetScl,
         .setSda = bspAnlogIicSetSda,

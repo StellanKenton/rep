@@ -185,13 +185,13 @@ eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
 eFrmProcStatus frmProcPortInit(eFrmProcMapType proc)
 {
     (void)proc;
-    return (drvUartInit(DRVUART_DEBUG) == DRV_STATUS_OK) ? FRM_PROC_STATUS_OK : FRM_PROC_STATUS_ERROR;
+    return (drvUartInit(DRVUART_WIRELESS) == DRV_STATUS_OK) ? FRM_PROC_STATUS_OK : FRM_PROC_STATUS_ERROR;
 }
 
 void frmProcPortPollRx(eFrmProcMapType proc)
 {
     (void)proc;
-    (void)drvUartGetDataLen(DRVUART_DEBUG);
+    (void)drvUartGetDataLen(DRVUART_WIRELESS);
 }
 
 eFrmProcStatus frmProcPortEnsureFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg)
@@ -270,7 +270,7 @@ eFrmProcStatus frmProcPortTxFrame(eFrmProcMapType proc, const uint8_t *frameBuf,
     }
 
     for (lRetry = 0U; lRetry < 10U; lRetry++) {
-        lStatus = drvUartTransmitDma(DRVUART_DEBUG, frameBuf, frameLen);
+        lStatus = drvUartTransmitDma(DRVUART_WIRELESS, frameBuf, frameLen);
         if (lStatus == DRV_STATUS_OK) {
             return FRM_PROC_STATUS_OK;
         }
@@ -284,7 +284,7 @@ eFrmProcStatus frmProcPortTxFrame(eFrmProcMapType proc, const uint8_t *frameBuf,
 #endif
     }
 
-    lStatus = drvUartTransmit(DRVUART_DEBUG, frameBuf, frameLen, 100U);
+    lStatus = drvUartTransmit(DRVUART_WIRELESS, frameBuf, frameLen, 100U);
     if (lStatus == DRV_STATUS_OK) {
         return FRM_PROC_STATUS_OK;
     }

@@ -48,13 +48,11 @@ static bool gd25qxxxDebugParseDevice(const char *name, eGd25qxxxMapType *device)
         return false;
     }
 
-    if ((strcmp(name, "dev0") == 0) || (strcmp(name, "0") == 0)) {
-        *device = GD25QXXX_DEV0;
-        return true;
-    }
-
-    if ((strcmp(name, "dev1") == 0) || (strcmp(name, "1") == 0)) {
-        *device = GD25QXXX_DEV1;
+    if ((strcmp(name, "gd25q32_mem") == 0) ||
+        (strcmp(name, "gd25q32") == 0) ||
+        (strcmp(name, "mem") == 0) ||
+        (strcmp(name, "0") == 0)) {
+        *device = GD25Q32_MEM;
         return true;
     }
 
@@ -144,10 +142,8 @@ static bool gd25qxxxDebugParseHexByte(const char *text, uint8_t *value)
 static const char *gd25qxxxDebugGetDeviceName(eGd25qxxxMapType device)
 {
     switch (device) {
-        case GD25QXXX_DEV0:
-            return "dev0";
-        case GD25QXXX_DEV1:
-            return "dev1";
+        case GD25Q32_MEM:
+            return "gd25q32_mem";
         default:
             return NULL;
     }
@@ -398,13 +394,13 @@ static eConsoleCommandResult gd25qxxxDebugReplyHelp(uint32_t transport, int argc
 
     if (consoleReply(transport,
         "gd25qxxx list\n"
-        "gd25qxxx init <dev0|dev1>\n"
-        "gd25qxxx jedec <dev0|dev1>\n"
-        "gd25qxxx status <dev0|dev1>\n"
-        "gd25qxxx info <dev0|dev1>\n"
-        "gd25qxxx read <dev0|dev1> <addr> <len>\n"
-        "gd25qxxx write <dev0|dev1> <addr> <b0> [b1 ...]\n"
-        "gd25qxxx erase <dev0|dev1> <addr>\n"
+        "gd25qxxx init <gd25q32_mem|gd25q32|mem|0>\n"
+        "gd25qxxx jedec <gd25q32_mem|gd25q32|mem|0>\n"
+        "gd25qxxx status <gd25q32_mem|gd25q32|mem|0>\n"
+        "gd25qxxx info <gd25q32_mem|gd25q32|mem|0>\n"
+        "gd25qxxx read <gd25q32_mem|gd25q32|mem|0> <addr> <len>\n"
+        "gd25qxxx write <gd25q32_mem|gd25q32|mem|0> <addr> <b0> [b1 ...]\n"
+        "gd25qxxx erase <gd25q32_mem|gd25q32|mem|0> <addr>\n"
         "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }

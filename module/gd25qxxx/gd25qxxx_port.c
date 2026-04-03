@@ -7,6 +7,7 @@
 #include "gd25qxxx_port.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "Rep/rep_config.h"
 
@@ -19,9 +20,12 @@
 #include "gd32f4xx.h"
 #endif
 
+#if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
 static bool gGd25qxxxPortCycleCntReady = false;
 
 static void gd25qxxxPortEnableCycleCnt(void);
+#endif
+
 static eDrvStatus gd25qxxxPortHardSpiInitAdpt(uint8_t bus);
 static eDrvStatus gd25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData);
 static const stGd25qxxxPortSpiInterface *gd25qxxxPortGetBindSpiIf(eGd25qxxxPortSpiType type);
@@ -34,17 +38,10 @@ static const stGd25qxxxPortSpiInterface gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT
 };
 
 static const stGd25qxxxCfg gGd25qxxxPortDefCfg[GD25QXXX_DEV_MAX] = {
-    [GD25QXXX_DEV0] = {
+    [GD25Q32_MEM] = {
         .spiBind = {
             .type = GD25QXXX_PORT_SPI_TYPE_HARDWARE,
             .bus = (uint8_t)DRVSPI_BUS0,
-            .spiIf = &gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT_SPI_TYPE_HARDWARE],
-        },
-    },
-    [GD25QXXX_DEV1] = {
-        .spiBind = {
-            .type = GD25QXXX_PORT_SPI_TYPE_HARDWARE,
-            .bus = (uint8_t)DRVSPI_BUS1,
             .spiIf = &gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT_SPI_TYPE_HARDWARE],
         },
     },
@@ -162,9 +159,9 @@ void gd25qxxxPortDelayMs(uint32_t delayMs)
 #endif
 }
 
+#if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
 static void gd25qxxxPortEnableCycleCnt(void)
 {
-#if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
     if (gGd25qxxxPortCycleCntReady) {
         return;
     }
@@ -173,8 +170,8 @@ static void gd25qxxxPortEnableCycleCnt(void)
     DWT->CYCCNT = 0U;
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     gGd25qxxxPortCycleCntReady = true;
-#endif
 }
+#endif
 
 static const stGd25qxxxPortSpiInterface *gd25qxxxPortGetBindSpiIf(eGd25qxxxPortSpiType type)
 {

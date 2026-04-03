@@ -28,7 +28,8 @@ extern "C" {
 #define DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS     9U
 
 typedef enum eDrvAnlogIicPortMap {
-    DRVANLOGIIC_BUS0 = 0,
+    DRVANLOGIIC_PCA = 0,
+    DRVANLOGIIC_BUS0 = DRVANLOGIIC_PCA,
     DRVANLOGIIC_MAX,
 } eDrvAnlogIicPortMap;
 

@@ -147,7 +147,7 @@ static uint32_t frmPsrPortAppCommGetPktLen(const uint8_t *buffer, uint32_t headL
 static stRingBuffer *frmPsrPortGetDbgUartRxRingBuf(void *userCtx)
 {
     (void)userCtx;
-    return drvUartGetRingBuffer(DRVUART_DEBUG);
+    return drvUartGetRingBuffer(DRVUART_WIRELESS);
 }
 
 static bool frmPsrPortIsProtoCfgValid(const stFrmPsrPortProtoCfg *protoCfg)

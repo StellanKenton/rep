@@ -44,7 +44,7 @@ eDrvStatus drvUartPortGetStorageConfig(eDrvUartPortMap uart, uint8_t **storage, 
     }
 
     switch (uart) {
-        case DRVUART_DEBUG:
+        case DRVUART_WIRELESS:
             *storage = gDrvUartBspInterface[uart].Buffer;
             *capacity = DRVUART_RECVLEN_DEBUGUART;
             return DRV_STATUS_OK;

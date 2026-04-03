@@ -50,8 +50,8 @@ static eConsoleCommandResult drvUartDebugConsoleHandler(uint32_t transport, int 
 
 static const stDrvUartDebugPortDescriptor gDrvUartDebugPorts[] = {
     {
-        .uart = DRVUART_DEBUG,
-        .portName = "debug",
+        .uart = DRVUART_WIRELESS,
+        .portName = "wireless",
         .txMode = "polling+dma",
         .isReadable = true,
         .isWritable = true,

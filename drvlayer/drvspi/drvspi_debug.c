@@ -53,11 +53,6 @@ static bool drvSpiDebugParseBus(const char *name, eDrvSpiPortMap *spi)
         return true;
     }
 
-    if ((strcmp(name, "bus1") == 0) || (strcmp(name, "1") == 0)) {
-        *spi = DRVSPI_BUS1;
-        return true;
-    }
-
     return false;
 }
 
@@ -149,8 +144,6 @@ static const char *drvSpiDebugGetBusName(eDrvSpiPortMap spi)
     switch (spi) {
         case DRVSPI_BUS0:
             return "bus0";
-        case DRVSPI_BUS1:
-            return "bus1";
         default:
             return NULL;
     }
@@ -475,7 +468,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
         if (consoleReply(transport,
             "spi <list|init|write|read|writeread|exchange|help> ...\n"
             "  list\n"
-            "  init <bus0|0|bus1|1>\n"
+            "  init <bus0|0>\n"
             "  help <read|write|writeread|exchange>\n"
             "    example: spi help writeread\n"
             "OK") <= 0) {
@@ -491,7 +484,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
 
     if (strcmp(argv[2], "read") == 0) {
         if (consoleReply(transport,
-            "spi read <bus0|0|bus1|1> <len>\n"
+            "spi read <bus0|0> <len>\n"
             "  len is decimal 1..16\n"
             "  example: spi read bus0 4\n"
             "OK") <= 0) {
@@ -503,7 +496,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
 
     if (strcmp(argv[2], "write") == 0) {
         if (consoleReply(transport,
-            "spi write <bus0|0|bus1|1> <b0> [b1 ... b15]\n"
+            "spi write <bus0|0> <b0> [b1 ... b15]\n"
             "  data bytes support hex, max 16 bytes\n"
             "  example: spi write bus0 0x9F\n"
             "OK") <= 0) {
@@ -515,7 +508,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
 
     if ((strcmp(argv[2], "writeread") == 0) || (strcmp(argv[2], "wr") == 0)) {
         if (consoleReply(transport,
-            "spi writeread <bus0|0|bus1|1> <b0> [b1 ... b15] <len>\n"
+            "spi writeread <bus0|0> <b0> [b1 ... b15] <len>\n"
             "  alias: wr\n"
             "  write bytes support hex, read len is decimal 1..16\n"
             "  example: spi writeread bus0 0x9F 3\n"
@@ -528,7 +521,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
 
     if ((strcmp(argv[2], "exchange") == 0) || (strcmp(argv[2], "xfer") == 0)) {
         if (consoleReply(transport,
-            "spi exchange <bus0|0|bus1|1> <b0> [b1 ... b15]\n"
+            "spi exchange <bus0|0> <b0> [b1 ... b15]\n"
             "  alias: xfer\n"
             "  data bytes support hex, max 16 bytes\n"
             "  example: spi exchange bus0 0x9F 0x00 0x00 0x00\n"
