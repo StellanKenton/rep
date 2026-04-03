@@ -48,8 +48,11 @@ typedef struct stDrvAnlogIicTransfer {
     uint16_t secondWriteLength;
 } stDrvAnlogIicTransfer;
 
+typedef eDrvStatus (*drvAnlogIicBusActionFunc)(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
+
 eDrvStatus drvAnlogIicInit(eDrvAnlogIicPortMap iic);
 eDrvStatus drvAnlogIicRecoverBus(eDrvAnlogIicPortMap iic);
+eDrvStatus drvAnlogIicBusAction(eDrvAnlogIicPortMap iic, drvAnlogIicBusActionFunc action, void *context);
 eDrvStatus drvAnlogIicTransfer(eDrvAnlogIicPortMap iic, const stDrvAnlogIicTransfer *transfer);
 eDrvStatus drvAnlogIicTransferTimeout(eDrvAnlogIicPortMap iic, const stDrvAnlogIicTransfer *transfer, uint32_t timeoutMs);
 eDrvStatus drvAnlogIicWrite(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *buffer, uint16_t length);

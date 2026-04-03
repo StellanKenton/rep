@@ -23,6 +23,16 @@ stDrvAnlogIicBspInterface gDrvAnlogIicBspInterface[DRVANLOGIIC_MAX] = {
         .halfPeriodUs = DRVANLOGIIC_DEFAULT_HALF_PERIOD_US,
         .recoveryClockCount = DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS,
     },
+    [DRVANLOGIIC_TM] = {
+        .init = bspAnlogIicInit,
+        .setScl = bspAnlogIicSetScl,
+        .setSda = bspAnlogIicSetSda,
+        .readScl = bspAnlogIicReadScl,
+        .readSda = bspAnlogIicReadSda,
+        .delayUs = bspAnlogIicDelayUs,
+        .halfPeriodUs = DRVANLOGIIC_DEFAULT_HALF_PERIOD_US,
+        .recoveryClockCount = DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS,
+    },
 };
 
 /**************************End of file********************************/

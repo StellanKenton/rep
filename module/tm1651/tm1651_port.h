@@ -1,0 +1,44 @@
+/************************************************************************************
+* @file     : tm1651_port.h
+* @brief    : TM1651 project port-layer declarations.
+* @details  : This file keeps the project-level TM1651 binding and convenience
+*             wrappers separate from the reusable TM1651 core implementation.
+***********************************************************************************/
+#ifndef TM1651_PORT_H
+#define TM1651_PORT_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "tm1651.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef TM1651_CONSOLE_SUPPORT
+#define TM1651_CONSOLE_SUPPORT               1
+#endif
+
+void tm1651PortGetDefBind(stTm1651PortIicBinding *bind);
+void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
+eDrvStatus tm1651PortSetSoftIic(stTm1651PortIicBinding *bind, eDrvAnlogIicPortMap iic);
+bool tm1651PortIsValidBind(const stTm1651PortIicBinding *bind);
+bool tm1651PortHasValidIicIf(const stTm1651PortIicBinding *bind);
+const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651PortIicBinding *bind);
+eDrvStatus tm1651PortInit(void);
+bool tm1651PortIsReady(void);
+eDrvStatus tm1651PortSetBrightness(uint8_t brightness);
+eDrvStatus tm1651PortSetDisplayOn(bool isDisplayOn);
+eDrvStatus tm1651PortDisplayDigits(uint8_t dig1, uint8_t dig2, uint8_t dig3, uint8_t dig4);
+eDrvStatus tm1651PortClearDisplay(void);
+eDrvStatus tm1651PortShowNone(void);
+eDrvStatus tm1651PortShowNumber3(uint16_t value);
+eDrvStatus tm1651PortShowError(uint16_t value);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // TM1651_PORT_H
+/**************************End of file********************************/

@@ -515,6 +515,47 @@ eDrvStatus drvAnlogIicRecoverBus(eDrvAnlogIicPortMap iic)
     return lStatus;
 }
 
+eDrvStatus drvAnlogIicBusAction(eDrvAnlogIicPortMap iic, drvAnlogIicBusActionFunc action, void *context)
+{
+    stDrvAnlogIicBspInterface *lBspInterface;
+    eDrvStatus lStatus;
+    eDrvStatus lRecoverStatus;
+
+    if (!drvAnlogIicIsValid(iic) || (action == NULL)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    if (!gDrvAnlogIicInitialized[iic]) {
+        return DRV_STATUS_NOT_READY;
+    }
+
+    if (!drvAnlogIicLockBus(iic)) {
+        return DRV_STATUS_BUSY;
+    }
+
+    lBspInterface = drvAnlogIicGetBspInterface(iic);
+    if (lBspInterface == NULL) {
+        drvAnlogIicUnlockBus(iic);
+        return DRV_STATUS_NOT_READY;
+    }
+
+    lRecoverStatus = drvAnlogIicRecoverBusLocked(iic, lBspInterface);
+    if (lRecoverStatus != DRV_STATUS_OK) {
+        drvAnlogIicUnlockBus(iic);
+        return lRecoverStatus;
+    }
+
+    lStatus = action(iic, lBspInterface, context);
+    lRecoverStatus = drvAnlogIicRecoverBusLocked(iic, lBspInterface);
+    drvAnlogIicUnlockBus(iic);
+
+    if (lStatus != DRV_STATUS_OK) {
+        return lStatus;
+    }
+
+    return lRecoverStatus;
+}
+
 eDrvStatus drvAnlogIicTransfer(eDrvAnlogIicPortMap iic, const stDrvAnlogIicTransfer *transfer)
 {
     stDrvAnlogIicBspInterface *lBspInterface;

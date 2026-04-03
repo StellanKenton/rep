@@ -60,6 +60,13 @@ static bool drvAnlogIicDebugParseBus(const char *name, eDrvAnlogIicPortMap *iic)
         return true;
     }
 
+    if ((strcmp(name, "tm") == 0) ||
+        (strcmp(name, "bus1") == 0) ||
+        (strcmp(name, "1") == 0)) {
+        *iic = DRVANLOGIIC_TM;
+        return true;
+    }
+
     return false;
 }
 
@@ -151,6 +158,8 @@ static const char *drvAnlogIicDebugGetBusName(eDrvAnlogIicPortMap iic)
     switch (iic) {
         case DRVANLOGIIC_PCA:
             return "pca";
+        case DRVANLOGIIC_TM:
+            return "tm";
         default:
             return NULL;
     }
@@ -210,14 +219,19 @@ static eConsoleCommandResult drvAnlogIicDebugBuildHexReply(const uint8_t *buffer
 
 static eConsoleCommandResult drvAnlogIicDebugReplyBusList(uint32_t transport)
 {
-    const char *lBusName = drvAnlogIicDebugGetBusName(DRVANLOGIIC_PCA);
+    const char *lPcaBusName = drvAnlogIicDebugGetBusName(DRVANLOGIIC_PCA);
+    const char *lTmBusName = drvAnlogIicDebugGetBusName(DRVANLOGIIC_TM);
 
-    if ((lBusName == NULL) ||
+    if ((lPcaBusName == NULL) ||
+        (lTmBusName == NULL) ||
         (consoleReply(transport,
-            "%s half_period_us=%u recovery_clocks=%u\nOK",
-            lBusName,
+            "%s half_period_us=%u recovery_clocks=%u\n%s half_period_us=%u recovery_clocks=%u\nOK",
+            lPcaBusName,
             (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_PCA].halfPeriodUs,
-            (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_PCA].recoveryClockCount) <= 0)) {
+            (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_PCA].recoveryClockCount,
+            lTmBusName,
+            (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_TM].halfPeriodUs,
+            (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_TM].recoveryClockCount) <= 0)) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
