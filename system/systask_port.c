@@ -1,5 +1,5 @@
 /***********************************************************************************
-* @file     : systask.c
+* @file     : systask_port.c
 * @brief    : System task callback implementation.
 * @details  : Contains task callback bodies used by the application startup.
 * @author   : GitHub Copilot
@@ -7,11 +7,12 @@
 * @version  : V1.0.0
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
-#include "systask.h"
+#include "systask_port.h"
 
 #include <string.h>
 
 #include "console.h"
+#include "console_port.h"
 #include "appcomm/appcomm.h"
 #include "drvlayer/DrvGpio/drvgpio.h"
 #include "log.h"
@@ -19,15 +20,7 @@
 #include "task.h"
 #include "gd32f4xx_gpio.h"
 #include "system.h"
-#include "system_debug.h"
 #include "sys_int.h"
-#include "drvanlogiic_debug.h"
-#include "drviic_debug.h"
-#include "Rep/drvlayer/drvspi/drvspi_debug.h"
-#include "drvgpio_debug.h"
-#include "drvuart_debug.h"
-#include "Rep/module/mpu6050/mpu6050_debug.h"
-#include "Rep/module/w25qxxx/w25qxxx_debug.h"
 #include "Rep/module/w25qxxx/w25qxxx.h"
 
 #define SENSOR_TASK_TAG "SensorTask"
@@ -230,48 +223,8 @@ static bool initializeConsole(void)
         return true;
     }
 
-    if (!consoleInit()) {
+    if (!consolePortInit()) {
         LOG_E(SYSTEM_TAG, "Console init failed");
-        return false;
-    }
-
-    if (!systemDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register system console command failed");
-        return false;
-    }
-
-    if (!drvGpioDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register GPIO console command failed");
-        return false;
-    }
-
-    if (!drvAnlogIicDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register software IIC console command failed");
-        return false;
-    }
-
-    if (!drvIicDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register hardware IIC console command failed");
-        return false;
-    }
-
-    if (!drvSpiDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register SPI console command failed");
-        return false;
-    }
-
-    if (!drvUartDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register UART console command failed");
-        return false;
-    }
-
-    if (!mpu6050DebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register MPU6050 console command failed");
-        return false;
-    }
-
-    if (!w25qxxxDebugConsoleRegister()) {
-        LOG_E(SYSTEM_TAG, "Register W25QXXX console command failed");
         return false;
     }
 

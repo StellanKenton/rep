@@ -10,7 +10,7 @@
 2. `USER/Rep/rule/mem.md`
 3. `USER/main.c`
 4. `USER/Rep/system/system.h`
-5. `USER/Rep/system/systask.h`
+5. `USER/Rep/system/systask_port.h`
 6. `USER/Rep/system/system_debug.h`
 
 ## 2. 模块定位
@@ -26,7 +26,7 @@
 
 - `system.h` / `system.c`
   负责系统模式、版本号和模式字符串转换。
-- `systask.h` / `systask.c`
+- `systask_port.h` / `systask_port.c`
   负责任务参数定义、任务入口函数、启动期任务创建和 console 初始化接线。
 - `system_debug.h` / `system_debug.c`
   负责 system 调试命令注册和 `ver`、`sys`、`top` 命令实现。
@@ -65,7 +65,7 @@ system 模块的启动状态机当前为：
 - `eSYSTEM_DIAGNOSTIC_MODE`
   预留给诊断逻辑。
 
-如果检测到未知模式，`systask.c` 会记录 warning，并把模式重置回 `eSYSTEM_INIT_MODE`。
+如果检测到未知模式，`systask_port.c` 会记录 warning，并把模式重置回 `eSYSTEM_INIT_MODE`。
 
 ## 4. 任务架构
 
@@ -91,7 +91,7 @@ system 模块的启动状态机当前为：
 
 ## 5. Console 与调试命令接线
 
-console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序如下：
+console 接线在 `systask_port.c` 的 `initializeConsole()` 中完成，当前顺序如下：
 
 1. `consoleInit()`
 2. `systemDebugConsoleRegister()`
@@ -134,9 +134,9 @@ console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序
 - 硬件初始化细节。
 - 大量平台相关宏。
 
-### 6.2 `systask.h` 的职责
+### 6.2 `systask_port.h` 的职责
 
-`systask.h` 当前承载的是 system 任务参数和任务入口声明，属于应用编排配置层。
+`systask_port.h` 当前承载的是 system 任务参数和任务入口声明，属于应用编排配置层。
 
 如果要新增 system 级任务，优先在这里添加：
 
@@ -152,7 +152,7 @@ console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序
 后续 AI 修改该模块时，优先遵守以下约束：
 
 - `system.c` 只维护 system mode 和版本语义，不承载任务编排。
-- `systask.c` 是启动编排层，不要把具体驱动实现写进这里。
+- `systask_port.c` 是启动编排层，不要把具体驱动实现写进这里。
 - `SystemTask` 应保持短周期、非阻塞，只推进状态机和调度初始化，不要塞长耗时业务。
 - ISR、回调或高频路径相关逻辑不要下沉到 console 命令处理中。
 - 任务占位逻辑后续应填充到对应任务中，不要为了省事把所有业务都挂到 `process()`。
@@ -165,8 +165,8 @@ console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序
 如果后续 AI 切换到本项目并需要修改 system 模块，建议按以下顺序建立上下文：
 
 1. 阅读 `USER/main.c`，确认任务启动入口。
-2. 阅读 `USER/Rep/system/systask.h`，确认当前任务参数和周期。
-3. 阅读 `USER/Rep/system/systask.c`，确认任务创建路径和模式切换流程。
+2. 阅读 `USER/Rep/system/systask_port.h`，确认当前任务参数和周期。
+3. 阅读 `USER/Rep/system/systask_port.c`，确认任务创建路径和模式切换流程。
 4. 阅读 `USER/Rep/system/system.h` 与 `system.c`，确认 mode API 和版本接口。
 5. 阅读 `USER/Rep/system/system_debug.h` 与 `system_debug.c`，确认 console 命令和调试开关。
 6. 如果变更涉及 console，再继续阅读 `USER/Rep/console/console.h` 与 `console.c`。
@@ -177,10 +177,10 @@ console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序
 按需求选择文件，不要跨层误改：
 
 - 新增或调整系统模式：改 `system.h` 和 `system.c`。
-- 新增 system 级常驻任务：改 `systask.h` 和 `systask.c`。
+- 新增 system 级常驻任务：改 `systask_port.h` 和 `systask_port.c`。
 - 新增启动阶段接线：优先改 `initializeConsole()` 或 `createTasks()`。
 - 新增 system 调试命令：改 `system_debug.h` 和 `system_debug.c`。
-- 调整任务周期、优先级、栈大小：改 `systask.h`。
+- 调整任务周期、优先级、栈大小：改 `systask_port.h`。
 
 ## 10. 构建与验证
 
@@ -197,4 +197,4 @@ console 接线在 `systask.c` 的 `initializeConsole()` 中完成，当前顺序
 
 ## 11. 一句话总结
 
-`system` 是当前工程的系统编排层：`system.c` 管模式，`systask.c` 管任务和启动接线，`system_debug.c` 管 system 调试命令。后续扩展时保持这三层边界稳定，AI 才能持续按当前架构工作。
+`system` 是当前工程的系统编排层：`system.c` 管模式，`systask_port.c` 管任务和启动接线，`system_debug.c` 管 system 调试命令。后续扩展时保持这三层边界稳定，AI 才能持续按当前架构工作。
