@@ -6,6 +6,7 @@
 
 #include <string.h>
 
+#include "Rep/comm/frameparser/framepareser_port.h"
 #include "Rep/drvlayer/drvuart/drvuart.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
@@ -14,7 +15,7 @@
 #endif
 
 typedef struct stFrmProcPortFmtCtx {
-    stFrmPsrPortProtoCfg protoCfg;
+    stFrmPsrProtoCfg protoCfg;
     uint8_t currentTxCmd;
     bool isFmtReady;
 } stFrmProcPortFmtCtx;
@@ -159,14 +160,14 @@ uint32_t frmProcPortGetTickMs(void)
 
 eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
 {
-    stFrmPsrPortProtoCfg lProtoCfg;
+    stFrmPsrProtoCfg lProtoCfg;
 
     if ((!frmProcPortIsValidProc(proc)) || (cfg == NULL)) {
         return FRM_PROC_STATUS_INVALID_PARAM;
     }
 
     (void)memset(cfg, 0, sizeof(*cfg));
-    frmPsrPortGetDefProtoCfg(FRAME_PROTOCOL0, &lProtoCfg);
+    frmPsrPortGetDefProtoCfg(frmProcPortGetProtocol(proc), &lProtoCfg);
     cfg->protocol = frmProcPortGetProtocol(proc);
     cfg->protoCfg = lProtoCfg;
     cfg->getTick = frmProcPortGetTickMs;

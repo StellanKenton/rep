@@ -28,6 +28,7 @@ static bool frmPsrFixOff(uint32_t pktLen, int32_t off, uint32_t *realOff);
 static bool frmPsrGetPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen, uint32_t *pktCrc);
 static bool frmPsrSetPktCrc(int32_t crcFieldOff, uint8_t crcFieldLen, eFrmPsrCrcEnd crcFieldEnd, uint8_t *pktBuf, uint32_t pktLen, uint32_t pktCrc);
 static bool frmPsrChkPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen);
+static void frmPsrLoadCfgByProtoCfg(stFrmPsrCfg *cfg, const stFrmPsrProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize);
 static void frmPsrLoadCfgByFmt(stFrmPsrCfg *cfg, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg);
 static eFrmPsrSta frmPsrMkPktInner(const stFrmPsrTxFmt *txFmt, const uint8_t *payloadBuf, uint32_t payloadLen, uint8_t *pktBuf, uint32_t pktBufSize, uint32_t *pktLen);
 
@@ -285,6 +286,33 @@ static bool frmPsrChkPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint3
     return lCalcCrc == lPktCrc;
 }
 
+static void frmPsrLoadCfgByProtoCfg(stFrmPsrCfg *cfg, const stFrmPsrProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize)
+{
+    if ((cfg == NULL) || (protoCfg == NULL)) {
+        return;
+    }
+
+    (void)memset(cfg, 0, sizeof(*cfg));
+    cfg->headPat = protoCfg->rxHeadPat;
+    cfg->headPatLen = protoCfg->rxHeadPatLen;
+    cfg->minHeadLen = protoCfg->minHeadLen;
+    cfg->minPktLen = protoCfg->minPktLen;
+    cfg->maxPktLen = protoCfg->maxPktLen;
+    cfg->waitPktToutMs = protoCfg->waitPktToutMs;
+    cfg->crcRangeStartOff = protoCfg->crcRangeStartOff;
+    cfg->crcRangeEndOff = protoCfg->crcRangeEndOff;
+    cfg->crcFieldOff = protoCfg->crcFieldOff;
+    cfg->crcFieldLen = protoCfg->crcFieldLen;
+    cfg->crcFieldEnd = protoCfg->crcFieldEnd;
+    cfg->outBuf = outBuf;
+    cfg->outBufSize = outBufSize;
+    cfg->headLenFunc = protoCfg->headLenFunc;
+    cfg->pktLenFunc = protoCfg->pktLenFunc;
+    cfg->crcCalcFunc = protoCfg->crcCalcFunc;
+    cfg->getTick = protoCfg->getTick;
+    cfg->userCtx = protoCfg->userCtx;
+}
+
 static void frmPsrLoadCfgByFmt(stFrmPsrCfg *cfg, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg)
 {
     if ((cfg == NULL) || (fmt == NULL) || (runCfg == NULL)) {
@@ -448,6 +476,29 @@ bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg)
     return true;
 }
 
+bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg)
+{
+    if ((protoCfg == NULL) ||
+        (protoCfg->rxHeadPat == NULL) ||
+        (protoCfg->rxHeadPatLen == 0U) ||
+        (protoCfg->txHeadPat == NULL) ||
+        (protoCfg->txHeadPatLen == 0U) ||
+        (protoCfg->minPktLen == 0U) ||
+        (protoCfg->maxPktLen < protoCfg->minPktLen) ||
+        (protoCfg->pktLenFunc == NULL) ||
+        (protoCfg->crcCalcFunc == NULL) ||
+        (protoCfg->crcFieldLen == 0U) ||
+        (protoCfg->crcFieldLen > sizeof(uint32_t))) {
+        return false;
+    }
+
+    if (protoCfg->minHeadLen < protoCfg->rxHeadPatLen) {
+        return false;
+    }
+
+    return true;
+}
+
 eFrmPsrSta frmPsrInit(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrCfg *cfg)
 {
     if ((psr == NULL) || (ringBuf == NULL) || (!frmPsrIsCfgValid(cfg))) {
@@ -460,6 +511,30 @@ eFrmPsrSta frmPsrInit(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrCfg *c
     psr->fmt = NULL;
     psr->isInit = true;
     return FRM_PSR_OK;
+}
+
+eFrmPsrSta frmPsrInitByProtoCfg(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize)
+{
+    stFrmPsrCfg lCfg;
+
+    if ((psr == NULL) || (!frmPsrIsProtoCfgValid(protoCfg)) || (outBuf == NULL) || (outBufSize == 0U)) {
+        return FRM_PSR_INVALID_ARG;
+    }
+
+    if ((ringBuf == NULL) && (protoCfg->getRingBuf != NULL)) {
+        ringBuf = protoCfg->getRingBuf(protoCfg->ringBufUserCtx);
+    }
+
+    if (ringBuf == NULL) {
+        return FRM_PSR_INVALID_ARG;
+    }
+
+    frmPsrLoadCfgByProtoCfg(&lCfg, protoCfg, outBuf, outBufSize);
+    if (!frmPsrIsCfgValid(&lCfg)) {
+        return FRM_PSR_INVALID_ARG;
+    }
+
+    return frmPsrInit(psr, ringBuf, &lCfg);
 }
 
 eFrmPsrSta frmPsrInitFmt(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg)

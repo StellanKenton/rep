@@ -18,6 +18,11 @@
 #include "task.h"
 #endif
 
+typedef struct stFrmPsrPortSlot {
+    stFrmPsrFmt fmt;
+    bool isUsed;
+} stFrmPsrPortSlot;
+
 static stFrmPsrPortSlot gFrmPsrPortSlots[FRAME_PROTOCOL_MAX];
 
 static uint16_t frmPsrPortReadBe16(const uint8_t *buffer);
@@ -26,11 +31,9 @@ static uint32_t frmPsrPortAppCommCalcCrc(const uint8_t *buffer, uint32_t length,
 static uint32_t frmPsrPortAppCommGetHeadLen(const uint8_t *buffer, uint32_t availLen, void *userCtx);
 static uint32_t frmPsrPortAppCommGetPktLen(const uint8_t *buffer, uint32_t headLen, uint32_t availLen, void *userCtx);
 static stRingBuffer *frmPsrPortGetDbgUartRxRingBuf(void *userCtx);
-static bool frmPsrPortIsProtoCfgValid(const stFrmPsrPortProtoCfg *protoCfg);
 static bool frmPsrPortIsValidProtocol(eFrameParMapType protocol);
-static eFrmPsrSta frmPsrPortLoadCfgByProto(stFrmPsrCfg *cfg, const stFrmPsrPortProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize);
 
-static const stFrmPsrPortProtoCfg gFrmPsrPortDefProtoCfg[FRAME_PROTOCOL_MAX] = {
+static const stFrmPsrProtoCfg gFrmPsrPortDefProtoCfg[FRAME_PROTOCOL_MAX] = {
     [FRAME_PROTOCOL0] = {
         .rxHeadPat = gFrmPsrAppCommHeadPat,
         .rxHeadPatLen = sizeof(gFrmPsrAppCommHeadPat),
@@ -150,58 +153,6 @@ static stRingBuffer *frmPsrPortGetDbgUartRxRingBuf(void *userCtx)
     return drvUartGetRingBuffer(DRVUART_WIRELESS);
 }
 
-static bool frmPsrPortIsProtoCfgValid(const stFrmPsrPortProtoCfg *protoCfg)
-{
-    if ((protoCfg == NULL) ||
-        (protoCfg->rxHeadPat == NULL) ||
-        (protoCfg->rxHeadPatLen == 0U) ||
-        (protoCfg->txHeadPat == NULL) ||
-        (protoCfg->txHeadPatLen == 0U) ||
-        (protoCfg->minPktLen == 0U) ||
-        (protoCfg->maxPktLen < protoCfg->minPktLen) ||
-        (protoCfg->pktLenFunc == NULL) ||
-        (protoCfg->crcCalcFunc == NULL) ||
-        (protoCfg->crcFieldLen == 0U) ||
-        (protoCfg->crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    if (protoCfg->minHeadLen < protoCfg->rxHeadPatLen) {
-        return false;
-    }
-
-    return true;
-}
-
-static eFrmPsrSta frmPsrPortLoadCfgByProto(stFrmPsrCfg *cfg, const stFrmPsrPortProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize)
-{
-    if ((cfg == NULL) || (!frmPsrPortIsProtoCfgValid(protoCfg)) || (outBuf == NULL) || (outBufSize == 0U)) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    (void)memset(cfg, 0, sizeof(*cfg));
-    cfg->headPat = protoCfg->rxHeadPat;
-    cfg->headPatLen = protoCfg->rxHeadPatLen;
-    cfg->minHeadLen = protoCfg->minHeadLen;
-    cfg->minPktLen = protoCfg->minPktLen;
-    cfg->maxPktLen = protoCfg->maxPktLen;
-    cfg->waitPktToutMs = protoCfg->waitPktToutMs;
-    cfg->crcRangeStartOff = protoCfg->crcRangeStartOff;
-    cfg->crcRangeEndOff = protoCfg->crcRangeEndOff;
-    cfg->crcFieldOff = protoCfg->crcFieldOff;
-    cfg->crcFieldLen = protoCfg->crcFieldLen;
-    cfg->crcFieldEnd = protoCfg->crcFieldEnd;
-    cfg->outBuf = outBuf;
-    cfg->outBufSize = outBufSize;
-    cfg->headLenFunc = protoCfg->headLenFunc;
-    cfg->pktLenFunc = protoCfg->pktLenFunc;
-    cfg->crcCalcFunc = protoCfg->crcCalcFunc;
-    cfg->getTick = protoCfg->getTick;
-    cfg->userCtx = protoCfg->userCtx;
-    frmPsrPortApplyDftCfg(cfg);
-    return FRM_PSR_OK;
-}
-
 static bool frmPsrPortIsValidProtocol(eFrameParMapType protocol)
 {
     return ((uint32_t)protocol < (uint32_t)FRAME_PROTOCOL_MAX);
@@ -250,7 +201,7 @@ void frmPsrPortApplyDftRunCfg(stFrmPsrRunCfg *runCfg)
     }
 }
 
-void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrPortProtoCfg *protoCfg)
+void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
 {
     if ((protoCfg == NULL) || (!frmPsrPortIsValidProtocol(protocol))) {
         return;
@@ -259,27 +210,13 @@ void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrPortProtoCfg *p
     *protoCfg = gFrmPsrPortDefProtoCfg[protocol];
 }
 
-eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrPortProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize)
+eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize)
 {
-    stFrmPsrCfg lCfg;
-
-    if ((psr == NULL) || (protoCfg == NULL)) {
+    if (protoCfg == NULL) {
         return FRM_PSR_INVALID_ARG;
     }
 
-    if ((ringBuf == NULL) && (protoCfg->getRingBuf != NULL)) {
-        ringBuf = protoCfg->getRingBuf(protoCfg->ringBufUserCtx);
-    }
-
-    if (ringBuf == NULL) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    if (frmPsrPortLoadCfgByProto(&lCfg, protoCfg, outBuf, outBufSize) != FRM_PSR_OK) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    return frmPsrInit(psr, ringBuf, &lCfg);
+    return frmPsrInitByProtoCfg(psr, protoCfg, ringBuf, outBuf, outBufSize);
 }
 
 uint32_t frmPsrPortGetFmtCnt(void)

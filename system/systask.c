@@ -29,7 +29,6 @@
 #include "Rep/module/mpu6050/mpu6050_debug.h"
 #include "Rep/module/w25qxxx/w25qxxx_debug.h"
 #include "Rep/module/w25qxxx/w25qxxx.h"
-#include "Rep/module/w25qxxx/w25qxxx_port.h"
 
 #define SENSOR_TASK_TAG "SensorTask"
 #define SENSOR_TASK_FLASH_TEST_ADDRESS       0U
@@ -318,7 +317,6 @@ static const char *sensorTaskGetW25qxxxStatusString(eW25qxxxStatus status)
 
 static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi)
 {
-    stW25qxxxCfg lCfg;
     eW25qxxxStatus lStatus;
 
     lStatus = w25qxxxGetDefCfg(device);
@@ -326,17 +324,12 @@ static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap 
         return false;
     }
 
-    lStatus = w25qxxxGetCfg(device, &lCfg);
+    lStatus = w25qxxxSetHardSpi(device, spi);
     if (lStatus != W25QXXX_STATUS_OK) {
         return false;
     }
 
-    lStatus = w25qxxxPortSetHardSpi(&lCfg.spiBind, spi);
-    if (lStatus != W25QXXX_STATUS_OK) {
-        return false;
-    }
-
-    return (w25qxxxSetCfg(device, &lCfg) == W25QXXX_STATUS_OK);
+    return true;
 }
 
 static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi, const uint8_t *name, uint32_t nameLength, uint8_t expectedCapacityId)

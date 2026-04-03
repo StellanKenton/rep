@@ -131,14 +131,9 @@ typedef struct stFrmPsrCfg {
     void *userCtx;
 } stFrmPsrCfg;
 
-typedef struct stFrmPsrPortSlot {
-    stFrmPsrFmt fmt;
-    bool isUsed;
-} stFrmPsrPortSlot;
+typedef stRingBuffer *(*frmPsrGetRingBufFunc)(void *userCtx);
 
-typedef stRingBuffer *(*frmPsrPortGetRingBufFunc)(void *userCtx);
-
-typedef struct stFrmPsrPortProtoCfg {
+typedef struct stFrmPsrProtoCfg {
     const uint8_t *rxHeadPat;
     uint16_t rxHeadPatLen;
     const uint8_t *txHeadPat;
@@ -156,10 +151,10 @@ typedef struct stFrmPsrPortProtoCfg {
     frmPsrPktLenFunc pktLenFunc;
     frmPsrCrcCalcFunc crcCalcFunc;
     frmPsrGetTickFunc getTick;
-    frmPsrPortGetRingBufFunc getRingBuf;
+    frmPsrGetRingBufFunc getRingBuf;
     void *ringBufUserCtx;
     void *userCtx;
-} stFrmPsrPortProtoCfg;
+} stFrmPsrProtoCfg;
 
 typedef struct stFrmPsr {
     stRingBuffer *ringBuf;
@@ -178,7 +173,9 @@ bool frmPsrIsRxFmtValid(const stFrmPsrRxFmt *rxFmt);
 bool frmPsrIsTxFmtValid(const stFrmPsrTxFmt *txFmt);
 bool frmPsrIsFmtValid(const stFrmPsrFmt *fmt);
 bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg);
+bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg);
 eFrmPsrSta frmPsrInit(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrCfg *cfg);
+eFrmPsrSta frmPsrInitByProtoCfg(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize);
 eFrmPsrSta frmPsrInitFmt(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg);
 void frmPsrReset(stFrmPsr *psr);
 eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt);

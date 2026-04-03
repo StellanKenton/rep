@@ -90,6 +90,25 @@ eW25qxxxStatus w25qxxxSetCfg(eW25qxxxMapType device, const stW25qxxxCfg *cfg)
     return W25QXXX_STATUS_OK;
 }
 
+eW25qxxxStatus w25qxxxSetHardSpi(eW25qxxxMapType device, eDrvSpiPortMap spi)
+{
+    stW25qxxxCfg lCfg;
+    eDrvStatus lPortStatus;
+    eW25qxxxStatus lStatus;
+
+    lStatus = w25qxxxGetCfg(device, &lCfg);
+    if (lStatus != W25QXXX_STATUS_OK) {
+        return lStatus;
+    }
+
+    lPortStatus = w25qxxxPortSetHardSpi(&lCfg.spiBind, spi);
+    if (lPortStatus != DRV_STATUS_OK) {
+        return w25qxxxMapPortStatus(lPortStatus);
+    }
+
+    return w25qxxxSetCfg(device, &lCfg);
+}
+
 eW25qxxxStatus w25qxxxInit(eW25qxxxMapType device)
 {
     const stW25qxxxPortSpiInterface *lSpiIf;

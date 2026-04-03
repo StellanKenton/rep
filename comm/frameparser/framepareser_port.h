@@ -47,8 +47,8 @@ static const uint8_t gFrmPsrAppSendHeadPat[] = {
 uint32_t frmPsrPortGetTickMs(void);
 void frmPsrPortApplyDftCfg(stFrmPsrCfg *cfg);
 void frmPsrPortApplyDftRunCfg(stFrmPsrRunCfg *runCfg);
-void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrPortProtoCfg *protoCfg);
-eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrPortProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize);
+void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg);
+eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize);
 uint32_t frmPsrPortGetFmtCnt(void);
 bool frmPsrPortSetFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt);
 const stFrmPsrFmt *frmPsrPortGetFmt(eFrameParMapType protocol);

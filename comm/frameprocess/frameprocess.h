@@ -10,7 +10,6 @@
 #include <stdint.h>
 
 #include "Rep/comm/frameparser/framepareser.h"
-#include "Rep/comm/frameparser/framepareser_port.h"
 #include "Rep/rep_config.h"
 #include "frameprocess_data.h"
 
@@ -95,7 +94,7 @@ typedef eFrmProcStatus (*frmProcTxFunc)(eFrmProcMapType proc, const uint8_t *fra
 
 typedef struct stFrmProcCfg {
     eFrameParMapType protocol;
-    stFrmPsrPortProtoCfg protoCfg;
+    stFrmPsrProtoCfg protoCfg;
     frmProcGetTickFunc getTick;
     frmProcTxFunc txFrame;
     stFrmProcQueueCfg urgentQueue;

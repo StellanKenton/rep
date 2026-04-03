@@ -429,7 +429,7 @@ eFrmProcStatus frmProcInit(eFrmProcMapType proc)
     if (ringBufferInit(&lCtx->normalTxRb, lCtx->cfg.normalQueue.storage, lCtx->cfg.normalQueue.capacity) != RINGBUFFER_OK) {
         return FRM_PROC_STATUS_ERROR;
     }
-    if (frmPsrPortInitByProto(&lCtx->parser, &lCtx->cfg.protoCfg, NULL, lCtx->cfg.rxFrameBuf, lCtx->cfg.rxFrameBufSize) != FRM_PSR_OK) {
+    if (frmPsrInitByProtoCfg(&lCtx->parser, &lCtx->cfg.protoCfg, NULL, lCtx->cfg.rxFrameBuf, lCtx->cfg.rxFrameBufSize) != FRM_PSR_OK) {
         return FRM_PROC_STATUS_PARSE_ERROR;
     }
 
