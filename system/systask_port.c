@@ -13,6 +13,7 @@
 
 #include "console.h"
 #include "appcomm/appcomm.h"
+#include "manager/manager.h"
 #include "drvlayer/DrvGpio/drvgpio.h"
 #include "log.h"
 #include "FreeRTOS.h"
@@ -46,6 +47,7 @@ static void powerTaskCallback(void *parameter);
 static void appCommTaskCallback(void *parameter);
 static void memoryTaskCallback(void *parameter);
 static bool createTasks(void);
+static bool runStartupSelfCheck(void);
 static bool initializeDrvGpio(void);
 static bool initializeConsole(void);
 static bool initializeAppComm(void);
@@ -62,6 +64,9 @@ static void process(void)
             systemSetMode(eSYSTEM_SELF_CHECK_MODE);
             break;
         case eSYSTEM_SELF_CHECK_MODE:
+            if (!runStartupSelfCheck()) {
+                break;
+            }
             if (!createTasks()) {
                 break;
             }
@@ -71,7 +76,10 @@ static void process(void)
         case eSYSTEM_STANDBY_MODE:
             break;
         case eSYSTEM_NORMAL_MODE:
+            break;
         case eSYSTEM_UPDATE_MODE:
+            managerUpdateProcess();
+            break;
         case eSYSTEM_DIAGNOSTIC_MODE:
             break;
         default:
@@ -80,6 +88,7 @@ static void process(void)
             break;
     }
 }
+
 /**
 * @brief : Default task callback.
 * @param : parameter - task parameter, unused.
@@ -143,15 +152,11 @@ static bool createTasks(void)
         return false;
     }
 
-    if (initializeConsole()) {
-        if (pdPASS != createTask(consoleTaskCallback,
-            "ConsoleTask",
-            CONSOLE_TASK_STACK_SIZE,
-            CONSOLE_TASK_PRIORITY,
-            &gConsoleTaskHandle)) {
-            lResult = false;
-        }
-    } else {
+    if (pdPASS != createTask(consoleTaskCallback,
+        "ConsoleTask",
+        CONSOLE_TASK_STACK_SIZE,
+        CONSOLE_TASK_PRIORITY,
+        &gConsoleTaskHandle)) {
         lResult = false;
     }
 
@@ -179,15 +184,11 @@ static bool createTasks(void)
         lResult = false;
     }
 
-    if (initializeAppComm()) {
-        if (pdPASS != createTask(appCommTaskCallback,
-            "AppCommTask",
-            APPCOMM_TASK_STACK_SIZE,
-            APPCOMM_TASK_PRIORITY,
-            &gAppCommTaskHandle)) {
-            lResult = false;
-        }
-    } else {
+    if (pdPASS != createTask(appCommTaskCallback,
+        "AppCommTask",
+        APPCOMM_TASK_STACK_SIZE,
+        APPCOMM_TASK_PRIORITY,
+        &gAppCommTaskHandle)) {
         lResult = false;
     }
 
@@ -200,6 +201,16 @@ static bool createTasks(void)
     }
 
     return lResult;
+}
+
+static bool runStartupSelfCheck(void)
+{
+    bool lConsoleReady;
+    bool lAppCommReady;
+
+    lConsoleReady = initializeConsole();
+    lAppCommReady = initializeAppComm();
+    return managerRunStartupSelfCheck(lConsoleReady, lAppCommReady);
 }
 
 static bool initializeDrvGpio(void)
@@ -453,6 +464,7 @@ static void powerTaskCallback(void *parameter)
     (void)parameter;
 
     for (;;) {
+        managerPowerProcess();
         vTaskDelay(pdMS_TO_TICKS(POWER_TASK_PERIOD_MS));
     }
 }
