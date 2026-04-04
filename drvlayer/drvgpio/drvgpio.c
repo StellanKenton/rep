@@ -18,14 +18,17 @@
 
 #define DRVGPIO_LOG_TAG                 "drvGpio"
 
-extern stDrvGpioBspInterface gDrvGpioBspInterface;
+__attribute__((weak)) const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void)
+{
+    return NULL;
+}
 
 /**
 * @brief : Check if the provided logical pin mapping is valid.
 * @param : pin GPIO pin mapping identifier.
 * @return: true if the pin mapping is valid, false otherwise.
 **/
-static bool drvGpioIsValidPin(eDrvGpioPinMap pin)
+static bool drvGpioIsValidPin(uint8_t pin)
 {
     return pin < DRVGPIO_MAX;
 }
@@ -37,10 +40,13 @@ static bool drvGpioIsValidPin(eDrvGpioPinMap pin)
 **/
 static bool drvGpioHasValidBspInterface(void)
 {
-    return (gDrvGpioBspInterface.init != NULL) &&
-           (gDrvGpioBspInterface.write != NULL) &&
-           (gDrvGpioBspInterface.read != NULL) &&
-           (gDrvGpioBspInterface.toggle != NULL);
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+
+    return (lBspInterface != NULL) &&
+           (lBspInterface->init != NULL) &&
+           (lBspInterface->write != NULL) &&
+           (lBspInterface->read != NULL) &&
+           (lBspInterface->toggle != NULL);
 }
 
 /**
@@ -50,6 +56,8 @@ static bool drvGpioHasValidBspInterface(void)
 **/
 void drvGpioInit(void)
 {
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+
     if (!drvGpioHasValidBspInterface()) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
         LOG_E(DRVGPIO_LOG_TAG, "Invalid BSP interface configuration");
@@ -59,7 +67,7 @@ void drvGpioInit(void)
     }
 
     // bsp init function
-    gDrvGpioBspInterface.init();
+    lBspInterface->init();
 }
 
 /**
@@ -68,8 +76,10 @@ void drvGpioInit(void)
 * @param : state Target GPIO output state.
 * @return: None
 **/
-void drvGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state)
+void drvGpioWrite(uint8_t pin, eDrvGpioPinState state)
 {
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
         LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
@@ -84,7 +94,7 @@ void drvGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state)
         return;
     }
 
-    if (gDrvGpioBspInterface.write == NULL) {
+    if ((lBspInterface == NULL) || (lBspInterface->write == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
         LOG_E(DRVGPIO_LOG_TAG, "GPIO write hook is not configured");
         #endif
@@ -92,7 +102,7 @@ void drvGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state)
     }
 
     // bsp write function
-    gDrvGpioBspInterface.write(pin, state);
+    lBspInterface->write(pin, state);
 }
 
 /**
@@ -100,9 +110,10 @@ void drvGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state)
 * @param : pin GPIO pin mapping identifier.
 * @return: Current GPIO pin state.
 **/
-eDrvGpioPinState drvGpioRead(eDrvGpioPinMap pin)
+eDrvGpioPinState drvGpioRead(uint8_t pin)
 {
     eDrvGpioPinState lState;
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -111,7 +122,7 @@ eDrvGpioPinState drvGpioRead(eDrvGpioPinMap pin)
         return DRVGPIO_PIN_STATE_INVALID;
     }
 
-    if (gDrvGpioBspInterface.read == NULL) {
+    if ((lBspInterface == NULL) || (lBspInterface->read == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
         LOG_E(DRVGPIO_LOG_TAG, "GPIO read hook is not configured");
         #endif
@@ -119,7 +130,7 @@ eDrvGpioPinState drvGpioRead(eDrvGpioPinMap pin)
     }
 
     // bsp read function
-    lState = gDrvGpioBspInterface.read(pin);
+    lState = lBspInterface->read(pin);
     return lState;
 }
 
@@ -128,9 +139,10 @@ eDrvGpioPinState drvGpioRead(eDrvGpioPinMap pin)
 * @param : pin GPIO pin mapping identifier.
 * @return: None
 **/
-void drvGpioToggle(eDrvGpioPinMap pin)
+void drvGpioToggle(uint8_t pin)
 {
     eDrvGpioPinState lTargetState;
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -139,7 +151,7 @@ void drvGpioToggle(eDrvGpioPinMap pin)
         return;
     }
 
-    if (gDrvGpioBspInterface.toggle == NULL) {
+    if ((lBspInterface == NULL) || (lBspInterface->toggle == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
         LOG_W(DRVGPIO_LOG_TAG, "GPIO toggle hook is not configured, using read/write fallback");
         #endif
@@ -149,7 +161,7 @@ void drvGpioToggle(eDrvGpioPinMap pin)
     }
 
     // bsp toggle function
-    gDrvGpioBspInterface.toggle(pin);
+    lBspInterface->toggle(pin);
 }
 
 

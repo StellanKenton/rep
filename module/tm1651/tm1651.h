@@ -65,7 +65,7 @@ typedef struct stTm1651IicInterface {
 } stTm1651IicInterface;
 
 typedef struct stTm1651Cfg {
-    eDrvAnlogIicPortMap iic;
+    uint8_t linkId;
     uint8_t brightness;
     uint8_t digitCount;
     bool isDisplayOn;
@@ -77,7 +77,7 @@ typedef struct stTm1651Device {
     bool isReady;
 } stTm1651Device;
 
-eTm1651Status tm1651GetDefCfg(eTm1651MapType device);
+eTm1651Status tm1651GetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
 eTm1651Status tm1651GetCfg(eTm1651MapType device, stTm1651Cfg *cfg);
 eTm1651Status tm1651SetCfg(eTm1651MapType device, const stTm1651Cfg *cfg);
 eTm1651Status tm1651Init(eTm1651MapType device);

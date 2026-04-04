@@ -73,7 +73,7 @@ typedef struct stW25qxxxSpiInterface {
 } stW25qxxxSpiInterface;
 
 typedef struct stW25qxxxCfg {
-    eDrvSpiPortMap spi;
+    uint8_t linkId;
 } stW25qxxxCfg;
 
 typedef struct stW25qxxxInfo {
@@ -93,10 +93,9 @@ typedef struct stW25qxxxDevice {
     bool isReady;
 } stW25qxxxDevice;
 
-eW25qxxxStatus w25qxxxGetDefCfg(eW25qxxxMapType device);
+eW25qxxxStatus w25qxxxGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg);
 eW25qxxxStatus w25qxxxGetCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg);
 eW25qxxxStatus w25qxxxSetCfg(eW25qxxxMapType device, const stW25qxxxCfg *cfg);
-eW25qxxxStatus w25qxxxSetHardSpi(eW25qxxxMapType device, eDrvSpiPortMap spi);
 eW25qxxxStatus w25qxxxInit(eW25qxxxMapType device);
 bool w25qxxxIsReady(eW25qxxxMapType device);
 const stW25qxxxInfo *w25qxxxGetInfo(eW25qxxxMapType device);

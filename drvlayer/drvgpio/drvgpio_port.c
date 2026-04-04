@@ -8,6 +8,7 @@
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvgpio.h"
+#include "drvgpio_port.h"
 #include "bspgpio.h"
 
 
@@ -17,6 +18,11 @@ stDrvGpioBspInterface gDrvGpioBspInterface = {
     .read = bspGpioRead,
     .toggle = bspGpioToggle,
 };
+
+    const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void)
+    {
+        return &gDrvGpioBspInterface;
+    }
 
 /**************************End of file********************************/
 

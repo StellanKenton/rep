@@ -10,6 +10,7 @@
 #include "drvgpio_debug.h"
 
 #include "drvgpio.h"
+#include "drvgpio_port.h"
 
 #if (DRVGPIO_CONSOLE_SUPPORT == 1)
 #include <stddef.h>

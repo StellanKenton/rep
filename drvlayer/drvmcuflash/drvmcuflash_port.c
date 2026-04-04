@@ -8,6 +8,7 @@
 * @version  : V1.0.0
 **********************************************************************************/
 #include "drvmcuflash.h"
+#include "drvmcuflash_port.h"
 
 #include <stddef.h>
 

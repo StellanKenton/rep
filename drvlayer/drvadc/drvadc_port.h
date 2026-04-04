@@ -12,11 +12,16 @@
 
 #include <stdint.h>
 
-#include "drvadc_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvAdcPortMap {
+    DRVADC_CH0 = 0,
+    DRVADC_CH1 = 1,
+    DRVADC_CH2 = 2,
+    DRVADC_MAX,
+} eDrvAdcPortMap;
 
 #ifndef DRVADC_LOG_SUPPORT
 #define DRVADC_LOG_SUPPORT                 1

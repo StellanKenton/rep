@@ -10,11 +10,14 @@
 #ifndef DRVMCUFLASH_PORT_H
 #define DRVMCUFLASH_PORT_H
 
-#include "drvmcuflash_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvMcuFlashAreaMap {
+	DRVMCUFLASH_AREA_USER = 0,
+	DRVMCUFLASH_MAX,
+} eDrvMcuFlashAreaMap;
 
 #ifndef DRVMCUFLASH_LOG_SUPPORT
 #define DRVMCUFLASH_LOG_SUPPORT              1

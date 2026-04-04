@@ -178,7 +178,7 @@ static eConsoleCommandResult pca9535DebugReplyDeviceList(uint32_t transport)
         if (consoleReply(transport,
             "%s bus=%u addr=%02X ready=%s\n",
             pca9535DebugGetDeviceName((ePca9535MapType)lIndex),
-            (unsigned int)lCfg.iic,
+            (unsigned int)lCfg.linkId,
             (unsigned int)lCfg.address,
             pca9535IsReady((ePca9535MapType)lIndex) ? "yes" : "no") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;

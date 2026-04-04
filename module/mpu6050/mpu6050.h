@@ -73,12 +73,12 @@ typedef enum eMpu6050GyroRange {
     MPU6050_GYRO_RANGE_MAX,
 } eMpu6050GyroRange;
 
-typedef enum eMpu6050IicType {
-    MPU6050_IIC_TYPE_NONE = 0,
-    MPU6050_IIC_TYPE_SOFTWARE,
-    MPU6050_IIC_TYPE_HARDWARE,
-    MPU6050_IIC_TYPE_MAX,
-} eMpu6050IicType;
+typedef enum eMpu6050TransportType {
+    MPU6050_TRANSPORT_TYPE_NONE = 0,
+    MPU6050_TRANSPORT_TYPE_SOFTWARE,
+    MPU6050_TRANSPORT_TYPE_HARDWARE,
+    MPU6050_TRANSPORT_TYPE_MAX,
+} eMpu6050TransportType;
 
 typedef eDrvStatus (*mpu6050IicInitFunc)(uint8_t bus);
 typedef eDrvStatus (*mpu6050IicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
@@ -91,8 +91,8 @@ typedef struct stMpu6050IicInterface {
 } stMpu6050IicInterface;
 
 typedef struct stMpu6050Cfg {
-    eMpu6050IicType iicType;
-    uint8_t iicBus;
+    eMpu6050TransportType transportType;
+    uint8_t linkId;
     uint8_t address;
     uint8_t sampleRateDiv;
     uint8_t dlpfCfg;
@@ -116,7 +116,9 @@ typedef struct stMpu6050Dev {
     bool isReady;
 } stMpu6050Device;
 
-eDrvStatus mpu6050GetDefCfg(eMPU6050MapType device);
+eDrvStatus mpu6050GetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
+eDrvStatus mpu6050GetCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
+eDrvStatus mpu6050SetCfg(eMPU6050MapType device, const stMpu6050Cfg *cfg);
 eDrvStatus mpu6050Init(eMPU6050MapType device);
 bool mpu6050IsReady(eMPU6050MapType device);
 eDrvStatus mpu6050ReadId(eMPU6050MapType device, uint8_t *devId);

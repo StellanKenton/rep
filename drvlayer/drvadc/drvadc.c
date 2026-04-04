@@ -39,8 +39,15 @@ static uint32_t gDrvAdcCriticalDepth = 0U;
 #endif
 #endif
 
-extern stDrvAdcBspInterface gDrvAdcBspInterface;
-extern stDrvAdcData gDrvAdcData[DRVADC_MAX];
+__attribute__((weak)) const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void)
+{
+    return NULL;
+}
+
+__attribute__((weak)) stDrvAdcData *drvAdcGetPlatformData(void)
+{
+    return NULL;
+}
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_NONE) && (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
 static void drvAdcEnterCritical(void)
@@ -65,7 +72,7 @@ static void drvAdcExitCritical(void)
 }
 #endif
 
-static bool drvAdcIsValid(eDrvAdcPortMap adc)
+static bool drvAdcIsValid(uint8_t adc)
 {
     return adc < DRVADC_MAX;
 }
@@ -80,14 +87,19 @@ static bool drvAdcIsValidResolutionBits(uint8_t resolutionBits)
     return (resolutionBits > 0U) && (resolutionBits <= 16U);
 }
 
-static bool drvAdcIsInitialized(eDrvAdcPortMap adc)
+static bool drvAdcIsInitialized(uint8_t adc)
 {
     return drvAdcIsValid(adc) && gDrvAdcInitialized[adc];
 }
 
+static stDrvAdcData *drvAdcGetDataCache(void)
+{
+    return drvAdcGetPlatformData();
+}
+
 static stDrvAdcBspInterface *drvAdcGetBspInterface(void)
 {
-    return &gDrvAdcBspInterface;
+    return (stDrvAdcBspInterface *)drvAdcGetPlatformBspInterface();
 }
 
 static bool drvAdcHasValidBspInterface(void)
@@ -148,7 +160,7 @@ static uint32_t drvAdcGetMaxRawValue(void)
 }
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
-static eDrvStatus drvAdcEnsureMutex(eDrvAdcPortMap adc)
+static eDrvStatus drvAdcEnsureMutex(uint8_t adc)
 {
     if (!drvAdcIsValid(adc)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -165,7 +177,7 @@ static eDrvStatus drvAdcEnsureMutex(eDrvAdcPortMap adc)
 }
 #endif
 
-static eDrvStatus drvAdcLock(eDrvAdcPortMap adc)
+static eDrvStatus drvAdcLock(uint8_t adc)
 {
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     if (drvAdcEnsureMutex(adc) != DRV_STATUS_OK) {
@@ -202,7 +214,7 @@ static eDrvStatus drvAdcLock(eDrvAdcPortMap adc)
 #endif
 }
 
-static void drvAdcUnlock(eDrvAdcPortMap adc)
+static void drvAdcUnlock(uint8_t adc)
 {
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     if (drvAdcIsValid(adc) && (gDrvAdcMutex[adc] != NULL)) {
@@ -225,25 +237,35 @@ static void drvAdcUnlock(eDrvAdcPortMap adc)
 #endif
 }
 
-static void drvAdcUpdateDataRaw(eDrvAdcPortMap adc, uint16_t rawValue)
+static void drvAdcUpdateDataRaw(uint8_t adc, uint16_t rawValue)
 {
+    stDrvAdcData *lDataCache;
+
     if (!drvAdcIsValid(adc)) {
         return;
     }
 
-    gDrvAdcData[adc].raw = rawValue;
+    lDataCache = drvAdcGetDataCache();
+    if (lDataCache != NULL) {
+        lDataCache[adc].raw = rawValue;
+    }
 }
 
-static void drvAdcUpdateDataMv(eDrvAdcPortMap adc, uint16_t valueMv)
+static void drvAdcUpdateDataMv(uint8_t adc, uint16_t valueMv)
 {
+    stDrvAdcData *lDataCache;
+
     if (!drvAdcIsValid(adc)) {
         return;
     }
 
-    gDrvAdcData[adc].mv = valueMv;
+    lDataCache = drvAdcGetDataCache();
+    if (lDataCache != NULL) {
+        lDataCache[adc].mv = valueMv;
+    }
 }
 
-static eDrvStatus drvAdcReadRawLocked(eDrvAdcPortMap adc, uint16_t *value, uint32_t timeoutMs)
+static eDrvStatus drvAdcReadRawLocked(uint8_t adc, uint16_t *value, uint32_t timeoutMs)
 {
     stDrvAdcBspInterface *lBspInterface = drvAdcGetBspInterface();
 
@@ -254,7 +276,7 @@ static eDrvStatus drvAdcReadRawLocked(eDrvAdcPortMap adc, uint16_t *value, uint3
     return lBspInterface->readRaw(adc, value, drvAdcGetTimeoutMs(timeoutMs));
 }
 
-static eDrvStatus drvAdcConvertRawToMv(eDrvAdcPortMap adc, uint16_t rawValue, uint16_t *valueMv)
+static eDrvStatus drvAdcConvertRawToMv(uint8_t adc, uint16_t rawValue, uint16_t *valueMv)
 {
     uint32_t lReferenceMv;
     uint32_t lMaxRawValue;
@@ -275,7 +297,7 @@ static eDrvStatus drvAdcConvertRawToMv(eDrvAdcPortMap adc, uint16_t rawValue, ui
     return DRV_STATUS_OK;
 }
 
-eDrvStatus drvAdcInit(eDrvAdcPortMap adc)
+eDrvStatus drvAdcInit(uint8_t adc)
 {
     stDrvAdcBspInterface *lBspInterface = NULL;
     eDrvStatus lStatus;
@@ -319,14 +341,15 @@ eDrvStatus drvAdcInit(eDrvAdcPortMap adc)
     return DRV_STATUS_OK;
 }
 
-eDrvStatus drvAdcReadRaw(eDrvAdcPortMap adc, uint16_t *value)
+eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value)
 {
     return drvAdcReadRawTimeout(adc, value, 0U);
 }
 
-eDrvStatus drvAdcReadRawTimeout(eDrvAdcPortMap adc, uint16_t *value, uint32_t timeoutMs)
+eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs)
 {
     eDrvStatus lStatus;
+    uint16_t lValueMv = 0U;
 
     if (!drvAdcIsValid(adc) || !drvAdcIsValidValuePointer(value)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -344,20 +367,21 @@ eDrvStatus drvAdcReadRawTimeout(eDrvAdcPortMap adc, uint16_t *value, uint32_t ti
     lStatus = drvAdcReadRawLocked(adc, value, timeoutMs);
     if (lStatus == DRV_STATUS_OK) {
         drvAdcUpdateDataRaw(adc, *value);
-        if (drvAdcConvertRawToMv(adc, *value, &gDrvAdcData[adc].mv) != DRV_STATUS_OK) {
-            gDrvAdcData[adc].mv = 0U;
+        if (drvAdcConvertRawToMv(adc, *value, &lValueMv) != DRV_STATUS_OK) {
+            lValueMv = 0U;
         }
+        drvAdcUpdateDataMv(adc, lValueMv);
     }
     drvAdcUnlock(adc);
     return lStatus;
 }
 
-eDrvStatus drvAdcReadMv(eDrvAdcPortMap adc, uint16_t *valueMv)
+eDrvStatus drvAdcReadMv(uint8_t adc, uint16_t *valueMv)
 {
     return drvAdcReadMvTimeout(adc, valueMv, 0U);
 }
 
-eDrvStatus drvAdcReadMvTimeout(eDrvAdcPortMap adc, uint16_t *valueMv, uint32_t timeoutMs)
+eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutMs)
 {
     eDrvStatus lStatus;
     uint16_t lRawValue = 0U;

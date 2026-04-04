@@ -44,7 +44,7 @@ __attribute__((weak)) const stDrvMcuFlashBspInterface *drvMcuFlashGetPlatformBsp
     return NULL;
 }
 
-__attribute__((weak)) eDrvStatus drvMcuFlashGetPlatformAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
+__attribute__((weak)) eDrvStatus drvMcuFlashGetPlatformAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info)
 {
     (void)area;
     (void)info;
@@ -97,7 +97,7 @@ static bool drvMcuFlashHasValidBspInterface(void)
            (lBspInterface->getSectorInfo != NULL);
 }
 
-static eDrvStatus drvMcuFlashResolveRange(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t length, uint32_t *startAddress, uint32_t *endAddress)
+static eDrvStatus drvMcuFlashResolveRange(uint8_t area, uint32_t offset, uint32_t length, uint32_t *startAddress, uint32_t *endAddress)
 {
     stDrvMcuFlashAreaInfo lAreaInfo;
 
@@ -247,7 +247,7 @@ bool drvMcuFlashIsReady(void)
     return gDrvMcuFlashInitialized;
 }
 
-eDrvStatus drvMcuFlashGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
+eDrvStatus drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info)
 {
     if (info == NULL) {
         return DRV_STATUS_INVALID_PARAM;
@@ -256,7 +256,7 @@ eDrvStatus drvMcuFlashGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInf
     return drvMcuFlashGetPlatformAreaInfo(area, info);
 }
 
-eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *buffer, uint32_t length)
+eDrvStatus drvMcuFlashRead(uint8_t area, uint32_t offset, uint8_t *buffer, uint32_t length)
 {
     const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;
@@ -293,7 +293,7 @@ eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *b
     return DRV_STATUS_OK;
 }
 
-eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uint8_t *buffer, uint32_t length)
+eDrvStatus drvMcuFlashWrite(uint8_t area, uint32_t offset, const uint8_t *buffer, uint32_t length)
 {
     const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;
@@ -344,7 +344,7 @@ eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uin
     return lLockStatus;
 }
 
-eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t length)
+eDrvStatus drvMcuFlashErase(uint8_t area, uint32_t offset, uint32_t length)
 {
     const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;

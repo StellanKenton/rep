@@ -71,7 +71,7 @@ typedef struct stGd25qxxxSpiInterface {
 } stGd25qxxxSpiInterface;
 
 typedef struct stGd25qxxxCfg {
-    eDrvSpiPortMap spi;
+    uint8_t linkId;
 } stGd25qxxxCfg;
 
 typedef struct stGd25qxxxInfo {
@@ -91,7 +91,7 @@ typedef struct stGd25qxxxDevice {
     bool isReady;
 } stGd25qxxxDevice;
 
-eGd25qxxxStatus gd25qxxxGetDefCfg(eGd25qxxxMapType device);
+eGd25qxxxStatus gd25qxxxGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg);
 eGd25qxxxStatus gd25qxxxGetCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg);
 eGd25qxxxStatus gd25qxxxSetCfg(eGd25qxxxMapType device, const stGd25qxxxCfg *cfg);
 eGd25qxxxStatus gd25qxxxInit(eGd25qxxxMapType device);

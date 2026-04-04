@@ -65,4 +65,9 @@ bool consolePortInit(void)
     gConsolePortReady = true;
     return true;
 }
+
+bool consoleInitDefault(void)
+{
+    return consolePortInit();
+}
 /**************************End of file********************************/

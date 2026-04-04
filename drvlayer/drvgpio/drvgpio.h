@@ -11,18 +11,34 @@
 #define DRVGPIO_H
 
 #include <stdbool.h>
-
-#include "drvgpio_types.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#ifndef DRVGPIO_LOG_SUPPORT
+#define DRVGPIO_LOG_SUPPORT             1
+#endif
+
+#ifndef DRVGPIO_CONSOLE_SUPPORT
+#define DRVGPIO_CONSOLE_SUPPORT         1
+#endif
+
+#ifndef DRVGPIO_MAX
+#define DRVGPIO_MAX                     4U
+#endif
+
+typedef enum eDrvGpioPinState {
+    DRVGPIO_PIN_RESET = 0,
+    DRVGPIO_PIN_SET,
+    DRVGPIO_PIN_STATE_INVALID
+} eDrvGpioPinState;
 
 typedef void (*drvGpioBspInitFunc)(void);
-typedef void (*drvGpioBspWriteFunc)(eDrvGpioPinMap pin, eDrvGpioPinState state);
-typedef eDrvGpioPinState (*drvGpioBspReadFunc)(eDrvGpioPinMap pin);
-typedef void (*drvGpioBspToggleFunc)(eDrvGpioPinMap pin);
+typedef void (*drvGpioBspWriteFunc)(uint8_t pin, eDrvGpioPinState state);
+typedef eDrvGpioPinState (*drvGpioBspReadFunc)(uint8_t pin);
+typedef void (*drvGpioBspToggleFunc)(uint8_t pin);
 
 typedef struct stDrvGpioBspInterface {
     drvGpioBspInitFunc init;
@@ -32,9 +48,11 @@ typedef struct stDrvGpioBspInterface {
 } stDrvGpioBspInterface;
 
 void drvGpioInit(void);
-void drvGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state);
-eDrvGpioPinState drvGpioRead(eDrvGpioPinMap pin);
-void drvGpioToggle(eDrvGpioPinMap pin);
+void drvGpioWrite(uint8_t pin, eDrvGpioPinState state);
+eDrvGpioPinState drvGpioRead(uint8_t pin);
+void drvGpioToggle(uint8_t pin);
+
+const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void);
 
 #ifdef __cplusplus
 }

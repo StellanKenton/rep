@@ -14,10 +14,21 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvmcuflash_types.h"
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#ifndef DRVMCUFLASH_LOG_SUPPORT
+#define DRVMCUFLASH_LOG_SUPPORT              1
+#endif
+
+#ifndef DRVMCUFLASH_CONSOLE_SUPPORT
+#define DRVMCUFLASH_CONSOLE_SUPPORT          0
+#endif
+
+#ifndef DRVMCUFLASH_LOCK_WAIT_MS
+#define DRVMCUFLASH_LOCK_WAIT_MS             50U
 #endif
 
 typedef struct stDrvMcuFlashAreaInfo {
@@ -43,10 +54,10 @@ typedef struct stDrvMcuFlashBspInterface {
 
 eDrvStatus drvMcuFlashInit(void);
 bool drvMcuFlashIsReady(void);
-eDrvStatus drvMcuFlashGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info);
-eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *buffer, uint32_t length);
-eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uint8_t *buffer, uint32_t length);
-eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t length);
+eDrvStatus drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info);
+eDrvStatus drvMcuFlashRead(uint8_t area, uint32_t offset, uint8_t *buffer, uint32_t length);
+eDrvStatus drvMcuFlashWrite(uint8_t area, uint32_t offset, const uint8_t *buffer, uint32_t length);
+eDrvStatus drvMcuFlashErase(uint8_t area, uint32_t offset, uint32_t length);
 
 #ifdef __cplusplus
 }

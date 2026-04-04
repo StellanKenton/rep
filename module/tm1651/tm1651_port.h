@@ -23,7 +23,7 @@ extern "C" {
 typedef stTm1651IicInterface stTm1651PortIicInterface;
 
 void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
-eDrvStatus tm1651PortSetSoftIic(stTm1651Cfg *cfg, eDrvAnlogIicPortMap iic);
+eDrvStatus tm1651PortAssembleSoftIic(stTm1651Cfg *cfg, uint8_t iic);
 bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg);
 bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg);
 const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651Cfg *cfg);

@@ -27,6 +27,11 @@ BSP 层负责：
 - `drvadc_port.c`: 绑定当前工程里的逻辑通道到 BSP 钩子。
 - `bspadc.h/.c`: 负责 MCU 相关的 ADC 外设、通道配置与采样实现。
 
+说明：
+
+- `drvadc.h` 的公共 API 入口使用 `uint8_t adc` 表示逻辑通道编号，不再在公共头里暴露逻辑通道枚举。
+- `eDrvAdcPortMap` 只保留在 `drvadc_port.h`，供 port/BSP 层和需要逻辑通道常量的工程文件使用。
+
 ## 3. core 层真实依赖的 BSP 接口
 
 `drvadc.c` 依赖的接口结构如下：
@@ -55,7 +60,7 @@ typedef struct stDrvAdcBspInterface {
 
 ## 4. BSP 函数语义
 
-### 4.1 `bspAdcInit(eDrvAdcPortMap adc)`
+### 4.1 `bspAdcInit(uint8_t adc)`
 
 职责：
 
@@ -66,7 +71,7 @@ typedef struct stDrvAdcBspInterface {
 
 - 通道未配置、硬件资源冲突或初始化失败时返回明确错误。
 
-### 4.2 `bspAdcReadRaw(eDrvAdcPortMap adc, uint16_t *value, uint32_t timeoutMs)`
+### 4.2 `bspAdcReadRaw(uint8_t adc, uint16_t *value, uint32_t timeoutMs)`
 
 职责：
 
@@ -98,8 +103,8 @@ typedef struct stDrvAdcBspInterface {
 也就是说：
 
 - BSP 钩子只注册一次。
-- 通道差异只通过 `eDrvAdcPortMap` 对应的硬件映射表达。
-- BSP 内部再根据 `eDrvAdcPortMap` 去查找实际硬件映射，一一完成初始化和采样。
+- 公共 API 只接收 `uint8_t adc`，通道差异通过 `drvadc_port.h` 里的逻辑枚举和对应硬件映射表达。
+- BSP/port 内部再根据 `eDrvAdcPortMap` 或等价表项去查找实际硬件映射，一一完成初始化和采样。
 
 ## 6. 当前工程默认状态
 
@@ -107,7 +112,7 @@ typedef struct stDrvAdcBspInterface {
 
 - `DRVADC_CH0`、`DRVADC_CH1`、`DRVADC_CH2` 已经预留。
 - `bspAdcInit()` 和 `bspAdcReadRaw()` 默认返回 `DRV_STATUS_UNSUPPORTED`。
-- `bspadc.c` 内部已经改成按 `eDrvAdcPortMap` 查表获取每个通道的绑定信息。
+- `bspadc.c` 内部应按 `drvadc_port.h` 中的逻辑通道定义查表获取每个通道的绑定信息。
 
 这意味着：
 

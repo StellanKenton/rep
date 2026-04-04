@@ -21,13 +21,19 @@ __attribute__((weak)) void w25qxxxLoadPlatformDefaultCfg(eW25qxxxMapType device,
         return;
     }
 
-    cfg->spi = (eDrvSpiPortMap)0;
+    cfg->linkId = 0U;
 }
 
 __attribute__((weak)) const stW25qxxxSpiInterface *w25qxxxGetPlatformSpiInterface(const stW25qxxxCfg *cfg)
 {
     (void)cfg;
     return NULL;
+}
+
+__attribute__((weak)) bool w25qxxxPlatformIsValidCfg(const stW25qxxxCfg *cfg)
+{
+    (void)cfg;
+    return false;
 }
 
 __attribute__((weak)) void w25qxxxPlatformDelayMs(uint32_t delayMs)
@@ -57,19 +63,13 @@ static uint8_t w25qxxxGetProgCmd(const stW25qxxxDevice *device);
 static uint8_t w25qxxxGetSectEraseCmd(const stW25qxxxDevice *device);
 static uint8_t w25qxxxGetBlkEraseCmd(const stW25qxxxDevice *device);
 
-eW25qxxxStatus w25qxxxGetDefCfg(eW25qxxxMapType device)
+eW25qxxxStatus w25qxxxGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
 {
-    stW25qxxxDevice *lDeviceCtx;
-
-    lDeviceCtx = w25qxxxGetDevCtx(device);
-    if (lDeviceCtx == NULL) {
+    if ((cfg == NULL) || !w25qxxxIsValidDevMap(device)) {
         return W25QXXX_STATUS_INVALID_PARAM;
     }
 
-    w25qxxxLoadDefCfg(device, &lDeviceCtx->cfg);
-    w25qxxxClrInfo(&lDeviceCtx->info);
-    lDeviceCtx->isReady = false;
-    gW25qxxxDefCfgDone[device] = true;
+    w25qxxxLoadDefCfg(device, cfg);
     return W25QXXX_STATUS_OK;
 }
 
@@ -94,7 +94,7 @@ eW25qxxxStatus w25qxxxSetCfg(eW25qxxxMapType device, const stW25qxxxCfg *cfg)
 {
     stW25qxxxDevice *lDeviceCtx;
 
-    if ((cfg == NULL) || ((uint8_t)cfg->spi >= (uint8_t)DRVSPI_MAX)) {
+    if ((cfg == NULL) || !w25qxxxPlatformIsValidCfg(cfg)) {
         return W25QXXX_STATUS_INVALID_PARAM;
     }
 
@@ -110,25 +110,6 @@ eW25qxxxStatus w25qxxxSetCfg(eW25qxxxMapType device, const stW25qxxxCfg *cfg)
     return W25QXXX_STATUS_OK;
 }
 
-eW25qxxxStatus w25qxxxSetHardSpi(eW25qxxxMapType device, eDrvSpiPortMap spi)
-{
-    stW25qxxxCfg lCfg;
-    eW25qxxxStatus lStatus;
-
-    lStatus = w25qxxxGetCfg(device, &lCfg);
-    if (lStatus != W25QXXX_STATUS_OK) {
-        return lStatus;
-    }
-
-    if ((uint8_t)spi >= (uint8_t)DRVSPI_MAX) {
-        return W25QXXX_STATUS_INVALID_PARAM;
-    }
-
-    lCfg.spi = spi;
-
-    return w25qxxxSetCfg(device, &lCfg);
-}
-
 eW25qxxxStatus w25qxxxInit(eW25qxxxMapType device)
 {
     const stW25qxxxSpiInterface *lSpiIf;
@@ -141,13 +122,13 @@ eW25qxxxStatus w25qxxxInit(eW25qxxxMapType device)
     }
 
     if (w25qxxxGetSpiIf(lDeviceCtx) == NULL) {
-        return (((uint8_t)lDeviceCtx->cfg.spi) < (uint8_t)DRVSPI_MAX) ?
+        return w25qxxxPlatformIsValidCfg(&lDeviceCtx->cfg) ?
                W25QXXX_STATUS_NOT_READY :
                W25QXXX_STATUS_INVALID_PARAM;
     }
 
     lSpiIf = w25qxxxGetSpiIf(lDeviceCtx);
-    lStatus = w25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
+    lStatus = w25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.linkId));
     if (lStatus != W25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -213,7 +194,7 @@ eW25qxxxStatus w25qxxxReadJedecId(eW25qxxxMapType device, uint8_t *manufacturerI
         return W25QXXX_STATUS_NOT_READY;
     }
 
-    lStatus = w25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
+    lStatus = w25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.linkId));
     if (lStatus != W25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -494,7 +475,7 @@ static void w25qxxxClrInfo(stW25qxxxInfo *info)
 
 static bool w25qxxxIsValidDev(const stW25qxxxDevice *device)
 {
-    return (device != NULL) && (((uint8_t)device->cfg.spi) < (uint8_t)DRVSPI_MAX);
+    return (device != NULL) && w25qxxxPlatformIsValidCfg(&device->cfg);
 }
 
 static bool w25qxxxIsReadyXfer(const stW25qxxxDevice *device)
@@ -573,7 +554,7 @@ static eW25qxxxStatus w25qxxxTransferInt(const stW25qxxxDevice *device, const ui
         return W25QXXX_STATUS_NOT_READY;
     }
 
-    return w25qxxxMapPortStatus(lSpiIf->transfer((uint8_t)device->cfg.spi,
+    return w25qxxxMapPortStatus(lSpiIf->transfer((uint8_t)device->cfg.linkId,
                                                   writeBuffer,
                                                   writeLength,
                                                   secondWriteBuffer,

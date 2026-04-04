@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #include "Rep/rep_config.h"
+#include "Rep/drvlayer/drvspi/drvspi_port.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
@@ -36,7 +37,7 @@ static const stGd25qxxxPortSpiInterface gGd25qxxxPortHardSpiInterface = {
 
 static const stGd25qxxxCfg gGd25qxxxPortDefCfg[GD25QXXX_DEV_MAX] = {
     [GD25Q32_MEM] = {
-        .spi = DRVSPI_BUS0,
+        .linkId = DRVSPI_BUS0,
     },
 };
 
@@ -56,6 +57,11 @@ const stGd25qxxxSpiInterface *gd25qxxxGetPlatformSpiInterface(const stGd25qxxxCf
     }
 
     return &gGd25qxxxPortHardSpiInterface;
+}
+
+bool gd25qxxxPlatformIsValidCfg(const stGd25qxxxCfg *cfg)
+{
+    return gd25qxxxPortIsValidCfg(cfg);
 }
 
 void gd25qxxxPlatformDelayMs(uint32_t delayMs)
@@ -109,19 +115,19 @@ void gd25qxxxPortGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
     gd25qxxxLoadPlatformDefaultCfg(device, cfg);
 }
 
-eDrvStatus gd25qxxxPortSetHardSpi(stGd25qxxxCfg *cfg, eDrvSpiPortMap spi)
+eDrvStatus gd25qxxxPortAssembleHardSpi(stGd25qxxxCfg *cfg, uint8_t spi)
 {
     if ((cfg == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    cfg->spi = spi;
+    cfg->linkId = spi;
     return DRV_STATUS_OK;
 }
 
 bool gd25qxxxPortIsValidCfg(const stGd25qxxxCfg *cfg)
 {
-    return (cfg != NULL) && ((uint8_t)cfg->spi < (uint8_t)DRVSPI_MAX);
+    return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVSPI_MAX);
 }
 
 bool gd25qxxxPortHasValidSpiIf(const stGd25qxxxCfg *cfg)
@@ -164,7 +170,7 @@ static eDrvStatus gd25qxxxPortHardSpiInitAdpt(uint8_t bus)
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvSpiInit((eDrvSpiPortMap)bus);
+    return drvSpiInit(bus);
 }
 
 static eDrvStatus gd25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData)
@@ -182,6 +188,6 @@ static eDrvStatus gd25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *wr
     lTransfer.readBuffer = readBuffer;
     lTransfer.readLength = readLength;
     lTransfer.readFillData = readFillData;
-    return drvSpiTransfer((eDrvSpiPortMap)bus, &lTransfer);
+    return drvSpiTransfer(bus, &lTransfer);
 }
 /**************************End of file********************************/

@@ -9,6 +9,7 @@
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvanlogiic.h"
+#include "drvanlogiic_port.h"
 
 #include "bspanlogiic.h"
 
@@ -34,5 +35,10 @@ stDrvAnlogIicBspInterface gDrvAnlogIicBspInterface[DRVANLOGIIC_MAX] = {
         .recoveryClockCount = DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS,
     },
 };
+
+    const stDrvAnlogIicBspInterface *drvAnlogIicGetPlatformBspInterfaces(void)
+    {
+        return gDrvAnlogIicBspInterface;
+    }
 
 /**************************End of file********************************/

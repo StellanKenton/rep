@@ -53,7 +53,7 @@ typedef struct stPca9535IicInterface {
 } stPca9535IicInterface;
 
 typedef struct stPca9535Cfg {
-    eDrvAnlogIicPortMap iic;
+    uint8_t linkId;
     uint8_t address;
     uint16_t outputValue;
     uint16_t polarityMask;
@@ -70,7 +70,9 @@ typedef struct stPca9535Dev {
     bool isReady;
 } stPca9535Device;
 
-eDrvStatus pca9535GetDefCfg(ePca9535MapType device);
+eDrvStatus pca9535GetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
+eDrvStatus pca9535GetCfg(ePca9535MapType device, stPca9535Cfg *cfg);
+eDrvStatus pca9535SetCfg(ePca9535MapType device, const stPca9535Cfg *cfg);
 eDrvStatus pca9535Init(ePca9535MapType device);
 bool pca9535IsReady(ePca9535MapType device);
 eDrvStatus pca9535ReadReg(ePca9535MapType device, uint8_t regAddr, uint8_t *value);

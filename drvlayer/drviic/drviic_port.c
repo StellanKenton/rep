@@ -10,6 +10,7 @@
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drviic.h"
+#include "drviic_port.h"
 
 #include <stddef.h>
 
@@ -23,5 +24,10 @@ stDrvIicBspInterface gDrvIicBspInterface[DRVIIC_MAX] = {
         .defaultTimeoutMs = DRVIIC_DEFAULT_TIMEOUT_MS,
     },
 };
+
+    const stDrvIicBspInterface *drvIicGetPlatformBspInterfaces(void)
+    {
+        return gDrvIicBspInterface;
+    }
 
 /**************************End of file********************************/

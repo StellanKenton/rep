@@ -5,6 +5,7 @@
 #include "main.h"
 #include "rep_config.h"
 #include "log.h"
+#include "drvanlogiic_port.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
@@ -33,7 +34,7 @@ static const stPca9535PortIicInterface gPca9535PortSoftIicInterface = {
 
 static const stPca9535Cfg gPca9535PortDefCfg[PCA9535_DEV_MAX] = {
     [PCA9535_DEV0] = {
-        .iic = DRVANLOGIIC_PCA,
+        .linkId = DRVANLOGIIC_PCA,
         .address = PCA9535_IIC_ADDRESS_HLL,
         .outputValue = 0xFFFFU,
         .polarityMask = 0x0000U,
@@ -58,6 +59,11 @@ const stPca9535IicInterface *pca9535GetPlatformIicInterface(const stPca9535Cfg *
     }
 
     return &gPca9535PortSoftIicInterface;
+}
+
+bool pca9535PlatformIsValidCfg(const stPca9535Cfg *cfg)
+{
+    return pca9535PortIsValidCfg(cfg);
 }
 
 void pca9535PlatformResetInit(void)
@@ -124,19 +130,19 @@ void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
     pca9535LoadPlatformDefaultCfg(device, cfg);
 }
 
-eDrvStatus pca9535PortSetSoftIic(stPca9535Cfg *cfg, eDrvAnlogIicPortMap iic)
+eDrvStatus pca9535PortAssembleSoftIic(stPca9535Cfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    cfg->iic = iic;
+    cfg->linkId = iic;
     return DRV_STATUS_OK;
 }
 
 bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg)
 {
-    return (cfg != NULL) && ((uint8_t)cfg->iic < (uint8_t)DRVANLOGIIC_MAX);
+    return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVANLOGIIC_MAX);
 }
 
 bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg)
@@ -405,7 +411,7 @@ static eDrvStatus pca9535PortSoftIicInitAdpt(uint8_t bus)
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvAnlogIicInit((eDrvAnlogIicPortMap)bus);
+    return drvAnlogIicInit(bus);
 }
 
 static eDrvStatus pca9535PortSoftIicWriteRegAdpt(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length)
@@ -414,7 +420,7 @@ static eDrvStatus pca9535PortSoftIicWriteRegAdpt(uint8_t bus, uint8_t address, c
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvAnlogIicWriteRegister((eDrvAnlogIicPortMap)bus, address, regBuf, regLen, buffer, length);
+    return drvAnlogIicWriteRegister(bus, address, regBuf, regLen, buffer, length);
 }
 
 static eDrvStatus pca9535PortSoftIicReadRegAdpt(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length)
@@ -423,5 +429,5 @@ static eDrvStatus pca9535PortSoftIicReadRegAdpt(uint8_t bus, uint8_t address, co
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvAnlogIicReadRegister((eDrvAnlogIicPortMap)bus, address, regBuf, regLen, buffer, length);
+    return drvAnlogIicReadRegister(bus, address, regBuf, regLen, buffer, length);
 }

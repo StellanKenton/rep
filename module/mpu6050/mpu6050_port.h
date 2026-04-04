@@ -34,8 +34,8 @@ extern "C" {
 typedef stMpu6050IicInterface stMpu6050PortIicInterface;
 
 void mpu6050PortGetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
-eDrvStatus mpu6050PortSetSoftIic(stMpu6050Cfg *cfg, eDrvAnlogIicPortMap iic);
-eDrvStatus mpu6050PortSetHardIic(stMpu6050Cfg *cfg, eDrvIicPortMap iic);
+eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050Cfg *cfg, uint8_t iic);
+eDrvStatus mpu6050PortAssembleHardIic(stMpu6050Cfg *cfg, uint8_t iic);
 bool mpu6050PortIsValidCfg(const stMpu6050Cfg *cfg);
 bool mpu6050PortHasValidIicIf(const stMpu6050Cfg *cfg);
 const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050Cfg *cfg);

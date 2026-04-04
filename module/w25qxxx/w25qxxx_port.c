@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "Rep/rep_config.h"
+#include "Rep/drvlayer/drvspi/drvspi_port.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
@@ -32,10 +33,10 @@ static const stW25qxxxPortSpiInterface gW25qxxxPortHardSpiInterface = {
 
 static const stW25qxxxCfg gW25qxxxPortDefCfg[W25QXXX_DEV_MAX] = {
     [W25QXXX_DEV0] = {
-        .spi = DRVSPI_BUS0,
+        .linkId = DRVSPI_BUS0,
     },
     [W25QXXX_DEV1] = {
-        .spi = DRVSPI_BUS1,
+        .linkId = DRVSPI_BUS1,
     },
 };
 
@@ -55,6 +56,11 @@ const stW25qxxxSpiInterface *w25qxxxGetPlatformSpiInterface(const stW25qxxxCfg *
     }
 
     return &gW25qxxxPortHardSpiInterface;
+}
+
+bool w25qxxxPlatformIsValidCfg(const stW25qxxxCfg *cfg)
+{
+    return w25qxxxPortIsValidCfg(cfg);
 }
 
 void w25qxxxPlatformDelayMs(uint32_t delayMs)
@@ -108,19 +114,19 @@ void w25qxxxPortGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
     w25qxxxLoadPlatformDefaultCfg(device, cfg);
 }
 
-eDrvStatus w25qxxxPortSetHardSpi(stW25qxxxCfg *cfg, eDrvSpiPortMap spi)
+eDrvStatus w25qxxxPortAssembleHardSpi(stW25qxxxCfg *cfg, uint8_t spi)
 {
     if ((cfg == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    cfg->spi = spi;
+    cfg->linkId = spi;
     return DRV_STATUS_OK;
 }
 
 bool w25qxxxPortIsValidCfg(const stW25qxxxCfg *cfg)
 {
-    return (cfg != NULL) && ((uint8_t)cfg->spi < (uint8_t)DRVSPI_MAX);
+    return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVSPI_MAX);
 }
 
 bool w25qxxxPortHasValidSpiIf(const stW25qxxxCfg *cfg)
@@ -163,7 +169,7 @@ static eDrvStatus w25qxxxPortHardSpiInitAdpt(uint8_t bus)
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvSpiInit((eDrvSpiPortMap)bus);
+    return drvSpiInit(bus);
 }
 
 static eDrvStatus w25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData)
@@ -181,6 +187,6 @@ static eDrvStatus w25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *wri
     lTransfer.readBuffer = readBuffer;
     lTransfer.readLength = readLength;
     lTransfer.readFillData = readFillData;
-    return drvSpiTransfer((eDrvSpiPortMap)bus, &lTransfer);
+    return drvSpiTransfer(bus, &lTransfer);
 }
 /**************************End of file********************************/

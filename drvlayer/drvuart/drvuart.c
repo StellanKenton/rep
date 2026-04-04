@@ -25,13 +25,13 @@ __attribute__((weak)) const stDrvUartBspInterface *drvUartGetPlatformBspInterfac
     return NULL;
 }
 
-__attribute__((weak)) stRingBuffer *drvUartGetPlatformRingBuffer(eDrvUartPortMap uart)
+__attribute__((weak)) stRingBuffer *drvUartGetPlatformRingBuffer(uint8_t uart)
 {
     (void)uart;
     return NULL;
 }
 
-__attribute__((weak)) eDrvStatus drvUartGetPlatformStorageConfig(eDrvUartPortMap uart, uint8_t **storage, uint32_t *capacity)
+__attribute__((weak)) eDrvStatus drvUartGetPlatformStorageConfig(uint8_t uart, uint8_t **storage, uint32_t *capacity)
 {
     (void)uart;
 
@@ -51,7 +51,7 @@ __attribute__((weak)) eDrvStatus drvUartGetPlatformStorageConfig(eDrvUartPortMap
 * @param : uart UART mapping identifier.
 * @return: true if the UART mapping is valid, false otherwise.
 **/
-static bool drvUartIsValid(eDrvUartPortMap uart)
+static bool drvUartIsValid(uint8_t uart)
 {
     return (uart < DRVUART_MAX);
 }
@@ -61,7 +61,7 @@ static bool drvUartIsValid(eDrvUartPortMap uart)
 * @param : uart UART mapping identifier.
 * @return: Pointer to the BSP interface entry, or NULL when invalid.
 **/
-static stDrvUartBspInterface *drvUartGetBspInterface(eDrvUartPortMap uart)
+static stDrvUartBspInterface *drvUartGetBspInterface(uint8_t uart)
 {
     const stDrvUartBspInterface *lInterfaces;
 
@@ -82,7 +82,7 @@ static stDrvUartBspInterface *drvUartGetBspInterface(eDrvUartPortMap uart)
 * @param : None
 * @return: true when required hooks are available.
 **/
-static bool drvUartHasValidBspInterface(eDrvUartPortMap uart)
+static bool drvUartHasValidBspInterface(uint8_t uart)
 {
     stDrvUartBspInterface *lBspInterface = drvUartGetBspInterface(uart);
 
@@ -109,7 +109,7 @@ static bool drvUartIsValidBuffer(const uint8_t *buffer, uint16_t length)
 * @param : uart UART mapping identifier.
 * @return: true if the logical UART is initialized.
 **/
-static bool drvUartIsInitialized(eDrvUartPortMap uart)
+static bool drvUartIsInitialized(uint8_t uart)
 {
     return drvUartIsValid(uart) && gDrvUartInitialized[uart];
 }
@@ -119,7 +119,7 @@ static bool drvUartIsInitialized(eDrvUartPortMap uart)
 * @param : uart UART mapping identifier.
 * @return: UART operation status.
 **/
-static eDrvStatus drvUartSyncRxData(eDrvUartPortMap uart)
+static eDrvStatus drvUartSyncRxData(uint8_t uart)
 {
     uint8_t lScratch[DRVUART_BSP_SYNC_CHUNK_SIZE];
     stRingBuffer *lRingBuffer = NULL;
@@ -175,7 +175,7 @@ static eDrvStatus drvUartSyncRxData(eDrvUartPortMap uart)
 * @param : uart UART mapping identifier.
 * @return: UART operation status.
 **/
-eDrvStatus drvUartInit(eDrvUartPortMap uart)
+eDrvStatus drvUartInit(uint8_t uart)
 {
     uint8_t *lStorage = NULL;
     uint32_t lCapacity = 0U;
@@ -251,7 +251,7 @@ eDrvStatus drvUartInit(eDrvUartPortMap uart)
 * @param : timeoutMs Timeout in milliseconds.
 * @return: UART operation status.
 **/
-eDrvStatus drvUartTransmit(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs)
+eDrvStatus drvUartTransmit(uint8_t uart, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs)
 {
     stDrvUartBspInterface *lBspInterface = NULL;
 
@@ -278,7 +278,7 @@ eDrvStatus drvUartTransmit(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t
 * @param : length Number of bytes to transmit.
 * @return: UART operation status.
 **/
-eDrvStatus drvUartTransmitIt(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length)
+eDrvStatus drvUartTransmitIt(uint8_t uart, const uint8_t *buffer, uint16_t length)
 {
     stDrvUartBspInterface *lBspInterface = NULL;
 
@@ -305,7 +305,7 @@ eDrvStatus drvUartTransmitIt(eDrvUartPortMap uart, const uint8_t *buffer, uint16
 * @param : length Number of bytes to transmit.
 * @return: UART operation status.
 **/
-eDrvStatus drvUartTransmitDma(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length)
+eDrvStatus drvUartTransmitDma(uint8_t uart, const uint8_t *buffer, uint16_t length)
 {
     stDrvUartBspInterface *lBspInterface = NULL;
 
@@ -332,7 +332,7 @@ eDrvStatus drvUartTransmitDma(eDrvUartPortMap uart, const uint8_t *buffer, uint1
 * @param : length Number of bytes to receive.
 * @return: UART operation status.
 **/
-eDrvStatus drvUartReceive(eDrvUartPortMap uart, uint8_t *buffer, uint16_t length)
+eDrvStatus drvUartReceive(uint8_t uart, uint8_t *buffer, uint16_t length)
 {
     stRingBuffer *lRingBuffer = NULL;
     eDrvStatus lStatus;
@@ -371,7 +371,7 @@ eDrvStatus drvUartReceive(eDrvUartPortMap uart, uint8_t *buffer, uint16_t length
 * @param : uart UART mapping identifier.
 * @return: Available data length in bytes.
 **/
-uint16_t drvUartGetDataLen(eDrvUartPortMap uart)
+uint16_t drvUartGetDataLen(uint8_t uart)
 {
     uint32_t lUsed;
 
@@ -400,7 +400,7 @@ uint16_t drvUartGetDataLen(eDrvUartPortMap uart)
 * @param : uart UART mapping identifier.
 * @return: Pointer to the UART receive ring buffer, or NULL if invalid.
 **/
-stRingBuffer* drvUartGetRingBuffer(eDrvUartPortMap uart)
+stRingBuffer* drvUartGetRingBuffer(uint8_t uart)
 {
     if (!drvUartIsValid(uart)) {
         return NULL;

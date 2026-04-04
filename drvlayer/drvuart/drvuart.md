@@ -20,6 +20,11 @@
 - `drvuart_debug.c/.h`: 可选调试或 console 子模块。
 - `bsp_uart.c/.h`: 负责具体 UART、GPIO、DMA 和中断实现。
 
+说明：
+
+- `drvuart.h` 的公共 API 使用 `uint8_t uart` 表示逻辑 UART 编号。
+- `eDrvUartPortMap` 只定义在 `drvuart_port.h`。
+
 ## 3. 当前模块的两层接收缓冲模型
 
 `drvuart` 当前不是单缓冲模型，而是两层缓冲:
@@ -61,7 +66,7 @@ typedef struct stDrvUartBspInterface {
 
 ## 5. `bsp_uart.c` 必须满足的契约
 
-### 5.1 `bspUartInit(eDrvUartPortMap uart)`
+### 5.1 `bspUartInit(uint8_t uart)`
 
 职责:
 
@@ -74,7 +79,7 @@ typedef struct stDrvUartBspInterface {
 - 如果使用 DMA 接收，初始化时就应让 DMA 接收通道进入可工作状态。
 - 重复初始化行为必须可预期。
 
-### 5.2 `bspUartTransmit(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs)`
+### 5.2 `bspUartTransmit(uint8_t uart, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs)`
 
 职责:
 
@@ -86,7 +91,7 @@ typedef struct stDrvUartBspInterface {
 - 若 DMA 发送正在占用硬件，而当前实现不能并发，则返回明确忙状态。
 - 不能假设调用方总是提前做过所有检查。
 
-### 5.3 `bspUartTransmitIt(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length)`
+### 5.3 `bspUartTransmitIt(uint8_t uart, const uint8_t *buffer, uint16_t length)`
 
 职责:
 
@@ -97,7 +102,7 @@ typedef struct stDrvUartBspInterface {
 - 如果当前项目不需要该能力，可以不绑定这个钩子。
 - 如果绑定了，就必须是真实现，不能伪成功。
 
-### 5.4 `bspUartTransmitDma(eDrvUartPortMap uart, const uint8_t *buffer, uint16_t length)`
+### 5.4 `bspUartTransmitDma(uint8_t uart, const uint8_t *buffer, uint16_t length)`
 
 职责:
 
@@ -109,7 +114,7 @@ typedef struct stDrvUartBspInterface {
 - DMA 结束或错误时必须清理发送状态。
 - 若直接使用调用方缓冲区，需要保证 DMA 未完成前该缓冲区不可被改写的契约清晰一致。
 
-### 5.5 `bspUartGetDataLen(eDrvUartPortMap uart)`
+### 5.5 `bspUartGetDataLen(uint8_t uart)`
 
 职责:
 
@@ -121,7 +126,7 @@ typedef struct stDrvUartBspInterface {
 - 返回的是“BSP 还能被读走多少字节”，不是公共层 ring buffer 里有多少字节。
 - 无效或未初始化时返回 `0U`。
 
-### 5.6 `bspUartReceive(eDrvUartPortMap uart, uint8_t *buffer, uint16_t length)`
+### 5.6 `bspUartReceive(uint8_t uart, uint8_t *buffer, uint16_t length)`
 
 职责:
 
@@ -161,21 +166,21 @@ stDrvUartBspInterface gDrvUartBspInterface[DRVUART_MAX] = {
 
 ## 7. 当前工程默认逻辑资源
 
-根据 `drvuart_port.h`，当前工程只定义了一个逻辑 UART:
+根据 `drvuart_port.h`，当前工程当前定义的逻辑 UART 常量为:
 
-- `DRVUART_DEBUG`
+- `DRVUART_WIRELESS`
 
 它对应的公共层接收缓存容量由 `DRVUART_RECVLEN_DEBUGUART` 决定。以后如果新增其他逻辑串口，应该先扩展枚举、缓存和 port 绑定表，再补 BSP。
 
 ## 8. 日志层对 UART 的额外约束
 
-当前日志接口会复用 `DRVUART_DEBUG`:
+当前日志接口会复用当前工程默认逻辑 UART（即 `DRVUART_WIRELESS`）:
 
 - `drvUartLogInit()`
 - `drvUartLogWrite()`
 - `drvUartLogGetInputBuffer()`
 
-因此如果调整 `DRVUART_DEBUG` 的 BSP 实现，需要同步考虑:
+因此如果调整这个默认逻辑 UART 的 BSP 实现，需要同步考虑:
 
 - DMA 发送是否还能满足日志输出。
 - 接收路径是否还能支持控制台输入。

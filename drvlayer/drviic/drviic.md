@@ -28,6 +28,11 @@ BSP 层负责:
 - `drviic_port.c`: 维护 `gDrvIicBspInterface` 默认绑定表。
 - `bsphardiic.h/.c`: 硬件 IIC 控制器的实际实现。
 
+说明:
+
+- `drviic.h` 的公共 API 使用 `uint8_t iic` 表示逻辑总线编号。
+- `eDrvIicPortMap` 只保留在 `drviic_port.h`，供 port/BSP 层和需要逻辑总线常量的工程文件使用。
+
 ## 3. core 层实际依赖的 BSP 接口
 
 `drviic.c` 通过 `gDrvIicBspInterface[DRVIIC_MAX]` 访问 BSP。每个逻辑总线的接口项定义如下:
@@ -68,7 +73,7 @@ typedef struct stDrvIicBspInterface {
 
 ## 5. `bsphardiic.c` 必须满足的行为契约
 
-### 5.1 `bspHardIicInit(eDrvIicPortMap iic)`
+### 5.1 `bspHardIicInit(uint8_t iic)`
 
 职责:
 
@@ -81,7 +86,7 @@ typedef struct stDrvIicBspInterface {
 - 可以重复调用，但重复调用行为必须可预期。
 - 初始化成功后，该总线才能被 `drvIicTransfer*()` 使用。
 
-### 5.2 `bspHardIicTransfer(eDrvIicPortMap iic, const stDrvIicTransfer *transfer, uint32_t timeoutMs)`
+### 5.2 `bspHardIicTransfer(uint8_t iic, const stDrvIicTransfer *transfer, uint32_t timeoutMs)`
 
 职责:
 
@@ -95,7 +100,7 @@ typedef struct stDrvIicBspInterface {
 - `timeoutMs` 需要真正参与超时判断，而不是被忽略。
 - 对 NACK、超时、总线忙、仲裁丢失或其他控制器错误，要返回明确的 `eDrvStatus`。
 
-### 5.3 `bspHardIicRecoverBus(eDrvIicPortMap iic)`
+### 5.3 `bspHardIicRecoverBus(uint8_t iic)`
 
 职责:
 
@@ -113,6 +118,8 @@ typedef struct stDrvIicBspInterface {
 - `DRVIIC_BUS0`
 - `DRVIIC_DEFAULT_TIMEOUT_MS`
 - `DRVIIC_CONSOLE_SUPPORT`
+
+公共 API 只接收 `uint8_t iic`；如果上层需要使用命名逻辑总线常量，应显式包含 `drviic_port.h`。
 
 `drviic_port.c` 的职责是为每个逻辑总线绑定一组 BSP 钩子和默认超时。例如当前结构:
 

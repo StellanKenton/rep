@@ -11,11 +11,17 @@
 #ifndef DRVGPIO_PORT_H
 #define DRVGPIO_PORT_H
 
-#include "drvgpio_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvGpioPinMap {
+	DRVGPIO_LEDR = 0,
+	DRVGPIO_LEDG = 1,
+	DRVGPIO_LEDB = 2,
+	DRVGPIO_KEY = 3,
+	DRVGPIO_MAX,
+} eDrvGpioPinMap;
 
 
 #ifndef DRVGPIO_LOG_SUPPORT

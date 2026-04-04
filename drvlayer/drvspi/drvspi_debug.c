@@ -6,6 +6,7 @@
 #include "drvspi_debug.h"
 
 #include "drvspi.h"
+#include "drvspi_port.h"
 
 #if (DRVSPI_CONSOLE_SUPPORT == 1)
 #include <stdbool.h>

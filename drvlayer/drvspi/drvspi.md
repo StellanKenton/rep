@@ -19,6 +19,11 @@
 - `drvspi_port.c`: 维护每条逻辑总线的默认 BSP 绑定和默认 CS 配置。
 - `bspspi.h/.c`: 实现控制器初始化、原始收发和默认 GPIO 片选辅助函数。
 
+说明:
+
+- `drvspi.h` 的公共 API 使用 `uint8_t spi` 表示逻辑总线编号。
+- `eDrvSpiPortMap` 只保留在 `drvspi_port.h`，供 port/BSP 层和需要命名总线常量的工程文件使用。
+
 ## 3. core 层依赖的关键结构
 
 `drvspi.c` 依赖的核心结构如下:
@@ -61,7 +66,7 @@ typedef struct stDrvSpiBspInterface {
 
 ## 5. `bspspi.c` 必须满足的契约
 
-### 5.1 `bspSpiInit(eDrvSpiPortMap spi)`
+### 5.1 `bspSpiInit(uint8_t spi)`
 
 职责:
 
@@ -74,7 +79,7 @@ typedef struct stDrvSpiBspInterface {
 - 初始化成功后，后续 `transfer()` 才应可用。
 - 不负责 CS 初始化，CS 初始化由 `csControl.init()` 负责。
 
-### 5.2 `bspSpiTransfer(eDrvSpiPortMap spi, const uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length, uint8_t fillData, uint32_t timeoutMs)`
+### 5.2 `bspSpiTransfer(uint8_t spi, const uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length, uint8_t fillData, uint32_t timeoutMs)`
 
 职责:
 

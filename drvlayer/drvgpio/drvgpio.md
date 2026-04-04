@@ -17,10 +17,16 @@
 
 - `drvgpio.h`: 定义公共 API 和 `stDrvGpioBspInterface`。
 - `drvgpio.c`: 负责公共层参数检查、初始化检查和对 BSP 钩子的转发。
-- `drvgpio_port.h`: 定义逻辑引脚枚举、逻辑电平枚举，以及 log/console 开关宏。
+- `drvgpio_port.h`: 定义逻辑引脚枚举，以及 log/console 开关宏。
 - `drvgpio_port.c`: 负责绑定 `gDrvGpioBspInterface`。
 - `drvgpio_debug.c/.h`: 可选调试子模块，不应污染主流程。
 - `bspgpio.c/.h`: 负责当前板卡上 GPIO 时钟、端口、引脚、模式和读写实现。
+
+说明：
+
+- `drvgpio.h` 的公共 API 使用 `uint8_t pin` 表示逻辑引脚编号。
+- `eDrvGpioPinMap` 只定义在 `drvgpio_port.h`。
+- `eDrvGpioPinState` 属于公共语义，仍定义在 `drvgpio.h`。
 
 ## 3. 当前 core 对 port 的直接依赖
 
@@ -46,6 +52,8 @@ stDrvGpioBspInterface gDrvGpioBspInterface;
 - 逻辑功能开关，如 `DRVGPIO_LOG_SUPPORT`、`DRVGPIO_CONSOLE_SUPPORT`
 - 逻辑资源枚举，如 `DRVGPIO_LEDR`、`DRVGPIO_KEY`
 
+而逻辑电平语义 `eDrvGpioPinState` 保留在 `drvgpio.h`，因为它属于公共 API 的返回值和输入值，不属于 port 绑定细节。
+
 这里的枚举必须表示“项目逻辑引脚”，而不是“GPIOE pin4”这种物理资源名。以后如果换板卡，只需要 BSP 重映射，不应该改上层调用语义。
 
 ## 5. `bspgpio.c` 必须满足的契约
@@ -65,7 +73,7 @@ stDrvGpioBspInterface gDrvGpioBspInterface;
 - 未映射的逻辑引脚必须在 BSP 内防御性处理。
 - 如果某个引脚是输入脚，初始化时就要配置好上下拉或浮空策略。
 
-### 5.2 `bspGpioWrite(eDrvGpioPinMap pin, eDrvGpioPinState state)`
+### 5.2 `bspGpioWrite(uint8_t pin, eDrvGpioPinState state)`
 
 职责:
 
@@ -78,7 +86,7 @@ stDrvGpioBspInterface gDrvGpioBspInterface;
 - 如果某个输出脚是低电平有效，极性转换必须封装在 BSP 内。
 - 不要要求上层知道该脚是否低有效。
 
-### 5.3 `bspGpioRead(eDrvGpioPinMap pin)`
+### 5.3 `bspGpioRead(uint8_t pin)`
 
 职责:
 
@@ -90,7 +98,7 @@ stDrvGpioBspInterface gDrvGpioBspInterface;
 - 返回语义在整个模块内必须一致。推荐返回“逻辑态”而不是“裸物理电平”。
 - 对无效映射或无法判定的情况返回 `DRVGPIO_PIN_STATE_INVALID`。
 
-### 5.4 `bspGpioToggle(eDrvGpioPinMap pin)`
+### 5.4 `bspGpioToggle(uint8_t pin)`
 
 职责:
 

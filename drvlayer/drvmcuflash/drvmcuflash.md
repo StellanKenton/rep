@@ -28,7 +28,9 @@
 
 接口约束如下：
 
-- 所有读写擦操作都基于逻辑区域 `eDrvMcuFlashAreaMap` 和区域内偏移。
+- 公共 API 使用 `uint8_t area` 表示逻辑区域编号。
+- 逻辑区域枚举 `eDrvMcuFlashAreaMap` 只定义在 `drvmcuflash_port.h`。
+- 所有读写擦操作都基于逻辑区域编号和区域内偏移。
 - 写操作不会隐式擦除 Flash，调用方应先根据需要执行 `drvMcuFlashErase()`。
 - 写操作会先检查目标地址是否存在 `0 -> 1` 的位翻转需求，如存在则直接返回错误，避免静默写坏数据。
 

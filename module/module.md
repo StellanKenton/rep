@@ -214,7 +214,7 @@ port 层最重要的内容不是默认映射，而是“链接函数”如何把
 
 通用情况下，建议公共 API 按下面顺序组织：
 
-- `<module>GetDefCfg(device)`
+- `<module>GetDefCfg(device, &cfg)`
 - `<module>GetCfg(device, &cfg)`
 - `<module>SetCfg(device, &cfg)`
 - `<module>Init(device)`
@@ -225,7 +225,31 @@ port 层最重要的内容不是默认映射，而是“链接函数”如何把
 
 不是每个模块都要全部具备，但顺序建议尽量统一。
 
-## 10. 初始化流程模板
+## 10. 生命周期分类与 cfg ownership
+
+建议把模块生命周期统一成下面三类：
+
+- passive module：`GetDefCfg/GetCfg/SetCfg + Init + API`，不需要周期 `Process()`。
+- active service：`GetDefCfg/GetCfg/SetCfg + Init + Start + Process/Task + Stop`。
+- recoverable service：在 active service 基础上补 `Fault/GetLastError/Recover`。
+
+P1 阶段至少要把下面几条变成仓库事实：
+
+- `GetDefCfg(device, &cfg)` 只把默认值写到调用者提供的缓冲区，不直接修改模块内部运行态。
+- `GetCfg(device, &cfg)` 返回模块当前持有的配置快照。
+- `SetCfg(device, &cfg)` 把调用者配置拷贝进模块上下文，并清掉 `isReady` 与相关缓存。
+- `Init(device)` 只消费模块当前持有的 cfg，不再承担“顺手生成默认值”的职责。
+- hot reconfig 统一走 `GetCfg/GetDefCfg -> 修改 cfg -> SetCfg -> Init`。
+
+对 passive module，文档至少要明确：
+
+- cfg ownership：调用者持有临时 cfg，模块内部持有 `SetCfg()` 后的快照。
+- ready 条件：哪些 bring-up 步骤成功后才允许 `isReady = true`。
+- repeat init：允许重复 `Init()`，但应视为基于当前 cfg 的重初始化。
+- hot reconfig：允许，但必须先 `SetCfg()`，再重新 `Init()`。
+- recover path：失败后如何回到可用状态，通常是重新 `SetCfg() + Init()`。
+
+## 11. 初始化流程模板
 
 `Init()` 建议按下面顺序实现：
 
@@ -246,7 +270,7 @@ port 层最重要的内容不是默认映射，而是“链接函数”如何把
 - 旧缓存不会被误用。
 - 调试时容易定位失败阶段。
 
-## 11. 状态码规则
+## 12. 状态码规则
 
 新增模块时优先复用 `eDrvStatus`。
 
@@ -258,7 +282,7 @@ port 层最重要的内容不是默认映射，而是“链接函数”如何把
 - 底层通信失败直接透传 drv 状态。
 - 模块业务独有错误，例如越界、对齐错误、协议不支持，可从 `DRV_STATUS_ERROR + 1` 往后扩展。
 
-## 12. 默认值放在哪里
+## 13. 默认值放在哪里
 
 下面这些通常放 port 层：
 

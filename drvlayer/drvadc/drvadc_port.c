@@ -8,6 +8,7 @@
 * @version  : V1.0.0
 **********************************************************************************/
 #include "drvadc.h"
+#include "drvadc_port.h"
 
 #include <stddef.h>
 
@@ -22,5 +23,15 @@ stDrvAdcBspInterface gDrvAdcBspInterface = {
 };
 
 stDrvAdcData gDrvAdcData[DRVADC_MAX] = {0};
+
+    const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void)
+    {
+        return &gDrvAdcBspInterface;
+    }
+
+    stDrvAdcData *drvAdcGetPlatformData(void)
+    {
+        return gDrvAdcData;
+    }
 
 /**************************End of file********************************/

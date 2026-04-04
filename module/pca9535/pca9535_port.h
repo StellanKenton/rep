@@ -50,7 +50,7 @@ extern "C" {
 typedef stPca9535IicInterface stPca9535PortIicInterface;
 
 void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
-eDrvStatus pca9535PortSetSoftIic(stPca9535Cfg *cfg, eDrvAnlogIicPortMap iic);
+eDrvStatus pca9535PortAssembleSoftIic(stPca9535Cfg *cfg, uint8_t iic);
 bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg);
 bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg);
 const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535Cfg *cfg);

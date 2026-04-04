@@ -10,6 +10,7 @@
 #include "drvanlogiic_debug.h"
 
 #include "drvanlogiic.h"
+#include "drvanlogiic_port.h"
 
 #if (DRVANLOGIIC_CONSOLE_SUPPORT == 1)
 #include <stdbool.h>

@@ -12,7 +12,6 @@
 #include <string.h>
 
 #include "console.h"
-#include "console_port.h"
 #include "appcomm/appcomm.h"
 #include "drvlayer/DrvGpio/drvgpio.h"
 #include "log.h"
@@ -51,8 +50,8 @@ static bool initializeDrvGpio(void);
 static bool initializeConsole(void);
 static bool initializeAppComm(void);
 static const char *sensorTaskGetW25qxxxStatusString(eW25qxxxStatus status);
-static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi);
-static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi, const uint8_t *name, uint32_t nameLength, uint8_t expectedCapacityId);
+static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device);
+static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, const uint8_t *name, uint32_t nameLength, uint8_t expectedCapacityId);
 static bool sensorTaskRunFlashDemo(void);
 
 static void process(void)
@@ -223,7 +222,7 @@ static bool initializeConsole(void)
         return true;
     }
 
-    if (!consolePortInit()) {
+    if (!consoleInitDefault()) {
         LOG_E(SYSTEM_TAG, "Console init failed");
         return false;
     }
@@ -268,45 +267,45 @@ static const char *sensorTaskGetW25qxxxStatusString(eW25qxxxStatus status)
     }
 }
 
-static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi)
+static bool sensorTaskPrepareFlashDevice(eW25qxxxMapType device, stW25qxxxCfg *cfg)
 {
     eW25qxxxStatus lStatus;
 
-    lStatus = w25qxxxGetDefCfg(device);
+    if (cfg == NULL) {
+        return false;
+    }
+
+    lStatus = w25qxxxGetDefCfg(device, cfg);
     if (lStatus != W25QXXX_STATUS_OK) {
         return false;
     }
 
-    lStatus = w25qxxxSetHardSpi(device, spi);
-    if (lStatus != W25QXXX_STATUS_OK) {
-        return false;
-    }
-
-    return true;
+    return w25qxxxSetCfg(device, cfg) == W25QXXX_STATUS_OK;
 }
 
-static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap spi, const uint8_t *name, uint32_t nameLength, uint8_t expectedCapacityId)
+static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, const uint8_t *name, uint32_t nameLength, uint8_t expectedCapacityId)
 {
     uint8_t lReadBuffer[SENSOR_TASK_FLASH_BUFFER_SIZE];
     const stW25qxxxInfo *lInfo;
+    stW25qxxxCfg lCfg;
     eW25qxxxStatus lStatus;
 
     if ((name == NULL) || (nameLength == 0U) || (nameLength >= SENSOR_TASK_FLASH_BUFFER_SIZE)) {
-        LOG_E(SENSOR_TASK_TAG, "Invalid flash test config on spi=%d", (int)spi);
+        LOG_E(SENSOR_TASK_TAG, "Invalid flash test config for device=%d", (int)device);
         return false;
     }
 
-    if (!sensorTaskPrepareFlashDevice(device, spi)) {
-        LOG_E(SENSOR_TASK_TAG, "Prepare flash config failed on spi=%d", (int)spi);
+    if (!sensorTaskPrepareFlashDevice(device, &lCfg)) {
+        LOG_E(SENSOR_TASK_TAG, "Prepare flash config failed for device=%d", (int)device);
         return false;
     }
 
     lStatus = w25qxxxInit(device);
     if (lStatus != W25QXXX_STATUS_OK) {
         LOG_E(SENSOR_TASK_TAG,
-              "%s init failed on spi=%d: %s(%d)",
+              "%s init failed on link=%d: %s(%d)",
               (const char *)name,
-              (int)spi,
+              (int)lCfg.linkId,
               sensorTaskGetW25qxxxStatusString(lStatus),
               (int)lStatus);
         return false;
@@ -315,30 +314,30 @@ static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap s
     lInfo = w25qxxxGetInfo(device);
     if ((lInfo == NULL) || (lInfo->capacityId != expectedCapacityId)) {
         LOG_E(SENSOR_TASK_TAG,
-              "%s capacity mismatch on spi=%d: expect=0x%02X actual=0x%02X",
+              "%s capacity mismatch on link=%d: expect=0x%02X actual=0x%02X",
               (const char *)name,
-              (int)spi,
+              (int)lCfg.linkId,
               (unsigned int)expectedCapacityId,
               (unsigned int)((lInfo != NULL) ? lInfo->capacityId : 0U));
         return false;
     }
 
     LOG_I(SENSOR_TASK_TAG,
-          "%s jedec=%02X %02X %02X size=%luB addrWidth=%u spi=%d",
+            "%s jedec=%02X %02X %02X size=%luB addrWidth=%u link=%d",
           (const char *)name,
           (unsigned int)lInfo->manufacturerId,
           (unsigned int)lInfo->memoryType,
           (unsigned int)lInfo->capacityId,
           (unsigned long)lInfo->totalSizeBytes,
           (unsigned int)lInfo->addressWidth,
-          (int)spi);
+            (int)lCfg.linkId);
 
     lStatus = w25qxxxEraseSector(device, SENSOR_TASK_FLASH_TEST_ADDRESS);
     if (lStatus != W25QXXX_STATUS_OK) {
         LOG_E(SENSOR_TASK_TAG,
-              "%s erase failed on spi=%d: %s(%d)",
+              "%s erase failed on link=%d: %s(%d)",
               (const char *)name,
-              (int)spi,
+              (int)lCfg.linkId,
               sensorTaskGetW25qxxxStatusString(lStatus),
               (int)lStatus);
         return false;
@@ -347,9 +346,9 @@ static bool sensorTaskVerifyFlashDevice(eW25qxxxMapType device, eDrvSpiPortMap s
     lStatus = w25qxxxWrite(device, SENSOR_TASK_FLASH_TEST_ADDRESS, name, nameLength);
     if (lStatus != W25QXXX_STATUS_OK) {
         LOG_E(SENSOR_TASK_TAG,
-              "%s write failed on spi=%d: %s(%d)",
+              "%s write failed on link=%d: %s(%d)",
               (const char *)name,
-              (int)spi,
+              (int)lCfg.linkId,
               sensorTaskGetW25qxxxStatusString(lStatus),
               (int)lStatus);
         return false;
@@ -394,7 +393,6 @@ static bool sensorTaskRunFlashDemo(void)
           "Start single flash demo: W25Q128 PB10/PB14/PB15 CS=PE15");
 
     lW25q128Ok = sensorTaskVerifyFlashDevice(W25QXXX_DEV0,
-                                             DRVSPI_BUS0,
                                              gSensorTaskW25q128Name,
                                              sizeof(gSensorTaskW25q128Name) - 1U,
                                              SENSOR_TASK_W25Q128_CAPACITY_ID);

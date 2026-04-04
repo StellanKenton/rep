@@ -13,7 +13,7 @@ __attribute__((weak)) void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, s
         return;
     }
 
-    cfg->iic = (eDrvAnlogIicPortMap)0;
+    cfg->linkId = 0U;
     cfg->brightness = 0U;
     cfg->digitCount = TM1651_DEFAULT_DIGIT_COUNT;
     cfg->isDisplayOn = false;
@@ -23,6 +23,12 @@ __attribute__((weak)) const stTm1651IicInterface *tm1651GetPlatformIicInterface(
 {
     (void)cfg;
     return NULL;
+}
+
+__attribute__((weak)) bool tm1651PlatformIsValidCfg(const stTm1651Cfg *cfg)
+{
+    (void)cfg;
+    return false;
 }
 
 static bool tm1651IsValidDevMap(eTm1651MapType device);
@@ -37,19 +43,13 @@ static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_
 static eTm1651Status tm1651ApplyDisplayCtrl(const stTm1651Device *device);
 static eTm1651Status tm1651RefreshDisplay(stTm1651Device *device);
 
-eTm1651Status tm1651GetDefCfg(eTm1651MapType device)
+eTm1651Status tm1651GetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
 {
-    stTm1651Device *lDeviceCtx;
-
-    lDeviceCtx = tm1651GetDevCtx(device);
-    if (lDeviceCtx == NULL) {
+    if ((cfg == NULL) || !tm1651IsValidDevMap(device)) {
         return TM1651_STATUS_INVALID_PARAM;
     }
 
-    tm1651LoadDefCfg(device, &lDeviceCtx->cfg);
-    tm1651FillBlank(lDeviceCtx->segData, TM1651_DIGIT_MAX);
-    lDeviceCtx->isReady = false;
-    gTm1651DefCfgDone[device] = true;
+    tm1651LoadDefCfg(device, cfg);
     return TM1651_STATUS_OK;
 }
 
@@ -107,7 +107,7 @@ eTm1651Status tm1651Init(eTm1651MapType device)
     }
 
     lIicIf = tm1651GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.iic);
+    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.linkId);
     if (lStatus != TM1651_STATUS_OK) {
         return lStatus;
     }
@@ -282,7 +282,7 @@ static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
     if ((cfg->brightness > 7U) ||
         (cfg->digitCount == 0U) ||
         (cfg->digitCount > TM1651_DIGIT_MAX) ||
-        (((uint8_t)cfg->iic >= (uint8_t)DRVANLOGIIC_MAX))) {
+        !tm1651PlatformIsValidCfg(cfg)) {
         return false;
     }
 
@@ -300,7 +300,7 @@ static const stTm1651IicInterface *tm1651GetIicIf(const stTm1651Device *device)
         return NULL;
     }
 
-    if ((uint8_t)device->cfg.iic >= (uint8_t)DRVANLOGIIC_MAX) {
+    if (!tm1651PlatformIsValidCfg(&device->cfg)) {
         return NULL;
     }
 
@@ -358,7 +358,7 @@ static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_
         return TM1651_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeFrame((uint8_t)device->cfg.iic, buffer, length);
+    return lIicIf->writeFrame((uint8_t)device->cfg.linkId, buffer, length);
 }
 
 static eTm1651Status tm1651ApplyDisplayCtrl(const stTm1651Device *device)

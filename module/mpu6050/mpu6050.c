@@ -22,8 +22,8 @@ __attribute__((weak)) void mpu6050LoadPlatformDefaultCfg(eMPU6050MapType device,
         return;
     }
 
-    cfg->iicType = MPU6050_IIC_TYPE_NONE;
-    cfg->iicBus = 0U;
+    cfg->transportType = MPU6050_TRANSPORT_TYPE_NONE;
+    cfg->linkId = 0U;
     cfg->address = 0U;
     cfg->sampleRateDiv = 0U;
     cfg->dlpfCfg = 0U;
@@ -35,6 +35,12 @@ __attribute__((weak)) const stMpu6050IicInterface *mpu6050GetPlatformIicInterfac
 {
     (void)cfg;
     return NULL;
+}
+
+__attribute__((weak)) bool mpu6050PlatformIsValidCfg(const stMpu6050Cfg *cfg)
+{
+    (void)cfg;
+    return false;
 }
 
 __attribute__((weak)) void mpu6050PlatformDelayMs(uint32_t delayMs)
@@ -56,16 +62,53 @@ static eDrvStatus mpu6050ReadRegsInt(const stMpu6050Device *device, uint8_t regA
 static void mpu6050ClrRawSample(stMpu6050RawSample *sample);
 static int16_t mpu6050ParseBe16(const uint8_t *buffer);
 
-eDrvStatus mpu6050GetDefCfg(eMPU6050MapType device)
+eDrvStatus mpu6050GetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg)
+{
+    if ((cfg == NULL) || !mpu6050IsValidDevMap(device)) {
+        return MPU6050_STATUS_INVALID_PARAM;
+    }
+
+    mpu6050LoadDefCfg(device, cfg);
+    return MPU6050_STATUS_OK;
+}
+
+eDrvStatus mpu6050GetCfg(eMPU6050MapType device, stMpu6050Cfg *cfg)
 {
     stMpu6050Device *lDeviceCtx;
+
+    if (cfg == NULL) {
+        return MPU6050_STATUS_INVALID_PARAM;
+    }
 
     lDeviceCtx = mpu6050GetDevCtx(device);
     if (lDeviceCtx == NULL) {
         return MPU6050_STATUS_INVALID_PARAM;
     }
 
-    mpu6050LoadDefCfg(device, &lDeviceCtx->cfg);
+    *cfg = lDeviceCtx->cfg;
+    return MPU6050_STATUS_OK;
+}
+
+eDrvStatus mpu6050SetCfg(eMPU6050MapType device, const stMpu6050Cfg *cfg)
+{
+    stMpu6050Device *lDeviceCtx;
+    stMpu6050Device lTmpDevice;
+
+    if (cfg == NULL) {
+        return MPU6050_STATUS_INVALID_PARAM;
+    }
+
+    lTmpDevice.cfg = *cfg;
+    if (!mpu6050IsValidDev(&lTmpDevice)) {
+        return MPU6050_STATUS_INVALID_PARAM;
+    }
+
+    lDeviceCtx = mpu6050GetDevCtx(device);
+    if (lDeviceCtx == NULL) {
+        return MPU6050_STATUS_INVALID_PARAM;
+    }
+
+    lDeviceCtx->cfg = *cfg;
     mpu6050ClrRawSample(&lDeviceCtx->data);
     lDeviceCtx->isReady = false;
     gMpu6050DefCfgDone[device] = true;
@@ -92,7 +135,7 @@ eDrvStatus mpu6050Init(eMPU6050MapType device)
     }
 
     lIicIf = mpu6050GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(lDeviceCtx->cfg.iicBus);
+    lStatus = lIicIf->init(lDeviceCtx->cfg.linkId);
     if (lStatus != MPU6050_STATUS_OK) {
         return lStatus;
     }
@@ -174,7 +217,7 @@ eDrvStatus mpu6050ReadId(eMPU6050MapType device, uint8_t *devId)
         return MPU6050_STATUS_NOT_READY;
     }
 
-    lStatus = lIicIf->init(lDeviceCtx->cfg.iicBus);
+    lStatus = lIicIf->init(lDeviceCtx->cfg.linkId);
     if (lStatus != MPU6050_STATUS_OK) {
         return lStatus;
     }
@@ -325,14 +368,7 @@ static bool mpu6050IsValidCfg(const stMpu6050Cfg *cfg)
         return false;
     }
 
-    switch (cfg->iicType) {
-        case MPU6050_IIC_TYPE_SOFTWARE:
-            return (cfg->iicBus < (uint8_t)DRVANLOGIIC_MAX);
-        case MPU6050_IIC_TYPE_HARDWARE:
-            return (cfg->iicBus < (uint8_t)DRVIIC_MAX);
-        default:
-            return false;
-    }
+    return mpu6050PlatformIsValidCfg(cfg);
 }
 
 static bool mpu6050IsValidDev(const stMpu6050Device *device)
@@ -396,7 +432,7 @@ static eDrvStatus mpu6050WriteRegInt(const stMpu6050Device *device, uint8_t regA
         return MPU6050_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeReg(device->cfg.iicBus, device->cfg.address, &regAddr, 1U, &value, 1U);
+    return lIicIf->writeReg(device->cfg.linkId, device->cfg.address, &regAddr, 1U, &value, 1U);
 }
 
 static eDrvStatus mpu6050ReadRegInt(const stMpu6050Device *device, uint8_t regAddr, uint8_t *value)
@@ -412,7 +448,7 @@ static eDrvStatus mpu6050ReadRegInt(const stMpu6050Device *device, uint8_t regAd
         return MPU6050_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->readReg(device->cfg.iicBus, device->cfg.address, &regAddr, 1U, value, 1U);
+    return lIicIf->readReg(device->cfg.linkId, device->cfg.address, &regAddr, 1U, value, 1U);
 }
 
 static eDrvStatus mpu6050ReadRegsInt(const stMpu6050Device *device, uint8_t regAddr, uint8_t *buffer, uint16_t length)
@@ -428,7 +464,7 @@ static eDrvStatus mpu6050ReadRegsInt(const stMpu6050Device *device, uint8_t regA
         return MPU6050_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->readReg(device->cfg.iicBus, device->cfg.address, &regAddr, 1U, buffer, length);
+    return lIicIf->readReg(device->cfg.linkId, device->cfg.address, &regAddr, 1U, buffer, length);
 }
 
 static void mpu6050ClrRawSample(stMpu6050RawSample *sample)

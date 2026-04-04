@@ -15,16 +15,39 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvanlogiic_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#ifndef DRVANLOGIIC_LOG_SUPPORT
+#define DRVANLOGIIC_LOG_SUPPORT                 1
+#endif
 
-typedef void (*drvAnlogIicBspInitFunc)(eDrvAnlogIicPortMap iic);
-typedef void (*drvAnlogIicBspDriveLineFunc)(eDrvAnlogIicPortMap iic, bool releaseHigh);
-typedef bool (*drvAnlogIicBspReadLineFunc)(eDrvAnlogIicPortMap iic);
+#ifndef DRVANLOGIIC_CONSOLE_SUPPORT
+#define DRVANLOGIIC_CONSOLE_SUPPORT             1
+#endif
+
+#ifndef DRVANLOGIIC_MAX
+#define DRVANLOGIIC_MAX                         2U
+#endif
+
+#ifndef DRVANLOGIIC_LOCK_WAIT_MS
+#define DRVANLOGIIC_LOCK_WAIT_MS                5U
+#endif
+
+#ifndef DRVANLOGIIC_DEFAULT_HALF_PERIOD_US
+#define DRVANLOGIIC_DEFAULT_HALF_PERIOD_US      10U
+#endif
+
+#ifndef DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS
+#define DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS     9U
+#endif
+
+
+typedef void (*drvAnlogIicBspInitFunc)(uint8_t iic);
+typedef void (*drvAnlogIicBspDriveLineFunc)(uint8_t iic, bool releaseHigh);
+typedef bool (*drvAnlogIicBspReadLineFunc)(uint8_t iic);
 typedef void (*drvAnlogIicBspDelayUsFunc)(uint16_t delayUs);
 
 typedef struct stDrvAnlogIicBspInterface {
@@ -48,21 +71,23 @@ typedef struct stDrvAnlogIicTransfer {
     uint16_t secondWriteLength;
 } stDrvAnlogIicTransfer;
 
-typedef eDrvStatus (*drvAnlogIicBusActionFunc)(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
+typedef eDrvStatus (*drvAnlogIicBusActionFunc)(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
 
-eDrvStatus drvAnlogIicInit(eDrvAnlogIicPortMap iic);
-eDrvStatus drvAnlogIicRecoverBus(eDrvAnlogIicPortMap iic);
-eDrvStatus drvAnlogIicBusAction(eDrvAnlogIicPortMap iic, drvAnlogIicBusActionFunc action, void *context);
-eDrvStatus drvAnlogIicTransfer(eDrvAnlogIicPortMap iic, const stDrvAnlogIicTransfer *transfer);
-eDrvStatus drvAnlogIicTransferTimeout(eDrvAnlogIicPortMap iic, const stDrvAnlogIicTransfer *transfer, uint32_t timeoutMs);
-eDrvStatus drvAnlogIicWrite(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *buffer, uint16_t length);
-eDrvStatus drvAnlogIicWriteTimeout(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
-eDrvStatus drvAnlogIicRead(eDrvAnlogIicPortMap iic, uint8_t address, uint8_t *buffer, uint16_t length);
-eDrvStatus drvAnlogIicReadTimeout(eDrvAnlogIicPortMap iic, uint8_t address, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
-eDrvStatus drvAnlogIicWriteRegister(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length);
-eDrvStatus drvAnlogIicWriteRegisterTimeout(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
-eDrvStatus drvAnlogIicReadRegister(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length);
-eDrvStatus drvAnlogIicReadRegisterTimeout(eDrvAnlogIicPortMap iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+eDrvStatus drvAnlogIicInit(uint8_t iic);
+eDrvStatus drvAnlogIicRecoverBus(uint8_t iic);
+eDrvStatus drvAnlogIicBusAction(uint8_t iic, drvAnlogIicBusActionFunc action, void *context);
+eDrvStatus drvAnlogIicTransfer(uint8_t iic, const stDrvAnlogIicTransfer *transfer);
+eDrvStatus drvAnlogIicTransferTimeout(uint8_t iic, const stDrvAnlogIicTransfer *transfer, uint32_t timeoutMs);
+eDrvStatus drvAnlogIicWrite(uint8_t iic, uint8_t address, const uint8_t *buffer, uint16_t length);
+eDrvStatus drvAnlogIicWriteTimeout(uint8_t iic, uint8_t address, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+eDrvStatus drvAnlogIicRead(uint8_t iic, uint8_t address, uint8_t *buffer, uint16_t length);
+eDrvStatus drvAnlogIicReadTimeout(uint8_t iic, uint8_t address, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+eDrvStatus drvAnlogIicWriteRegister(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length);
+eDrvStatus drvAnlogIicWriteRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+eDrvStatus drvAnlogIicReadRegister(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length);
+eDrvStatus drvAnlogIicReadRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+
+const stDrvAnlogIicBspInterface *drvAnlogIicGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

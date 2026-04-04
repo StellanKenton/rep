@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "rep_config.h"
+#include "drvanlogiic_port.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
@@ -18,13 +19,13 @@ static bool gTm1651PortReady = false;
 
 static eDrvStatus tm1651PortSoftIicInitAdpt(uint8_t bus);
 static eDrvStatus tm1651PortSoftIicWriteFrameAdpt(uint8_t bus, const uint8_t *buffer, uint8_t length);
-static eDrvStatus tm1651PortSoftIicWriteFrameAction(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
+static eDrvStatus tm1651PortSoftIicWriteFrameAction(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
 static eDrvStatus tm1651PortEnsureReady(void);
 static uint16_t tm1651PortGetHalfPeriodUs(const stDrvAnlogIicBspInterface *bspInterface);
 static void tm1651PortDelayHalfPeriod(const stDrvAnlogIicBspInterface *bspInterface);
-static void tm1651PortSendStart(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface);
-static void tm1651PortSendStop(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface);
-static eDrvStatus tm1651PortWriteByteLsbFirst(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, uint8_t value);
+static void tm1651PortSendStart(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface);
+static void tm1651PortSendStop(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface);
+static eDrvStatus tm1651PortWriteByteLsbFirst(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, uint8_t value);
 
 static const stTm1651PortIicInterface gTm1651PortSoftIicInterface = {
     .init = tm1651PortSoftIicInitAdpt,
@@ -33,7 +34,7 @@ static const stTm1651PortIicInterface gTm1651PortSoftIicInterface = {
 
 static const stTm1651Cfg gTm1651PortDefCfg[TM1651_DEV_MAX] = {
     [TM1651_DEV0] = {
-        .iic = DRVANLOGIIC_TM,
+        .linkId = DRVANLOGIIC_TM,
         .brightness = 7U,
         .digitCount = TM1651_DEFAULT_DIGIT_COUNT,
         .isDisplayOn = true,
@@ -58,24 +59,29 @@ const stTm1651IicInterface *tm1651GetPlatformIicInterface(const stTm1651Cfg *cfg
     return &gTm1651PortSoftIicInterface;
 }
 
+bool tm1651PlatformIsValidCfg(const stTm1651Cfg *cfg)
+{
+    return tm1651PortIsValidCfg(cfg);
+}
+
 void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
 {
     tm1651LoadPlatformDefaultCfg(device, cfg);
 }
 
-eDrvStatus tm1651PortSetSoftIic(stTm1651Cfg *cfg, eDrvAnlogIicPortMap iic)
+eDrvStatus tm1651PortAssembleSoftIic(stTm1651Cfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    cfg->iic = iic;
+    cfg->linkId = iic;
     return DRV_STATUS_OK;
 }
 
 bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg)
 {
-    return (cfg != NULL) && ((uint8_t)cfg->iic < (uint8_t)DRVANLOGIIC_MAX);
+    return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVANLOGIIC_MAX);
 }
 
 bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg)
@@ -227,7 +233,7 @@ static void tm1651PortDelayHalfPeriod(const stDrvAnlogIicBspInterface *bspInterf
     bspInterface->delayUs(tm1651PortGetHalfPeriodUs(bspInterface));
 }
 
-static void tm1651PortSendStart(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface)
+static void tm1651PortSendStart(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface)
 {
     bspInterface->setSda(iic, true);
     bspInterface->setScl(iic, true);
@@ -238,7 +244,7 @@ static void tm1651PortSendStart(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterfa
     tm1651PortDelayHalfPeriod(bspInterface);
 }
 
-static void tm1651PortSendStop(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface)
+static void tm1651PortSendStop(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface)
 {
     bspInterface->setSda(iic, false);
     tm1651PortDelayHalfPeriod(bspInterface);
@@ -248,7 +254,7 @@ static void tm1651PortSendStop(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterfac
     tm1651PortDelayHalfPeriod(bspInterface);
 }
 
-static eDrvStatus tm1651PortWriteByteLsbFirst(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, uint8_t value)
+static eDrvStatus tm1651PortWriteByteLsbFirst(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, uint8_t value)
 {
     uint8_t lBitIndex;
     bool lIsAck;
@@ -279,7 +285,7 @@ static eDrvStatus tm1651PortSoftIicInitAdpt(uint8_t bus)
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvAnlogIicInit((eDrvAnlogIicPortMap)bus);
+    return drvAnlogIicInit(bus);
 }
 
 static eDrvStatus tm1651PortSoftIicWriteFrameAdpt(uint8_t bus, const uint8_t *buffer, uint8_t length)
@@ -292,10 +298,10 @@ static eDrvStatus tm1651PortSoftIicWriteFrameAdpt(uint8_t bus, const uint8_t *bu
 
     lCtx.buffer = buffer;
     lCtx.length = length;
-    return drvAnlogIicBusAction((eDrvAnlogIicPortMap)bus, tm1651PortSoftIicWriteFrameAction, &lCtx);
+    return drvAnlogIicBusAction(bus, tm1651PortSoftIicWriteFrameAction, &lCtx);
 }
 
-static eDrvStatus tm1651PortSoftIicWriteFrameAction(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, void *context)
+static eDrvStatus tm1651PortSoftIicWriteFrameAction(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, void *context)
 {
     stTm1651PortWriteCtx *lCtx = (stTm1651PortWriteCtx *)context;
     uint8_t lIndex;

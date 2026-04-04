@@ -68,6 +68,7 @@ typedef struct stConsoleCommand {
 } stConsoleCommand;
 
 bool consoleInit(void);
+bool consoleInitDefault(void);
 bool consoleRegisterCommand(const stConsoleCommand *command);
 void consoleProcess(void);
 int32_t consoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));

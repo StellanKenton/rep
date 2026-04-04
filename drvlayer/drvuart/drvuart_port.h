@@ -11,11 +11,14 @@
 #ifndef DRVUART_PORTMAP_H
 #define DRVUART_PORTMAP_H
 
-#include "drvuart_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvUartPortMapTable {
+	DRVUART_WIRELESS = 0,
+	DRVUART_MAX,
+} eDrvUartPortMap;
 
 #ifndef DRVUART_LOG_SUPPORT
 #define DRVUART_LOG_SUPPORT             1

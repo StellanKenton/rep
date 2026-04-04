@@ -9,6 +9,7 @@
 **********************************************************************************/
 #include "drvuart_debug.h"
 #include "drvuart.h"
+#include "drvuart_port.h"
 
 #if (DRVUART_CONSOLE_SUPPORT == 1)
 #include <stddef.h>

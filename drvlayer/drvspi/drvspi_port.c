@@ -5,6 +5,7 @@
 *             binding for each enabled logical bus.
 **********************************************************************************/
 #include "drvspi.h"
+#include "drvspi_port.h"
 
 #include "bspspi.h"
 
@@ -26,4 +27,9 @@ stDrvSpiBspInterface gDrvSpiBspInterface[DRVSPI_MAX] = {
         },
     },
 };
+
+    const stDrvSpiBspInterface *drvSpiGetPlatformBspInterfaces(void)
+    {
+        return gDrvSpiBspInterface;
+    }
 /**************************End of file********************************/

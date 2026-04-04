@@ -19,13 +19,19 @@ __attribute__((weak)) void gd25qxxxLoadPlatformDefaultCfg(eGd25qxxxMapType devic
         return;
     }
 
-    cfg->spi = (eDrvSpiPortMap)0;
+    cfg->linkId = 0U;
 }
 
 __attribute__((weak)) const stGd25qxxxSpiInterface *gd25qxxxGetPlatformSpiInterface(const stGd25qxxxCfg *cfg)
 {
     (void)cfg;
     return NULL;
+}
+
+__attribute__((weak)) bool gd25qxxxPlatformIsValidCfg(const stGd25qxxxCfg *cfg)
+{
+    (void)cfg;
+    return false;
 }
 
 __attribute__((weak)) void gd25qxxxPlatformDelayMs(uint32_t delayMs)
@@ -55,19 +61,13 @@ static uint8_t gd25qxxxGetProgCmd(const stGd25qxxxDevice *device);
 static uint8_t gd25qxxxGetSectEraseCmd(const stGd25qxxxDevice *device);
 static uint8_t gd25qxxxGetBlkEraseCmd(const stGd25qxxxDevice *device);
 
-eGd25qxxxStatus gd25qxxxGetDefCfg(eGd25qxxxMapType device)
+eGd25qxxxStatus gd25qxxxGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
 {
-    stGd25qxxxDevice *lDeviceCtx;
-
-    lDeviceCtx = gd25qxxxGetDevCtx(device);
-    if (lDeviceCtx == NULL) {
+    if ((cfg == NULL) || !gd25qxxxIsValidDevMap(device)) {
         return GD25QXXX_STATUS_INVALID_PARAM;
     }
 
-    gd25qxxxLoadDefCfg(device, &lDeviceCtx->cfg);
-    gd25qxxxClrInfo(&lDeviceCtx->info);
-    lDeviceCtx->isReady = false;
-    gGd25qxxxDefCfgDone[device] = true;
+    gd25qxxxLoadDefCfg(device, cfg);
     return GD25QXXX_STATUS_OK;
 }
 
@@ -92,7 +92,7 @@ eGd25qxxxStatus gd25qxxxSetCfg(eGd25qxxxMapType device, const stGd25qxxxCfg *cfg
 {
     stGd25qxxxDevice *lDeviceCtx;
 
-    if ((cfg == NULL) || ((uint8_t)cfg->spi >= (uint8_t)DRVSPI_MAX)) {
+    if ((cfg == NULL) || !gd25qxxxPlatformIsValidCfg(cfg)) {
         return GD25QXXX_STATUS_INVALID_PARAM;
     }
 
@@ -120,13 +120,13 @@ eGd25qxxxStatus gd25qxxxInit(eGd25qxxxMapType device)
     }
 
     if (gd25qxxxGetSpiIf(lDeviceCtx) == NULL) {
-        return (((uint8_t)lDeviceCtx->cfg.spi) < (uint8_t)DRVSPI_MAX) ?
+        return gd25qxxxPlatformIsValidCfg(&lDeviceCtx->cfg) ?
                GD25QXXX_STATUS_NOT_READY :
                GD25QXXX_STATUS_INVALID_PARAM;
     }
 
     lSpiIf = gd25qxxxGetSpiIf(lDeviceCtx);
-    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
+    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.linkId));
     if (lStatus != GD25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -192,7 +192,7 @@ eGd25qxxxStatus gd25qxxxReadJedecId(eGd25qxxxMapType device, uint8_t *manufactur
         return GD25QXXX_STATUS_NOT_READY;
     }
 
-    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
+    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.linkId));
     if (lStatus != GD25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -473,7 +473,7 @@ static void gd25qxxxClrInfo(stGd25qxxxInfo *info)
 
 static bool gd25qxxxIsValidDev(const stGd25qxxxDevice *device)
 {
-    return (device != NULL) && (((uint8_t)device->cfg.spi) < (uint8_t)DRVSPI_MAX);
+    return (device != NULL) && gd25qxxxPlatformIsValidCfg(&device->cfg);
 }
 
 static bool gd25qxxxIsReadyXfer(const stGd25qxxxDevice *device)
@@ -552,7 +552,7 @@ static eGd25qxxxStatus gd25qxxxTransferInt(const stGd25qxxxDevice *device, const
         return GD25QXXX_STATUS_NOT_READY;
     }
 
-    return gd25qxxxMapPortStatus(lSpiIf->transfer((uint8_t)device->cfg.spi,
+    return gd25qxxxMapPortStatus(lSpiIf->transfer((uint8_t)device->cfg.linkId,
                                                    writeBuffer,
                                                    writeLength,
                                                    secondWriteBuffer,

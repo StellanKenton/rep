@@ -10,6 +10,7 @@
 #include "drviic_debug.h"
 
 #include "drviic.h"
+#include "drviic_port.h"
 
 #if (DRVIIC_CONSOLE_SUPPORT == 1)
 #include <stdbool.h>

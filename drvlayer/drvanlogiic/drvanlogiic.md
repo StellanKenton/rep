@@ -28,6 +28,11 @@ BSP 层负责:
 - `drvanlogiic_port.c`: 绑定 BSP 钩子和默认时序参数。
 - `bspanlogiic.h/.c`: 负责 GPIO 控制和延时实现。
 
+说明:
+
+- `drvanlogiic.h` 的公共 API 使用 `uint8_t iic` 表示逻辑总线编号。
+- `eDrvAnlogIicPortMap` 只定义在 `drvanlogiic_port.h`，用于 port/BSP 层和工程内逻辑总线常量。
+
 ## 3. core 层真实依赖的 BSP 接口
 
 `drvanlogiic.c` 依赖的接口结构如下:
@@ -49,7 +54,7 @@ typedef struct stDrvAnlogIicBspInterface {
 
 ## 4. BSP 函数的关键语义
 
-### 4.1 `bspAnlogIicInit(eDrvAnlogIicPortMap iic)`
+### 4.1 `bspAnlogIicInit(uint8_t iic)`
 
 职责:
 
@@ -57,7 +62,7 @@ typedef struct stDrvAnlogIicBspInterface {
 - 建立开漏输出或等价的释放高电平策略。
 - 确保初始总线空闲态可恢复为高电平。
 
-### 4.2 `bspAnlogIicSetScl(eDrvAnlogIicPortMap iic, bool releaseHigh)`
+### 4.2 `bspAnlogIicSetScl(uint8_t iic, bool releaseHigh)`
 
 职责:
 
@@ -69,11 +74,11 @@ typedef struct stDrvAnlogIicBspInterface {
 - 这里的“高”应该是释放，不应主动推挽输出高电平，除非硬件设计明确允许且不会破坏开漏语义。
 - 如果存在时钟拉伸，`readScl()` 必须能读到真实线电平。
 
-### 4.3 `bspAnlogIicSetSda(eDrvAnlogIicPortMap iic, bool releaseHigh)`
+### 4.3 `bspAnlogIicSetSda(uint8_t iic, bool releaseHigh)`
 
 职责和要求与 SCL 相同，只是作用对象换成 SDA。
 
-### 4.4 `bspAnlogIicReadScl(eDrvAnlogIicPortMap iic)`
+### 4.4 `bspAnlogIicReadScl(uint8_t iic)`
 
 职责:
 
@@ -84,7 +89,7 @@ typedef struct stDrvAnlogIicBspInterface {
 - 不能只返回最近一次软件写入状态，必须反映真实硬件引脚状态。
 - 总线恢复流程依赖它判断 SCL 是否真正被释放为高。
 
-### 4.5 `bspAnlogIicReadSda(eDrvAnlogIicPortMap iic)`
+### 4.5 `bspAnlogIicReadSda(uint8_t iic)`
 
 职责:
 
@@ -124,11 +129,13 @@ typedef struct stDrvAnlogIicBspInterface {
 - `DRVANLOGIIC_DEFAULT_RECOVERY_CLOCKS`
 - 开关宏。
 
+公共头不再暴露这些逻辑总线枚举；上层若需要命名常量，应显式包含 `drvanlogiic_port.h`。
+
 `drvanlogiic_port.c` 负责为每个逻辑总线绑定一组底层 GPIO/延时函数，并给出默认时序参数，例如:
 
 ```c
 stDrvAnlogIicBspInterface gDrvAnlogIicBspInterface[DRVANLOGIIC_MAX] = {
-	[DRVANLOGIIC_BUS0] = {
+	[DRVANLOGIIC_PCA] = {
 		.init = bspAnlogIicInit,
 		.setScl = bspAnlogIicSetScl,
 		.setSda = bspAnlogIicSetSda,

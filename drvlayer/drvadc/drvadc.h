@@ -13,14 +13,41 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvadc_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef eDrvStatus (*drvAdcBspInitFunc)(eDrvAdcPortMap adc);
-typedef eDrvStatus (*drvAdcBspReadRawFunc)(eDrvAdcPortMap adc, uint16_t *value, uint32_t timeoutMs);
+#ifndef DRVADC_LOG_SUPPORT
+#define DRVADC_LOG_SUPPORT                 1
+#endif
+
+#ifndef DRVADC_CONSOLE_SUPPORT
+#define DRVADC_CONSOLE_SUPPORT             1
+#endif
+
+#ifndef DRVADC_MAX
+#define DRVADC_MAX                         3U
+#endif
+
+#ifndef DRVADC_LOCK_WAIT_MS
+#define DRVADC_LOCK_WAIT_MS                5U
+#endif
+
+#ifndef DRVADC_DEFAULT_TIMEOUT_MS
+#define DRVADC_DEFAULT_TIMEOUT_MS          10U
+#endif
+
+#ifndef DRVADC_DEFAULT_RESOLUTION_BITS
+#define DRVADC_DEFAULT_RESOLUTION_BITS     12U
+#endif
+
+#ifndef DRVADC_DEFAULT_REFERENCE_MV
+#define DRVADC_DEFAULT_REFERENCE_MV        3300U
+#endif
+
+typedef eDrvStatus (*drvAdcBspInitFunc)(uint8_t adc);
+typedef eDrvStatus (*drvAdcBspReadRawFunc)(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 
 typedef struct stDrvAdcBspInterface {
     drvAdcBspInitFunc init;
@@ -30,11 +57,19 @@ typedef struct stDrvAdcBspInterface {
     uint8_t resolutionBits;
 } stDrvAdcBspInterface;
 
-eDrvStatus drvAdcInit(eDrvAdcPortMap adc);
-eDrvStatus drvAdcReadRaw(eDrvAdcPortMap adc, uint16_t *value);
-eDrvStatus drvAdcReadRawTimeout(eDrvAdcPortMap adc, uint16_t *value, uint32_t timeoutMs);
-eDrvStatus drvAdcReadMv(eDrvAdcPortMap adc, uint16_t *valueMv);
-eDrvStatus drvAdcReadMvTimeout(eDrvAdcPortMap adc, uint16_t *valueMv, uint32_t timeoutMs);
+typedef struct stDrvAdcData {
+    uint16_t raw;
+    uint16_t mv;
+} stDrvAdcData;
+
+eDrvStatus drvAdcInit(uint8_t adc);
+eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value);
+eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
+eDrvStatus drvAdcReadMv(uint8_t adc, uint16_t *valueMv);
+eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutMs);
+
+const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void);
+stDrvAdcData *drvAdcGetPlatformData(void);
 
 #ifdef __cplusplus
 }

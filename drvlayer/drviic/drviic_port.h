@@ -11,11 +11,14 @@
 #ifndef DRVIIC_PORT_H
 #define DRVIIC_PORT_H
 
-#include "drviic_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvIicPortMap {
+	DRVIIC_BUS0 = 0,
+	DRVIIC_MAX,
+} eDrvIicPortMap;
 
 #ifndef DRVIIC_LOG_SUPPORT
 #define DRVIIC_LOG_SUPPORT                    1

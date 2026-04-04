@@ -7,11 +7,15 @@
 #ifndef DRVSPI_PORT_H
 #define DRVSPI_PORT_H
 
-#include "drvspi_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvSpiPortMap {
+	DRVSPI_BUS0 = 0,
+	DRVSPI_BUS1,
+	DRVSPI_MAX,
+} eDrvSpiPortMap;
 
 #ifndef DRVSPI_LOG_SUPPORT
 #define DRVSPI_LOG_SUPPORT                    1

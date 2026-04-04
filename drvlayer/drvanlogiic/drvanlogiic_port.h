@@ -11,11 +11,15 @@
 #ifndef DRVANLOGIIC_PORT_H
 #define DRVANLOGIIC_PORT_H
 
-#include "drvanlogiic_types.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum eDrvAnlogIicPortMap {
+	DRVANLOGIIC_PCA = 0,
+	DRVANLOGIIC_TM,
+	DRVANLOGIIC_MAX,
+} eDrvAnlogIicPortMap;
 
 #ifndef DRVANLOGIIC_LOG_SUPPORT
 #define DRVANLOGIIC_LOG_SUPPORT                 1

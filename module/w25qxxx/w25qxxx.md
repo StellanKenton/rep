@@ -189,15 +189,25 @@ adapter 不应该做这些事：
 
 推荐按下面顺序使用：
 
-1. 调用 `w25qxxxGetDefCfg(device)` 装载默认配置。
-2. 如需换总线，先 `w25qxxxGetCfg()`，再修改 `cfg.spiBind`，最后 `w25qxxxSetCfg()`。
+1. 准备 `stW25qxxxCfg cfg`，调用 `w25qxxxGetDefCfg(device, &cfg)` 取得默认配置。
+2. 如需覆写默认绑定，在 assembly/port 层修改 `cfg`，然后调用 `w25qxxxSetCfg(device, &cfg)`。
 3. 调用 `w25qxxxInit(device)`。
 4. 调用 `w25qxxxIsReady(device)` 或 `w25qxxxGetInfo(device)` 判断模块是否可用。
 5. 再调用 `w25qxxxRead()`、`w25qxxxWrite()`、`w25qxxxEraseSector()` 等业务接口。
 
 这个顺序对后续新增更多 Flash 派生模块也适用。
 
-## 8. 错误处理与 ready 约束
+## 8. 生命周期契约
+
+当前 `w25qxxx` 归类为 `passive module`，契约如下：
+
+- cfg ownership：调用者持有临时 `stW25qxxxCfg`，模块内部持有最近一次 `SetCfg()` 后的快照。
+- ready 条件：JEDEC 探测成功、厂商与容量合法、`info` 填充完成后才允许 ready。
+- repeat init：允许，含义是基于当前 cfg 重新完成一次 probe 和 bring-up。
+- hot reconfig：允许，但必须先 `SetCfg()`，再重新 `Init()`。
+- recover path：初始化失败或运行中失效后，按 `GetDefCfg/GetCfg -> SetCfg -> Init` 恢复。
+
+## 9. 错误处理与 ready 约束
 
 当前模块的错误处理约束如下：
 
@@ -210,7 +220,7 @@ adapter 不应该做这些事：
 
 并且只有在 JEDEC 探测和容量解析都成功后，`isReady` 才能置位。
 
-## 9. 后续扩展点
+## 10. 后续扩展点
 
 如果后面需要扩展这个模块，建议沿当前契约扩展：
 

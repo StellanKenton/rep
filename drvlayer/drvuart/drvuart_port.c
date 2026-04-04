@@ -8,6 +8,7 @@
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvuart.h"
+#include "drvuart_port.h"
 
 #include <stddef.h>
 

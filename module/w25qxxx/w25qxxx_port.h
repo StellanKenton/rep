@@ -27,7 +27,7 @@ extern "C" {
 typedef stW25qxxxSpiInterface stW25qxxxPortSpiInterface;
 
 void w25qxxxPortGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg);
-eDrvStatus w25qxxxPortSetHardSpi(stW25qxxxCfg *cfg, eDrvSpiPortMap spi);
+eDrvStatus w25qxxxPortAssembleHardSpi(stW25qxxxCfg *cfg, uint8_t spi);
 bool w25qxxxPortIsValidCfg(const stW25qxxxCfg *cfg);
 bool w25qxxxPortHasValidSpiIf(const stW25qxxxCfg *cfg);
 const stW25qxxxPortSpiInterface *w25qxxxPortGetSpiIf(const stW25qxxxCfg *cfg);
