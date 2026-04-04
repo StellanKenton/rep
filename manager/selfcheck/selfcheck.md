@@ -10,15 +10,24 @@
 
 - 保存 console、自定义通信、电源服务、升级服务四类启动结果。
 - 输出统一的 `PASS/FAIL` 汇总状态。
-- 提供 `selfCheckGetSummary()` 作为只读查询接口。
+- 提供 `selfCheckGetSummary()`、`selfCheckGetState()`、`selfCheckGetLastError()` 作为查询接口。
 
-## 3. 当前设计约束
+## 3. 生命周期约定
+
+- 类型：recoverable service
+- cfg ownership：无外部 cfg，结果快照由 `selfcheck` 自持
+- ready 时机：`selfCheckInit()` 成功后进入 ready
+- repeat init：允许，且不清空既有结果
+- start 语义：`selfCheckStart()` 开启一轮新的启动检查并重置结果
+- fault/recover：`selfCheckCommit()` 失败时进入 fault，`selfCheckRecover()` 可回到 ready
+
+## 4. 当前设计约束
 
 - 结果写入由 manager 层编排完成，不做动态注册。
 - 结果结构保持稳定，后续扩展优先新增字段，不轻易改已有语义。
 - 当前只表达服务级自检，不表达底层硬件细节。
 
-## 4. 后续可扩展项
+## 5. 后续可扩展项
 
 - 增加更多 service item
 - 接入 console 查询命令

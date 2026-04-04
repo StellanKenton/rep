@@ -1,5 +1,7 @@
 #include "pca9535.h"
 
+#include "pca9535_assembly.h"
+
 #include <stddef.h>
 
 static stPca9535Device gPca9535Devices[PCA9535_DEV_MAX];
@@ -13,7 +15,6 @@ __attribute__((weak)) void pca9535LoadPlatformDefaultCfg(ePca9535MapType device,
         return;
     }
 
-    cfg->linkId = 0U;
     cfg->address = 0U;
     cfg->outputValue = 0U;
     cfg->polarityMask = 0U;
@@ -21,16 +22,22 @@ __attribute__((weak)) void pca9535LoadPlatformDefaultCfg(ePca9535MapType device,
     cfg->resetBeforeInit = false;
 }
 
-__attribute__((weak)) const stPca9535IicInterface *pca9535GetPlatformIicInterface(const stPca9535Cfg *cfg)
+__attribute__((weak)) const stPca9535IicInterface *pca9535GetPlatformIicInterface(ePca9535MapType device)
 {
-    (void)cfg;
+    (void)device;
     return NULL;
 }
 
-__attribute__((weak)) bool pca9535PlatformIsValidCfg(const stPca9535Cfg *cfg)
+__attribute__((weak)) bool pca9535PlatformIsValidAssemble(ePca9535MapType device)
 {
-    (void)cfg;
+    (void)device;
     return false;
+}
+
+__attribute__((weak)) uint8_t pca9535PlatformGetLinkId(ePca9535MapType device)
+{
+    (void)device;
+    return 0U;
 }
 
 __attribute__((weak)) void pca9535PlatformResetInit(void)
@@ -47,8 +54,19 @@ __attribute__((weak)) void pca9535PlatformDelayMs(uint32_t delayMs)
     (void)delayMs;
 }
 
+__attribute__((weak)) uint32_t pca9535PlatformGetResetAssertDelayMs(void)
+{
+    return 0U;
+}
+
+__attribute__((weak)) uint32_t pca9535PlatformGetResetReleaseDelayMs(void)
+{
+    return 0U;
+}
+
 static bool pca9535IsValidDevMap(ePca9535MapType device);
 static stPca9535Device *pca9535GetDevCtx(ePca9535MapType device);
+static ePca9535MapType pca9535GetDevMapByCtx(const stPca9535Device *device);
 static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
 static bool pca9535IsValidCfg(const stPca9535Cfg *cfg);
 static bool pca9535IsValidDev(const stPca9535Device *device);
@@ -127,13 +145,13 @@ eDrvStatus pca9535Init(ePca9535MapType device)
     }
 
     if (pca9535GetIicIf(lDeviceCtx) == NULL) {
-        return pca9535IsValidCfg(&lDeviceCtx->cfg) ?
+        return pca9535PlatformIsValidAssemble(device) ?
                PCA9535_STATUS_NOT_READY :
                PCA9535_STATUS_INVALID_PARAM;
     }
 
     lIicIf = pca9535GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.linkId);
+    lStatus = lIicIf->init(pca9535PlatformGetLinkId(device));
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }
@@ -141,9 +159,9 @@ eDrvStatus pca9535Init(ePca9535MapType device)
     if (lDeviceCtx->cfg.resetBeforeInit) {
         pca9535PlatformResetInit();
         pca9535PlatformResetWrite(true);
-        pca9535PlatformDelayMs(PCA9535_PORT_RESET_ASSERT_MS);
+        pca9535PlatformDelayMs(pca9535PlatformGetResetAssertDelayMs());
         pca9535PlatformResetWrite(false);
-        pca9535PlatformDelayMs(PCA9535_PORT_RESET_RELEASE_MS);
+        pca9535PlatformDelayMs(pca9535PlatformGetResetReleaseDelayMs());
     }
 
     lDeviceCtx->isReady = false;
@@ -357,6 +375,20 @@ static stPca9535Device *pca9535GetDevCtx(ePca9535MapType device)
     return &gPca9535Devices[device];
 }
 
+static ePca9535MapType pca9535GetDevMapByCtx(const stPca9535Device *device)
+{
+    ptrdiff_t lIndex;
+
+    if ((device == NULL) ||
+        (device < &gPca9535Devices[0]) ||
+        (device >= &gPca9535Devices[PCA9535_DEV_MAX])) {
+        return PCA9535_DEV_MAX;
+    }
+
+    lIndex = device - &gPca9535Devices[0];
+    return (ePca9535MapType)lIndex;
+}
+
 static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
 {
     if (cfg == NULL) {
@@ -368,7 +400,9 @@ static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
 
 static bool pca9535IsValidCfg(const stPca9535Cfg *cfg)
 {
-    return (cfg != NULL) && pca9535PlatformIsValidCfg(cfg);
+    return (cfg != NULL) &&
+           (cfg->address >= PCA9535_IIC_ADDRESS_LLL) &&
+           (cfg->address <= PCA9535_IIC_ADDRESS_HHH);
 }
 
 static bool pca9535IsValidDev(const stPca9535Device *device)
@@ -377,12 +411,7 @@ static bool pca9535IsValidDev(const stPca9535Device *device)
         return false;
     }
 
-    if (!pca9535IsValidCfg(&device->cfg)) {
-        return false;
-    }
-
-    return (device->cfg.address >= PCA9535_IIC_ADDRESS_LLL) &&
-           (device->cfg.address <= PCA9535_IIC_ADDRESS_HHH);
+    return pca9535IsValidCfg(&device->cfg);
 }
 
 static bool pca9535IsReadyXfer(const stPca9535Device *device)
@@ -392,6 +421,8 @@ static bool pca9535IsReadyXfer(const stPca9535Device *device)
 
 static const stPca9535IicInterface *pca9535GetIicIf(const stPca9535Device *device)
 {
+    ePca9535MapType lDevice;
+
     if (device == NULL) {
         return NULL;
     }
@@ -400,24 +431,36 @@ static const stPca9535IicInterface *pca9535GetIicIf(const stPca9535Device *devic
         return NULL;
     }
 
-    return pca9535GetPlatformIicInterface(&device->cfg);
+    lDevice = pca9535GetDevMapByCtx(device);
+    if ((lDevice >= PCA9535_DEV_MAX) || !pca9535PlatformIsValidAssemble(lDevice)) {
+        return NULL;
+    }
+
+    return pca9535GetPlatformIicInterface(lDevice);
 }
 
 static eDrvStatus pca9535WriteRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t value)
 {
     const stPca9535IicInterface *lIicIf;
+    ePca9535MapType lDevice;
 
     lIicIf = pca9535GetIicIf(device);
     if (lIicIf == NULL) {
         return PCA9535_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeReg((uint8_t)device->cfg.linkId, device->cfg.address, &regAddr, 1U, &value, 1U);
+    lDevice = pca9535GetDevMapByCtx(device);
+    if (lDevice >= PCA9535_DEV_MAX) {
+        return PCA9535_STATUS_INVALID_PARAM;
+    }
+
+    return lIicIf->writeReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, &value, 1U);
 }
 
 static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t *value)
 {
     const stPca9535IicInterface *lIicIf;
+    ePca9535MapType lDevice;
 
     if (value == NULL) {
         return PCA9535_STATUS_INVALID_PARAM;
@@ -428,12 +471,18 @@ static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_NOT_READY;
     }
 
-    return lIicIf->readReg((uint8_t)device->cfg.linkId, device->cfg.address, &regAddr, 1U, value, 1U);
+    lDevice = pca9535GetDevMapByCtx(device);
+    if (lDevice >= PCA9535_DEV_MAX) {
+        return PCA9535_STATUS_INVALID_PARAM;
+    }
+
+    return lIicIf->readReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, value, 1U);
 }
 
 static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regAddr, uint16_t value)
 {
     const stPca9535IicInterface *lIicIf;
+    ePca9535MapType lDevice;
     uint8_t lBuffer[2];
 
     lIicIf = pca9535GetIicIf(device);
@@ -443,12 +492,18 @@ static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regA
 
     lBuffer[0] = (uint8_t)(value & 0x00FFU);
     lBuffer[1] = (uint8_t)((value >> 8U) & 0x00FFU);
-    return lIicIf->writeReg((uint8_t)device->cfg.linkId, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    lDevice = pca9535GetDevMapByCtx(device);
+    if (lDevice >= PCA9535_DEV_MAX) {
+        return PCA9535_STATUS_INVALID_PARAM;
+    }
+
+    return lIicIf->writeReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
 }
 
 static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAddr, uint16_t *value)
 {
     const stPca9535IicInterface *lIicIf;
+    ePca9535MapType lDevice;
     uint8_t lBuffer[2];
     eDrvStatus lStatus;
 
@@ -461,7 +516,12 @@ static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_NOT_READY;
     }
 
-    lStatus = lIicIf->readReg((uint8_t)device->cfg.linkId, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    lDevice = pca9535GetDevMapByCtx(device);
+    if (lDevice >= PCA9535_DEV_MAX) {
+        return PCA9535_STATUS_INVALID_PARAM;
+    }
+
+    lStatus = lIicIf->readReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }

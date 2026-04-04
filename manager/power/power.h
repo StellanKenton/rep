@@ -11,7 +11,8 @@
 #define POWER_H
 
 #include <stdbool.h>
-#include <stdint.h>
+
+#include "../service_lifecycle.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,19 +25,23 @@ typedef enum ePowerState {
     ePOWER_STATE_READY,
     ePOWER_STATE_ACTIVE,
     ePOWER_STATE_LOW_POWER,
+    ePOWER_STATE_STOPPED,
     ePOWER_STATE_FAULT,
 } ePowerState;
 
 typedef struct stPowerStatus {
+    stManagerServiceLifecycle lifecycle;
     ePowerState state;
-    uint32_t processCount;
-    bool isReady;
     bool isLowPowerRequested;
 } stPowerStatus;
 
 bool powerInit(void);
+bool powerStart(void);
+void powerStop(void);
 void powerProcess(void);
 bool powerRequestLowPower(bool isEnabled);
+ePowerState powerGetState(void);
+eManagerLifecycleError powerGetLastError(void);
 const stPowerStatus *powerGetStatus(void);
 
 #ifdef __cplusplus

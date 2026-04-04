@@ -58,7 +58,14 @@ static bool sensorTaskRunFlashDemo(void);
 
 static void process(void)
 {
-    switch (systemGetMode()) {
+    eSystemMode lMode;
+
+    lMode = systemGetMode();
+    if (lMode != eSYSTEM_UPDATE_MODE) {
+        managerUpdateStop();
+    }
+
+    switch (lMode) {
         case eSYSTEM_INIT_MODE:
             LOG_I(SYSTEM_TAG, "System initialized");
             systemSetMode(eSYSTEM_SELF_CHECK_MODE);
@@ -78,6 +85,9 @@ static void process(void)
         case eSYSTEM_NORMAL_MODE:
             break;
         case eSYSTEM_UPDATE_MODE:
+            if (!managerUpdateStart()) {
+                break;
+            }
             managerUpdateProcess();
             break;
         case eSYSTEM_DIAGNOSTIC_MODE:
@@ -464,6 +474,11 @@ static void powerTaskCallback(void *parameter)
     (void)parameter;
 
     for (;;) {
+        if (!managerPowerStart()) {
+            vTaskDelay(pdMS_TO_TICKS(POWER_TASK_PERIOD_MS));
+            continue;
+        }
+
         managerPowerProcess();
         vTaskDelay(pdMS_TO_TICKS(POWER_TASK_PERIOD_MS));
     }

@@ -12,34 +12,80 @@
 #include "log.h"
 
 static stUpdateStatus gUpdateStatus = {
+    .lifecycle = {
+        .classType = eMANAGER_SERVICE_CLASS_RECOVERABLE_SERVICE,
+        .state = eMANAGER_LIFECYCLE_STATE_UNINIT,
+        .lastError = eMANAGER_LIFECYCLE_ERROR_NONE,
+        .initCount = 0U,
+        .startCount = 0U,
+        .stopCount = 0U,
+        .processCount = 0U,
+        .recoverCount = 0U,
+        .isReady = false,
+        .isStarted = false,
+        .hasFault = false,
+    },
     .state = eUPDATE_STATE_UNINIT,
-    .processCount = 0U,
-    .isReady = false,
     .isUpdateRequested = false,
 };
 
 bool updateInit(void)
 {
-    if (gUpdateStatus.isReady) {
+    if (managerLifecycleInit(&gUpdateStatus.lifecycle) == false) {
+        gUpdateStatus.state = eUPDATE_STATE_FAULT;
+        return false;
+    }
+
+    if (gUpdateStatus.state != eUPDATE_STATE_UNINIT) {
         return true;
     }
 
     gUpdateStatus.state = eUPDATE_STATE_IDLE;
-    gUpdateStatus.processCount = 0U;
-    gUpdateStatus.isReady = true;
     gUpdateStatus.isUpdateRequested = false;
 
     LOG_I(UPDATE_TAG, "Update service initialized");
     return true;
 }
 
-void updateProcess(void)
+bool updateStart(void)
 {
-    if (!gUpdateStatus.isReady) {
+    if (!updateInit()) {
+        return false;
+    }
+
+    if (!managerLifecycleStart(&gUpdateStatus.lifecycle)) {
+        gUpdateStatus.state = eUPDATE_STATE_FAULT;
+        return false;
+    }
+
+    gUpdateStatus.state = gUpdateStatus.isUpdateRequested ? eUPDATE_STATE_PENDING : eUPDATE_STATE_IDLE;
+    return true;
+}
+
+void updateStop(void)
+{
+    if (!updateInit()) {
         return;
     }
 
-    gUpdateStatus.processCount++;
+    if (!managerLifecycleStop(&gUpdateStatus.lifecycle)) {
+        gUpdateStatus.state = eUPDATE_STATE_FAULT;
+        return;
+    }
+
+    gUpdateStatus.isUpdateRequested = false;
+    gUpdateStatus.state = eUPDATE_STATE_STOPPED;
+}
+
+void updateProcess(void)
+{
+    if (!managerLifecycleNoteProcess(&gUpdateStatus.lifecycle)) {
+        if (gUpdateStatus.lifecycle.hasFault) {
+            gUpdateStatus.state = eUPDATE_STATE_FAULT;
+        }
+        return;
+    }
+
     if (gUpdateStatus.isUpdateRequested) {
         gUpdateStatus.state = eUPDATE_STATE_ACTIVE;
     } else {
@@ -49,7 +95,7 @@ void updateProcess(void)
 
 bool updateRequestStart(void)
 {
-    if (!gUpdateStatus.isReady) {
+    if (!gUpdateStatus.lifecycle.isReady || gUpdateStatus.lifecycle.hasFault) {
         return false;
     }
 
@@ -60,13 +106,44 @@ bool updateRequestStart(void)
 
 bool updateRequestCancel(void)
 {
-    if (!gUpdateStatus.isReady) {
+    if (!gUpdateStatus.lifecycle.isReady || gUpdateStatus.lifecycle.hasFault) {
         return false;
     }
 
     gUpdateStatus.isUpdateRequested = false;
     gUpdateStatus.state = eUPDATE_STATE_IDLE;
     return true;
+}
+
+void updateFault(eManagerLifecycleError error)
+{
+    managerLifecycleReportFault(&gUpdateStatus.lifecycle, error);
+    gUpdateStatus.state = eUPDATE_STATE_FAULT;
+}
+
+bool updateRecover(void)
+{
+    if (!updateInit()) {
+        return false;
+    }
+
+    if (!managerLifecycleRecover(&gUpdateStatus.lifecycle)) {
+        return false;
+    }
+
+    gUpdateStatus.isUpdateRequested = false;
+    gUpdateStatus.state = eUPDATE_STATE_IDLE;
+    return true;
+}
+
+eUpdateState updateGetState(void)
+{
+    return gUpdateStatus.state;
+}
+
+eManagerLifecycleError updateGetLastError(void)
+{
+    return gUpdateStatus.lifecycle.lastError;
 }
 
 const stUpdateStatus *updateGetStatus(void)

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "pca9535.h"
+#include "pca9535_assembly.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,12 +49,15 @@ extern "C" {
 #define LED_PRESS_BLUE                       PCA9535_PORT_LED_PRESS_BLUE
 
 typedef stPca9535IicInterface stPca9535PortIicInterface;
+typedef stPca9535AssembleCfg stPca9535PortAssembleCfg;
 
-void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
-eDrvStatus pca9535PortAssembleSoftIic(stPca9535Cfg *cfg, uint8_t iic);
-bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg);
-bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg);
-const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535Cfg *cfg);
+eDrvStatus pca9535PortGetDefAssembleCfg(ePca9535MapType device, stPca9535PortAssembleCfg *cfg);
+eDrvStatus pca9535PortGetAssembleCfg(ePca9535MapType device, stPca9535PortAssembleCfg *cfg);
+eDrvStatus pca9535PortSetAssembleCfg(ePca9535MapType device, const stPca9535PortAssembleCfg *cfg);
+eDrvStatus pca9535PortAssembleSoftIic(stPca9535PortAssembleCfg *cfg, uint8_t iic);
+bool pca9535PortIsValidAssembleCfg(const stPca9535PortAssembleCfg *cfg);
+bool pca9535PortHasValidIicIf(const stPca9535PortAssembleCfg *cfg);
+const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535PortAssembleCfg *cfg);
 eDrvStatus pca9535PortInit(void);
 bool pca9535PortIsReady(void);
 eDrvStatus pca9535PortLedOff(void);

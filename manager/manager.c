@@ -10,14 +10,120 @@
 #include "manager.h"
 
 #include "log.h"
-#include "power/power.h"
-#include "update/update.h"
 
 static bool gManagerIsInitialized = false;
+static stManagerHealthSummary gManagerHealthSummary = {
+    .level = eMANAGER_HEALTH_LEVEL_WARN,
+    .totalServiceCount = 3U,
+    .readyServiceCount = 0U,
+    .runningServiceCount = 0U,
+    .faultServiceCount = 0U,
+    .isManagerInitialized = false,
+};
+
+static void managerCopyLifecycleHealth(stManagerServiceHealthSummary *summary, const stManagerServiceLifecycle *lifecycle)
+{
+    if ((summary == NULL) || (lifecycle == NULL)) {
+        return;
+    }
+
+    summary->lifecycleState = lifecycle->state;
+    summary->lastError = lifecycle->lastError;
+    summary->initCount = lifecycle->initCount;
+    summary->startCount = lifecycle->startCount;
+    summary->stopCount = lifecycle->stopCount;
+    summary->processCount = lifecycle->processCount;
+    summary->recoverCount = lifecycle->recoverCount;
+    summary->isReady = lifecycle->isReady;
+    summary->isStarted = lifecycle->isStarted;
+    summary->hasFault = lifecycle->hasFault;
+}
+
+static void managerSummarizeServiceCounts(const stManagerServiceHealthSummary *summary, uint32_t *readyCount, uint32_t *runningCount, uint32_t *faultCount)
+{
+    if ((summary == NULL) || (readyCount == NULL) || (runningCount == NULL) || (faultCount == NULL)) {
+        return;
+    }
+
+    if (summary->isReady) {
+        (*readyCount)++;
+    }
+
+    if (summary->isStarted) {
+        (*runningCount)++;
+    }
+
+    if (summary->hasFault) {
+        (*faultCount)++;
+    }
+}
+
+static void managerRefreshHealthSummary(void)
+{
+    const stPowerStatus *lPowerStatus;
+    const stUpdateStatus *lUpdateStatus;
+    const stSelfCheckStatus *lSelfCheckStatus;
+
+    lPowerStatus = powerGetStatus();
+    lUpdateStatus = updateGetStatus();
+    lSelfCheckStatus = selfCheckGetStatus();
+
+    gManagerHealthSummary.level = eMANAGER_HEALTH_LEVEL_WARN;
+    gManagerHealthSummary.totalServiceCount = 3U;
+    gManagerHealthSummary.readyServiceCount = 0U;
+    gManagerHealthSummary.runningServiceCount = 0U;
+    gManagerHealthSummary.faultServiceCount = 0U;
+    gManagerHealthSummary.isManagerInitialized = gManagerIsInitialized;
+
+    if (lPowerStatus != NULL) {
+        managerCopyLifecycleHealth(&gManagerHealthSummary.power, &lPowerStatus->lifecycle);
+        gManagerHealthSummary.powerState = lPowerStatus->state;
+        gManagerHealthSummary.isLowPowerRequested = lPowerStatus->isLowPowerRequested;
+        managerSummarizeServiceCounts(&gManagerHealthSummary.power,
+                                      &gManagerHealthSummary.readyServiceCount,
+                                      &gManagerHealthSummary.runningServiceCount,
+                                      &gManagerHealthSummary.faultServiceCount);
+    }
+
+    if (lUpdateStatus != NULL) {
+        managerCopyLifecycleHealth(&gManagerHealthSummary.update, &lUpdateStatus->lifecycle);
+        gManagerHealthSummary.updateState = lUpdateStatus->state;
+        gManagerHealthSummary.isUpdateRequested = lUpdateStatus->isUpdateRequested;
+        managerSummarizeServiceCounts(&gManagerHealthSummary.update,
+                                      &gManagerHealthSummary.readyServiceCount,
+                                      &gManagerHealthSummary.runningServiceCount,
+                                      &gManagerHealthSummary.faultServiceCount);
+    }
+
+    if (lSelfCheckStatus != NULL) {
+        managerCopyLifecycleHealth(&gManagerHealthSummary.selfCheck, &lSelfCheckStatus->lifecycle);
+        gManagerHealthSummary.selfCheckSummary = lSelfCheckStatus->summary;
+        managerSummarizeServiceCounts(&gManagerHealthSummary.selfCheck,
+                                      &gManagerHealthSummary.readyServiceCount,
+                                      &gManagerHealthSummary.runningServiceCount,
+                                      &gManagerHealthSummary.faultServiceCount);
+    }
+
+    if ((gManagerHealthSummary.faultServiceCount > 0U) ||
+        (gManagerHealthSummary.selfCheckSummary.hasRun && !gManagerHealthSummary.selfCheckSummary.isPassed)) {
+        gManagerHealthSummary.level = eMANAGER_HEALTH_LEVEL_ERROR;
+        return;
+    }
+
+    if ((!gManagerHealthSummary.isManagerInitialized) ||
+        (gManagerHealthSummary.readyServiceCount < gManagerHealthSummary.totalServiceCount) ||
+        (!gManagerHealthSummary.selfCheckSummary.hasRun)) {
+        gManagerHealthSummary.level = eMANAGER_HEALTH_LEVEL_WARN;
+        return;
+    }
+
+    gManagerHealthSummary.level = eMANAGER_HEALTH_LEVEL_OK;
+}
 
 bool managerInit(void)
 {
     if (gManagerIsInitialized) {
+        managerRefreshHealthSummary();
         return true;
     }
 
@@ -26,7 +132,18 @@ bool managerInit(void)
         return false;
     }
 
+    if (!powerInit()) {
+        LOG_E(MANAGER_TAG, "Power manager init failed");
+        return false;
+    }
+
+    if (!updateInit()) {
+        LOG_E(MANAGER_TAG, "Update manager init failed");
+        return false;
+    }
+
     gManagerIsInitialized = true;
+    managerRefreshHealthSummary();
     LOG_I(MANAGER_TAG, "Manager initialized");
     return true;
 }
@@ -40,6 +157,11 @@ bool managerRunStartupSelfCheck(bool isConsoleReady, bool isAppCommReady)
         return false;
     }
 
+    if (!selfCheckStart()) {
+        LOG_E(MANAGER_TAG, "Self-check service start failed");
+        return false;
+    }
+
     selfCheckReset();
     selfCheckSetConsoleResult(isConsoleReady);
     selfCheckSetAppCommResult(isAppCommReady);
@@ -50,30 +172,93 @@ bool managerRunStartupSelfCheck(bool isConsoleReady, bool isAppCommReady)
     lUpdateReady = updateInit();
     selfCheckSetUpdateResult(lUpdateReady);
 
-    return selfCheckCommit();
+    lUpdateReady = selfCheckCommit();
+    managerRefreshHealthSummary();
+    return lUpdateReady;
+}
+
+bool managerPowerStart(void)
+{
+    bool lResult;
+
+    lResult = managerInit() && powerStart();
+    managerRefreshHealthSummary();
+    return lResult;
+}
+
+void managerPowerStop(void)
+{
+    if (!gManagerIsInitialized) {
+        return;
+    }
+
+    powerStop();
+    managerRefreshHealthSummary();
 }
 
 void managerPowerProcess(void)
 {
-    if (!powerInit()) {
+    if (!managerPowerStart()) {
         return;
     }
 
     powerProcess();
+    managerRefreshHealthSummary();
+}
+
+const stPowerStatus *managerGetPowerStatus(void)
+{
+    return powerGetStatus();
+}
+
+bool managerUpdateStart(void)
+{
+    bool lResult;
+
+    lResult = managerInit() && updateStart();
+    managerRefreshHealthSummary();
+    return lResult;
+}
+
+void managerUpdateStop(void)
+{
+    if (!gManagerIsInitialized) {
+        return;
+    }
+
+    updateStop();
+    managerRefreshHealthSummary();
 }
 
 void managerUpdateProcess(void)
 {
-    if (!updateInit()) {
+    if (!managerUpdateStart()) {
         return;
     }
 
     updateProcess();
+    managerRefreshHealthSummary();
+}
+
+const stUpdateStatus *managerGetUpdateStatus(void)
+{
+    return updateGetStatus();
+}
+
+const stManagerHealthSummary *managerGetHealthSummary(void)
+{
+    managerRefreshHealthSummary();
+    return &gManagerHealthSummary;
 }
 
 const stSelfCheckSummary *managerGetSelfCheckSummary(void)
 {
     return selfCheckGetSummary();
+}
+
+const stSelfCheckStatus *managerGetSelfCheckStatus(void)
+{
+    return selfCheckGetStatus();
 }
 
 /**************************End of file********************************/

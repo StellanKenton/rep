@@ -168,15 +168,17 @@ static const char *mpu6050DebugGetBindTypeText(eMpu6050TransportType type)
 static eConsoleCommandResult mpu6050DebugReplyDeviceList(uint32_t transport)
 {
     stMpu6050Cfg lCfg;
+    stMpu6050PortAssembleCfg lAssembleCfg;
     uint32_t lIndex;
 
     for (lIndex = 0U; lIndex < (uint32_t)MPU6050_DEV_MAX; lIndex++) {
-        mpu6050PortGetDefCfg((eMPU6050MapType)lIndex, &lCfg);
+        mpu6050GetDefCfg((eMPU6050MapType)lIndex, &lCfg);
+        mpu6050PortGetAssembleCfg((eMPU6050MapType)lIndex, &lAssembleCfg);
         if (consoleReply(transport,
             "%s bind=%s bus=%u addr=%02X ready=%s\n",
             mpu6050DebugGetDeviceName((eMPU6050MapType)lIndex),
-            mpu6050DebugGetBindTypeText(lCfg.transportType),
-            (unsigned int)lCfg.linkId,
+            mpu6050DebugGetBindTypeText(lAssembleCfg.transportType),
+            (unsigned int)lAssembleCfg.linkId,
             (unsigned int)lCfg.address,
             mpu6050IsReady((eMPU6050MapType)lIndex) ? "yes" : "no") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;

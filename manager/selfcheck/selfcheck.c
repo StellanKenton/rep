@@ -11,14 +11,29 @@
 
 #include "log.h"
 
-static stSelfCheckSummary gSelfCheckSummary = {
-    .state = eSELFCHECK_STATE_IDLE,
-    .console = eSELFCHECK_RESULT_UNKNOWN,
-    .appComm = eSELFCHECK_RESULT_UNKNOWN,
-    .power = eSELFCHECK_RESULT_UNKNOWN,
-    .update = eSELFCHECK_RESULT_UNKNOWN,
-    .hasRun = false,
-    .isPassed = false,
+static stSelfCheckStatus gSelfCheckStatus = {
+    .lifecycle = {
+        .classType = eMANAGER_SERVICE_CLASS_RECOVERABLE_SERVICE,
+        .state = eMANAGER_LIFECYCLE_STATE_UNINIT,
+        .lastError = eMANAGER_LIFECYCLE_ERROR_NONE,
+        .initCount = 0U,
+        .startCount = 0U,
+        .stopCount = 0U,
+        .processCount = 0U,
+        .recoverCount = 0U,
+        .isReady = false,
+        .isStarted = false,
+        .hasFault = false,
+    },
+    .summary = {
+        .state = eSELFCHECK_STATE_IDLE,
+        .console = eSELFCHECK_RESULT_UNKNOWN,
+        .appComm = eSELFCHECK_RESULT_UNKNOWN,
+        .power = eSELFCHECK_RESULT_UNKNOWN,
+        .update = eSELFCHECK_RESULT_UNKNOWN,
+        .hasRun = false,
+        .isPassed = false,
+    },
 };
 
 static eSelfCheckResult selfCheckGetResult(bool isPassed)
@@ -33,68 +48,137 @@ static bool selfCheckIsItemPassed(eSelfCheckResult result)
 
 bool selfCheckInit(void)
 {
+    if (!managerLifecycleInit(&gSelfCheckStatus.lifecycle)) {
+        gSelfCheckStatus.summary.state = eSELFCHECK_STATE_FAIL;
+        return false;
+    }
+
+    if (gSelfCheckStatus.summary.state == eSELFCHECK_STATE_IDLE) {
+        return true;
+    }
+
+    gSelfCheckStatus.summary.state = eSELFCHECK_STATE_IDLE;
+    return true;
+}
+
+bool selfCheckStart(void)
+{
+    if (!selfCheckInit()) {
+        return false;
+    }
+
+    if (!managerLifecycleStart(&gSelfCheckStatus.lifecycle)) {
+        gSelfCheckStatus.summary.state = eSELFCHECK_STATE_FAIL;
+        return false;
+    }
+
     selfCheckReset();
-    gSelfCheckSummary.state = eSELFCHECK_STATE_IDLE;
     return true;
 }
 
 void selfCheckReset(void)
 {
-    gSelfCheckSummary.state = eSELFCHECK_STATE_RUNNING;
-    gSelfCheckSummary.console = eSELFCHECK_RESULT_UNKNOWN;
-    gSelfCheckSummary.appComm = eSELFCHECK_RESULT_UNKNOWN;
-    gSelfCheckSummary.power = eSELFCHECK_RESULT_UNKNOWN;
-    gSelfCheckSummary.update = eSELFCHECK_RESULT_UNKNOWN;
-    gSelfCheckSummary.hasRun = false;
-    gSelfCheckSummary.isPassed = false;
+    gSelfCheckStatus.summary.state = eSELFCHECK_STATE_RUNNING;
+    gSelfCheckStatus.summary.console = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.appComm = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.power = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.update = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.hasRun = false;
+    gSelfCheckStatus.summary.isPassed = false;
 }
 
 void selfCheckSetConsoleResult(bool isPassed)
 {
-    gSelfCheckSummary.console = selfCheckGetResult(isPassed);
+    gSelfCheckStatus.summary.console = selfCheckGetResult(isPassed);
 }
 
 void selfCheckSetAppCommResult(bool isPassed)
 {
-    gSelfCheckSummary.appComm = selfCheckGetResult(isPassed);
+    gSelfCheckStatus.summary.appComm = selfCheckGetResult(isPassed);
 }
 
 void selfCheckSetPowerResult(bool isPassed)
 {
-    gSelfCheckSummary.power = selfCheckGetResult(isPassed);
+    gSelfCheckStatus.summary.power = selfCheckGetResult(isPassed);
 }
 
 void selfCheckSetUpdateResult(bool isPassed)
 {
-    gSelfCheckSummary.update = selfCheckGetResult(isPassed);
+    gSelfCheckStatus.summary.update = selfCheckGetResult(isPassed);
 }
 
 bool selfCheckCommit(void)
 {
     bool lPassed;
 
-    lPassed = selfCheckIsItemPassed(gSelfCheckSummary.console) &&
-              selfCheckIsItemPassed(gSelfCheckSummary.appComm) &&
-              selfCheckIsItemPassed(gSelfCheckSummary.power) &&
-              selfCheckIsItemPassed(gSelfCheckSummary.update);
+    if (!managerLifecycleNoteProcess(&gSelfCheckStatus.lifecycle)) {
+        gSelfCheckStatus.summary.state = eSELFCHECK_STATE_FAIL;
+        return false;
+    }
 
-    gSelfCheckSummary.hasRun = true;
-    gSelfCheckSummary.isPassed = lPassed;
-    gSelfCheckSummary.state = lPassed ? eSELFCHECK_STATE_PASS : eSELFCHECK_STATE_FAIL;
+    lPassed = selfCheckIsItemPassed(gSelfCheckStatus.summary.console) &&
+              selfCheckIsItemPassed(gSelfCheckStatus.summary.appComm) &&
+              selfCheckIsItemPassed(gSelfCheckStatus.summary.power) &&
+              selfCheckIsItemPassed(gSelfCheckStatus.summary.update);
+
+    gSelfCheckStatus.summary.hasRun = true;
+    gSelfCheckStatus.summary.isPassed = lPassed;
+    gSelfCheckStatus.summary.state = lPassed ? eSELFCHECK_STATE_PASS : eSELFCHECK_STATE_FAIL;
+
+    if (lPassed) {
+        (void)managerLifecycleStop(&gSelfCheckStatus.lifecycle);
+    } else {
+        managerLifecycleReportFault(&gSelfCheckStatus.lifecycle, eMANAGER_LIFECYCLE_ERROR_CHECK_FAILED);
+    }
 
     LOG_I(SELFCHECK_TAG,
           "Startup self-check result: console=%d appComm=%d power=%d update=%d overall=%d",
-          (int)gSelfCheckSummary.console,
-          (int)gSelfCheckSummary.appComm,
-          (int)gSelfCheckSummary.power,
-          (int)gSelfCheckSummary.update,
-          (int)gSelfCheckSummary.isPassed);
+          (int)gSelfCheckStatus.summary.console,
+          (int)gSelfCheckStatus.summary.appComm,
+          (int)gSelfCheckStatus.summary.power,
+          (int)gSelfCheckStatus.summary.update,
+          (int)gSelfCheckStatus.summary.isPassed);
     return lPassed;
+}
+
+bool selfCheckRecover(void)
+{
+    if (!selfCheckInit()) {
+        return false;
+    }
+
+    if (!managerLifecycleRecover(&gSelfCheckStatus.lifecycle)) {
+        return false;
+    }
+
+    gSelfCheckStatus.summary.state = eSELFCHECK_STATE_IDLE;
+    gSelfCheckStatus.summary.console = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.appComm = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.power = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.update = eSELFCHECK_RESULT_UNKNOWN;
+    gSelfCheckStatus.summary.hasRun = false;
+    gSelfCheckStatus.summary.isPassed = false;
+    return true;
+}
+
+eManagerLifecycleState selfCheckGetState(void)
+{
+    return gSelfCheckStatus.lifecycle.state;
+}
+
+eManagerLifecycleError selfCheckGetLastError(void)
+{
+    return gSelfCheckStatus.lifecycle.lastError;
 }
 
 const stSelfCheckSummary *selfCheckGetSummary(void)
 {
-    return &gSelfCheckSummary;
+    return &gSelfCheckStatus.summary;
+}
+
+const stSelfCheckStatus *selfCheckGetStatus(void)
+{
+    return &gSelfCheckStatus;
 }
 
 /**************************End of file********************************/

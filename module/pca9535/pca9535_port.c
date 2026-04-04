@@ -15,7 +15,10 @@
 static bool gPca9535PortCycleCntReady = false;
 static bool gPca9535PortReady = false;
 static uint16_t gPca9535PortShowMask = 0U;
+static bool gPca9535PortAssembleCfgDone[PCA9535_DEV_MAX] = {false};
 
+static bool pca9535PortIsValidDevMap(ePca9535MapType device);
+static stPca9535PortAssembleCfg *pca9535PortGetAssembleCfgCtx(ePca9535MapType device);
 static void pca9535PortEnableCycleCnt(void);
 static void pca9535PortEnableGpioClock(GPIO_TypeDef *gpioPort);
 static eDrvStatus pca9535PortApplyShowMask(uint16_t mask);
@@ -34,7 +37,6 @@ static const stPca9535PortIicInterface gPca9535PortSoftIicInterface = {
 
 static const stPca9535Cfg gPca9535PortDefCfg[PCA9535_DEV_MAX] = {
     [PCA9535_DEV0] = {
-        .linkId = DRVANLOGIIC_PCA,
         .address = PCA9535_IIC_ADDRESS_HLL,
         .outputValue = 0xFFFFU,
         .polarityMask = 0x0000U,
@@ -42,6 +44,14 @@ static const stPca9535Cfg gPca9535PortDefCfg[PCA9535_DEV_MAX] = {
         .resetBeforeInit = true,
     },
 };
+
+static const stPca9535PortAssembleCfg gPca9535PortDefAssembleCfg[PCA9535_DEV_MAX] = {
+    [PCA9535_DEV0] = {
+        .linkId = DRVANLOGIIC_PCA,
+    },
+};
+
+static stPca9535PortAssembleCfg gPca9535PortAssembleCfg[PCA9535_DEV_MAX];
 
 void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg)
 {
@@ -52,18 +62,42 @@ void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg)
     *cfg = gPca9535PortDefCfg[device];
 }
 
-const stPca9535IicInterface *pca9535GetPlatformIicInterface(const stPca9535Cfg *cfg)
+const stPca9535IicInterface *pca9535GetPlatformIicInterface(ePca9535MapType device)
 {
-    if (!pca9535PortIsValidCfg(cfg)) {
+    stPca9535PortAssembleCfg *lCfg;
+
+    lCfg = pca9535PortGetAssembleCfgCtx(device);
+    if ((lCfg == NULL) || !pca9535PortIsValidAssembleCfg(lCfg)) {
         return NULL;
     }
 
     return &gPca9535PortSoftIicInterface;
 }
 
-bool pca9535PlatformIsValidCfg(const stPca9535Cfg *cfg)
+bool pca9535PlatformIsValidAssemble(ePca9535MapType device)
 {
-    return pca9535PortIsValidCfg(cfg);
+    stPca9535PortAssembleCfg *lCfg;
+
+    lCfg = pca9535PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) && pca9535PortIsValidAssembleCfg(lCfg);
+}
+
+uint8_t pca9535PlatformGetLinkId(ePca9535MapType device)
+{
+    stPca9535PortAssembleCfg *lCfg;
+
+    lCfg = pca9535PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) ? lCfg->linkId : 0U;
+}
+
+uint32_t pca9535PlatformGetResetAssertDelayMs(void)
+{
+    return PCA9535_PORT_RESET_ASSERT_MS;
+}
+
+uint32_t pca9535PlatformGetResetReleaseDelayMs(void)
+{
+    return PCA9535_PORT_RESET_RELEASE_MS;
 }
 
 void pca9535PlatformResetInit(void)
@@ -125,12 +159,52 @@ void pca9535PlatformDelayMs(uint32_t delayMs)
     }
 }
 
-void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
+eDrvStatus pca9535PortGetDefAssembleCfg(ePca9535MapType device, stPca9535PortAssembleCfg *cfg)
 {
-    pca9535LoadPlatformDefaultCfg(device, cfg);
+    if ((cfg == NULL) || !pca9535PortIsValidDevMap(device)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = gPca9535PortDefAssembleCfg[device];
+    return DRV_STATUS_OK;
 }
 
-eDrvStatus pca9535PortAssembleSoftIic(stPca9535Cfg *cfg, uint8_t iic)
+eDrvStatus pca9535PortGetAssembleCfg(ePca9535MapType device, stPca9535PortAssembleCfg *cfg)
+{
+    stPca9535PortAssembleCfg *lCfg;
+
+    if (cfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = pca9535PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = *lCfg;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus pca9535PortSetAssembleCfg(ePca9535MapType device, const stPca9535PortAssembleCfg *cfg)
+{
+    stPca9535PortAssembleCfg *lCfg;
+
+    if ((cfg == NULL) || !pca9535PortIsValidAssembleCfg(cfg)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = pca9535PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *lCfg = *cfg;
+    gPca9535PortAssembleCfgDone[device] = true;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus pca9535PortAssembleSoftIic(stPca9535PortAssembleCfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -140,25 +214,48 @@ eDrvStatus pca9535PortAssembleSoftIic(stPca9535Cfg *cfg, uint8_t iic)
     return DRV_STATUS_OK;
 }
 
-bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg)
+bool pca9535PortIsValidAssembleCfg(const stPca9535PortAssembleCfg *cfg)
 {
     return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVANLOGIIC_MAX);
 }
 
-bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg)
+bool pca9535PortHasValidIicIf(const stPca9535PortAssembleCfg *cfg)
 {
     const stPca9535IicInterface *lInterface;
 
-    lInterface = pca9535GetPlatformIicInterface(cfg);
+    lInterface = pca9535PortGetIicIf(cfg);
     return (lInterface != NULL) &&
            (lInterface->init != NULL) &&
            (lInterface->writeReg != NULL) &&
            (lInterface->readReg != NULL);
 }
 
-const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535Cfg *cfg)
+const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535PortAssembleCfg *cfg)
 {
-    return (const stPca9535PortIicInterface *)pca9535GetPlatformIicInterface(cfg);
+    if (!pca9535PortIsValidAssembleCfg(cfg)) {
+        return NULL;
+    }
+
+    return &gPca9535PortSoftIicInterface;
+}
+
+static bool pca9535PortIsValidDevMap(ePca9535MapType device)
+{
+    return ((uint32_t)device < (uint32_t)PCA9535_DEV_MAX);
+}
+
+static stPca9535PortAssembleCfg *pca9535PortGetAssembleCfgCtx(ePca9535MapType device)
+{
+    if (!pca9535PortIsValidDevMap(device)) {
+        return NULL;
+    }
+
+    if (!gPca9535PortAssembleCfgDone[device]) {
+        gPca9535PortAssembleCfg[device] = gPca9535PortDefAssembleCfg[device];
+        gPca9535PortAssembleCfgDone[device] = true;
+    }
+
+    return &gPca9535PortAssembleCfg[device];
 }
 
 eDrvStatus pca9535PortInit(void)

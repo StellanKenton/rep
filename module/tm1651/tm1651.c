@@ -1,5 +1,7 @@
 #include "tm1651.h"
 
+#include "tm1651_assembly.h"
+
 #include <stddef.h>
 
 static stTm1651Device gTm1651Devices[TM1651_DEV_MAX];
@@ -13,26 +15,32 @@ __attribute__((weak)) void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, s
         return;
     }
 
-    cfg->linkId = 0U;
     cfg->brightness = 0U;
     cfg->digitCount = TM1651_DEFAULT_DIGIT_COUNT;
     cfg->isDisplayOn = false;
 }
 
-__attribute__((weak)) const stTm1651IicInterface *tm1651GetPlatformIicInterface(const stTm1651Cfg *cfg)
+__attribute__((weak)) const stTm1651IicInterface *tm1651GetPlatformIicInterface(eTm1651MapType device)
 {
-    (void)cfg;
+    (void)device;
     return NULL;
 }
 
-__attribute__((weak)) bool tm1651PlatformIsValidCfg(const stTm1651Cfg *cfg)
+__attribute__((weak)) bool tm1651PlatformIsValidAssemble(eTm1651MapType device)
 {
-    (void)cfg;
+    (void)device;
     return false;
+}
+
+__attribute__((weak)) uint8_t tm1651PlatformGetLinkId(eTm1651MapType device)
+{
+    (void)device;
+    return 0U;
 }
 
 static bool tm1651IsValidDevMap(eTm1651MapType device);
 static stTm1651Device *tm1651GetDevCtx(eTm1651MapType device);
+static eTm1651MapType tm1651GetDevMapByCtx(const stTm1651Device *device);
 static void tm1651LoadDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
 static bool tm1651IsValidCfg(const stTm1651Cfg *cfg);
 static bool tm1651IsReadyXfer(const stTm1651Device *device);
@@ -101,13 +109,13 @@ eTm1651Status tm1651Init(eTm1651MapType device)
     }
 
     if (tm1651GetIicIf(lDeviceCtx) == NULL) {
-        return tm1651IsValidCfg(&lDeviceCtx->cfg) ?
+        return tm1651PlatformIsValidAssemble(device) ?
                TM1651_STATUS_NOT_READY :
                TM1651_STATUS_INVALID_PARAM;
     }
 
     lIicIf = tm1651GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.linkId);
+    lStatus = lIicIf->init(tm1651PlatformGetLinkId(device));
     if (lStatus != TM1651_STATUS_OK) {
         return lStatus;
     }
@@ -264,6 +272,20 @@ static stTm1651Device *tm1651GetDevCtx(eTm1651MapType device)
     return &gTm1651Devices[device];
 }
 
+static eTm1651MapType tm1651GetDevMapByCtx(const stTm1651Device *device)
+{
+    ptrdiff_t lIndex;
+
+    if ((device == NULL) ||
+        (device < &gTm1651Devices[0]) ||
+        (device >= &gTm1651Devices[TM1651_DEV_MAX])) {
+        return TM1651_DEV_MAX;
+    }
+
+    lIndex = device - &gTm1651Devices[0];
+    return (eTm1651MapType)lIndex;
+}
+
 static void tm1651LoadDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
 {
     if (cfg == NULL) {
@@ -281,8 +303,7 @@ static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
 
     if ((cfg->brightness > 7U) ||
         (cfg->digitCount == 0U) ||
-        (cfg->digitCount > TM1651_DIGIT_MAX) ||
-        !tm1651PlatformIsValidCfg(cfg)) {
+        (cfg->digitCount > TM1651_DIGIT_MAX)) {
         return false;
     }
 
@@ -296,15 +317,22 @@ static bool tm1651IsReadyXfer(const stTm1651Device *device)
 
 static const stTm1651IicInterface *tm1651GetIicIf(const stTm1651Device *device)
 {
+    eTm1651MapType lDevice;
+
     if (device == NULL) {
         return NULL;
     }
 
-    if (!tm1651PlatformIsValidCfg(&device->cfg)) {
+    if (!tm1651IsValidCfg(&device->cfg)) {
         return NULL;
     }
 
-    return tm1651GetPlatformIicInterface(&device->cfg);
+    lDevice = tm1651GetDevMapByCtx(device);
+    if ((lDevice >= TM1651_DEV_MAX) || !tm1651PlatformIsValidAssemble(lDevice)) {
+        return NULL;
+    }
+
+    return tm1651GetPlatformIicInterface(lDevice);
 }
 
 static uint8_t tm1651EncodeSymbol(uint8_t symbol)
@@ -348,6 +376,7 @@ static void tm1651FillBlank(uint8_t *segData, uint8_t length)
 static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_t *buffer, uint8_t length)
 {
     const stTm1651IicInterface *lIicIf;
+    eTm1651MapType lDevice;
 
     if ((device == NULL) || (buffer == NULL) || (length == 0U)) {
         return TM1651_STATUS_INVALID_PARAM;
@@ -358,7 +387,12 @@ static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_
         return TM1651_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeFrame((uint8_t)device->cfg.linkId, buffer, length);
+    lDevice = tm1651GetDevMapByCtx(device);
+    if (lDevice >= TM1651_DEV_MAX) {
+        return TM1651_STATUS_INVALID_PARAM;
+    }
+
+    return lIicIf->writeFrame(tm1651PlatformGetLinkId(lDevice), buffer, length);
 }
 
 static eTm1651Status tm1651ApplyDisplayCtrl(const stTm1651Device *device)

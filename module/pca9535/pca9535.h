@@ -42,18 +42,7 @@ typedef enum ePca9535DevMap {
 #define PCA9535_STATUS_UNSUPPORTED           DRV_STATUS_UNSUPPORTED
 #define PCA9535_STATUS_ERROR                 DRV_STATUS_ERROR
 
-typedef eDrvStatus (*pca9535IicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*pca9535IicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
-typedef eDrvStatus (*pca9535IicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
-
-typedef struct stPca9535IicInterface {
-    pca9535IicInitFunc init;
-    pca9535IicWriteRegFunc writeReg;
-    pca9535IicReadRegFunc readReg;
-} stPca9535IicInterface;
-
 typedef struct stPca9535Cfg {
-    uint8_t linkId;
     uint8_t address;
     uint16_t outputValue;
     uint16_t polarityMask;

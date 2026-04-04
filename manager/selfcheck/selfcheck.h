@@ -12,6 +12,8 @@
 
 #include <stdbool.h>
 
+#include "../service_lifecycle.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,14 +43,24 @@ typedef struct stSelfCheckSummary {
     bool isPassed;
 } stSelfCheckSummary;
 
+typedef struct stSelfCheckStatus {
+    stManagerServiceLifecycle lifecycle;
+    stSelfCheckSummary summary;
+} stSelfCheckStatus;
+
 bool selfCheckInit(void);
+bool selfCheckStart(void);
 void selfCheckReset(void);
 void selfCheckSetConsoleResult(bool isPassed);
 void selfCheckSetAppCommResult(bool isPassed);
 void selfCheckSetPowerResult(bool isPassed);
 void selfCheckSetUpdateResult(bool isPassed);
 bool selfCheckCommit(void);
+bool selfCheckRecover(void);
+eManagerLifecycleState selfCheckGetState(void);
+eManagerLifecycleError selfCheckGetLastError(void);
 const stSelfCheckSummary *selfCheckGetSummary(void);
+const stSelfCheckStatus *selfCheckGetStatus(void);
 
 #ifdef __cplusplus
 }

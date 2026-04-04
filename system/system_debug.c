@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "console.h"
+#include "manager/manager.h"
 #include "rep_config.h"
 #include "system.h"
 
@@ -34,6 +35,14 @@ static void systemDebugTaskUsageSampler(void *parameter);
 
 static eConsoleCommandResult systemDebugConsoleVersionHandler(uint32_t transport, int argc, char *argv[]);
 static eConsoleCommandResult systemDebugConsoleStatusHandler(uint32_t transport, int argc, char *argv[]);
+static eConsoleCommandResult systemDebugConsoleHealthHandler(uint32_t transport, int argc, char *argv[]);
+static const char *systemDebugGetManagerHealthLevelString(eManagerHealthLevel level);
+static const char *systemDebugGetLifecycleStateString(eManagerLifecycleState state);
+static const char *systemDebugGetLifecycleErrorString(eManagerLifecycleError error);
+static const char *systemDebugGetPowerStateString(ePowerState state);
+static const char *systemDebugGetUpdateStateString(eUpdateState state);
+static const char *systemDebugGetSelfCheckStateString(eSelfCheckState state);
+static const char *systemDebugGetSelfCheckResultString(eSelfCheckResult result);
 #if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 static eConsoleCommandResult systemDebugConsoleTaskUsageHandler(uint32_t transport, int argc, char *argv[]);
 
@@ -52,6 +61,13 @@ static const stConsoleCommand gSystemStatusConsoleCommand = {
     .helpText = "sys - show system status",
     .ownerTag = "system",
     .handler = systemDebugConsoleStatusHandler,
+};
+
+static const stConsoleCommand gSystemHealthConsoleCommand = {
+    .commandName = "health",
+    .helpText = "health - show manager health summary",
+    .ownerTag = "system",
+    .handler = systemDebugConsoleHealthHandler,
 };
 
 #if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
@@ -293,6 +309,196 @@ static eConsoleCommandResult systemDebugConsoleStatusHandler(uint32_t transport,
     return CONSOLE_COMMAND_RESULT_OK;
 }
 
+static const char *systemDebugGetManagerHealthLevelString(eManagerHealthLevel level)
+{
+    switch (level) {
+        case eMANAGER_HEALTH_LEVEL_OK:
+            return "ok";
+        case eMANAGER_HEALTH_LEVEL_WARN:
+            return "warn";
+        case eMANAGER_HEALTH_LEVEL_ERROR:
+            return "error";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetLifecycleStateString(eManagerLifecycleState state)
+{
+    switch (state) {
+        case eMANAGER_LIFECYCLE_STATE_UNINIT:
+            return "uninit";
+        case eMANAGER_LIFECYCLE_STATE_READY:
+            return "ready";
+        case eMANAGER_LIFECYCLE_STATE_RUNNING:
+            return "running";
+        case eMANAGER_LIFECYCLE_STATE_STOPPED:
+            return "stopped";
+        case eMANAGER_LIFECYCLE_STATE_FAULT:
+            return "fault";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetLifecycleErrorString(eManagerLifecycleError error)
+{
+    switch (error) {
+        case eMANAGER_LIFECYCLE_ERROR_NONE:
+            return "none";
+        case eMANAGER_LIFECYCLE_ERROR_INVALID_PARAM:
+            return "invalid_param";
+        case eMANAGER_LIFECYCLE_ERROR_NOT_READY:
+            return "not_ready";
+        case eMANAGER_LIFECYCLE_ERROR_NOT_STARTED:
+            return "not_started";
+        case eMANAGER_LIFECYCLE_ERROR_FAULTED:
+            return "faulted";
+        case eMANAGER_LIFECYCLE_ERROR_CHECK_FAILED:
+            return "check_failed";
+        case eMANAGER_LIFECYCLE_ERROR_INTERNAL:
+            return "internal";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetPowerStateString(ePowerState state)
+{
+    switch (state) {
+        case ePOWER_STATE_UNINIT:
+            return "uninit";
+        case ePOWER_STATE_READY:
+            return "ready";
+        case ePOWER_STATE_ACTIVE:
+            return "active";
+        case ePOWER_STATE_LOW_POWER:
+            return "low_power";
+        case ePOWER_STATE_STOPPED:
+            return "stopped";
+        case ePOWER_STATE_FAULT:
+            return "fault";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetUpdateStateString(eUpdateState state)
+{
+    switch (state) {
+        case eUPDATE_STATE_UNINIT:
+            return "uninit";
+        case eUPDATE_STATE_IDLE:
+            return "idle";
+        case eUPDATE_STATE_PENDING:
+            return "pending";
+        case eUPDATE_STATE_ACTIVE:
+            return "active";
+        case eUPDATE_STATE_DONE:
+            return "done";
+        case eUPDATE_STATE_STOPPED:
+            return "stopped";
+        case eUPDATE_STATE_FAULT:
+            return "fault";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetSelfCheckStateString(eSelfCheckState state)
+{
+    switch (state) {
+        case eSELFCHECK_STATE_IDLE:
+            return "idle";
+        case eSELFCHECK_STATE_RUNNING:
+            return "running";
+        case eSELFCHECK_STATE_PASS:
+            return "pass";
+        case eSELFCHECK_STATE_FAIL:
+            return "fail";
+        default:
+            return "unknown";
+    }
+}
+
+static const char *systemDebugGetSelfCheckResultString(eSelfCheckResult result)
+{
+    switch (result) {
+        case eSELFCHECK_RESULT_UNKNOWN:
+            return "unknown";
+        case eSELFCHECK_RESULT_PASS:
+            return "pass";
+        case eSELFCHECK_RESULT_FAIL:
+            return "fail";
+        default:
+            return "unknown";
+    }
+}
+
+static eConsoleCommandResult systemDebugConsoleHealthHandler(uint32_t transport, int argc, char *argv[])
+{
+    const stManagerHealthSummary *lHealth;
+
+    (void)argv;
+
+    if (argc != 1) {
+        return CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT;
+    }
+
+    lHealth = managerGetHealthSummary();
+    if (lHealth == NULL) {
+        return CONSOLE_COMMAND_RESULT_ERROR;
+    }
+
+    if (consoleReply(transport,
+        "Manager: level=%s init=%d ready=%lu/%lu running=%lu fault=%lu\n"
+        "Power: state=%s lifecycle=%s err=%s low_power=%d stats=%lu/%lu/%lu/%lu/%lu\n"
+        "Update: state=%s lifecycle=%s err=%s requested=%d stats=%lu/%lu/%lu/%lu/%lu\n"
+        "SelfCheck: state=%s lifecycle=%s err=%s passed=%d items=%s/%s/%s/%s stats=%lu/%lu/%lu/%lu/%lu\n"
+        "OK",
+        systemDebugGetManagerHealthLevelString(lHealth->level),
+        (int)lHealth->isManagerInitialized,
+        (unsigned long)lHealth->readyServiceCount,
+        (unsigned long)lHealth->totalServiceCount,
+        (unsigned long)lHealth->runningServiceCount,
+        (unsigned long)lHealth->faultServiceCount,
+        systemDebugGetPowerStateString(lHealth->powerState),
+        systemDebugGetLifecycleStateString(lHealth->power.lifecycleState),
+        systemDebugGetLifecycleErrorString(lHealth->power.lastError),
+        (int)lHealth->isLowPowerRequested,
+        (unsigned long)lHealth->power.initCount,
+        (unsigned long)lHealth->power.startCount,
+        (unsigned long)lHealth->power.stopCount,
+        (unsigned long)lHealth->power.processCount,
+        (unsigned long)lHealth->power.recoverCount,
+        systemDebugGetUpdateStateString(lHealth->updateState),
+        systemDebugGetLifecycleStateString(lHealth->update.lifecycleState),
+        systemDebugGetLifecycleErrorString(lHealth->update.lastError),
+        (int)lHealth->isUpdateRequested,
+        (unsigned long)lHealth->update.initCount,
+        (unsigned long)lHealth->update.startCount,
+        (unsigned long)lHealth->update.stopCount,
+        (unsigned long)lHealth->update.processCount,
+        (unsigned long)lHealth->update.recoverCount,
+        systemDebugGetSelfCheckStateString(lHealth->selfCheckSummary.state),
+        systemDebugGetLifecycleStateString(lHealth->selfCheck.lifecycleState),
+        systemDebugGetLifecycleErrorString(lHealth->selfCheck.lastError),
+        (int)lHealth->selfCheckSummary.isPassed,
+        systemDebugGetSelfCheckResultString(lHealth->selfCheckSummary.console),
+        systemDebugGetSelfCheckResultString(lHealth->selfCheckSummary.appComm),
+        systemDebugGetSelfCheckResultString(lHealth->selfCheckSummary.power),
+        systemDebugGetSelfCheckResultString(lHealth->selfCheckSummary.update),
+        (unsigned long)lHealth->selfCheck.initCount,
+        (unsigned long)lHealth->selfCheck.startCount,
+        (unsigned long)lHealth->selfCheck.stopCount,
+        (unsigned long)lHealth->selfCheck.processCount,
+        (unsigned long)lHealth->selfCheck.recoverCount) <= 0) {
+        return CONSOLE_COMMAND_RESULT_ERROR;
+    }
+
+    return CONSOLE_COMMAND_RESULT_OK;
+}
+
 bool systemDebugConsoleRegister(void)
 {
 #if (SYSTEM_DEBUG_CONSOLE_SUPPORT == 1) && (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
@@ -301,6 +507,10 @@ bool systemDebugConsoleRegister(void)
     }
 
     if (!consoleRegisterCommand(&gSystemStatusConsoleCommand)) {
+        return false;
+    }
+
+    if (!consoleRegisterCommand(&gSystemHealthConsoleCommand)) {
         return false;
     }
 
@@ -315,6 +525,10 @@ bool systemDebugConsoleRegister(void)
     }
 
     if (!consoleRegisterCommand(&gSystemStatusConsoleCommand)) {
+        return false;
+    }
+
+    if (!consoleRegisterCommand(&gSystemHealthConsoleCommand)) {
         return false;
     }
 

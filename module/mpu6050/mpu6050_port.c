@@ -27,6 +27,10 @@
 #endif
 
 static bool gMpu6050PortCycleCntReady = false;
+static bool gMpu6050PortAssembleCfgDone[MPU6050_DEV_MAX] = {false};
+
+static bool mpu6050PortIsValidDevMap(eMPU6050MapType device);
+static stMpu6050PortAssembleCfg *mpu6050PortGetAssembleCfgCtx(eMPU6050MapType device);
 
 static void mpu6050PortEnableCycleCnt(void);
 static eDrvStatus mpu6050PortSoftIicInitAdpt(uint8_t bus);
@@ -52,8 +56,6 @@ static const stMpu6050PortIicInterface gMpu6050PortIicInterfaces[MPU6050_TRANSPO
 
 static const stMpu6050Cfg gMpu6050PortDefCfg[MPU6050_DEV_MAX] = {
     [MPU6050_DEV0] = {
-        .transportType = MPU6050_TRANSPORT_TYPE_HARDWARE,
-        .linkId = (uint8_t)DRVIIC_BUS0,
         .address = MPU6050_IIC_ADDRESS_LOW,
         .sampleRateDiv = 0U,
         .dlpfCfg = 3U,
@@ -61,8 +63,6 @@ static const stMpu6050Cfg gMpu6050PortDefCfg[MPU6050_DEV_MAX] = {
         .gyroRange = MPU6050_GYRO_RANGE_2000DPS,
     },
     [MPU6050_DEV1] = {
-        .transportType = MPU6050_TRANSPORT_TYPE_HARDWARE,
-        .linkId = (uint8_t)DRVIIC_BUS0,
         .address = MPU6050_IIC_ADDRESS_HIGH,
         .sampleRateDiv = 0U,
         .dlpfCfg = 3U,
@@ -70,6 +70,19 @@ static const stMpu6050Cfg gMpu6050PortDefCfg[MPU6050_DEV_MAX] = {
         .gyroRange = MPU6050_GYRO_RANGE_2000DPS,
     },
 };
+
+static const stMpu6050PortAssembleCfg gMpu6050PortDefAssembleCfg[MPU6050_DEV_MAX] = {
+    [MPU6050_DEV0] = {
+        .transportType = MPU6050_TRANSPORT_TYPE_HARDWARE,
+        .linkId = (uint8_t)DRVIIC_BUS0,
+    },
+    [MPU6050_DEV1] = {
+        .transportType = MPU6050_TRANSPORT_TYPE_HARDWARE,
+        .linkId = (uint8_t)DRVIIC_BUS0,
+    },
+};
+
+static stMpu6050PortAssembleCfg gMpu6050PortAssembleCfg[MPU6050_DEV_MAX];
 
 void mpu6050LoadPlatformDefaultCfg(eMPU6050MapType device, stMpu6050Cfg *cfg)
 {
@@ -80,18 +93,42 @@ void mpu6050LoadPlatformDefaultCfg(eMPU6050MapType device, stMpu6050Cfg *cfg)
     *cfg = gMpu6050PortDefCfg[device];
 }
 
-const stMpu6050IicInterface *mpu6050GetPlatformIicInterface(const stMpu6050Cfg *cfg)
+const stMpu6050IicInterface *mpu6050GetPlatformIicInterface(eMPU6050MapType device)
 {
-    if (!mpu6050PortIsValidCfg(cfg)) {
+    stMpu6050PortAssembleCfg *lCfg;
+
+    lCfg = mpu6050PortGetAssembleCfgCtx(device);
+    if ((lCfg == NULL) || !mpu6050PortIsValidAssembleCfg(lCfg)) {
         return NULL;
     }
 
-    return mpu6050PortGetBindIicIf(cfg->transportType);
+    return mpu6050PortGetBindIicIf(lCfg->transportType);
 }
 
-bool mpu6050PlatformIsValidCfg(const stMpu6050Cfg *cfg)
+bool mpu6050PlatformIsValidAssemble(eMPU6050MapType device)
 {
-    return mpu6050PortIsValidCfg(cfg);
+    stMpu6050PortAssembleCfg *lCfg;
+
+    lCfg = mpu6050PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) && mpu6050PortIsValidAssembleCfg(lCfg);
+}
+
+uint8_t mpu6050PlatformGetLinkId(eMPU6050MapType device)
+{
+    stMpu6050PortAssembleCfg *lCfg;
+
+    lCfg = mpu6050PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) ? lCfg->linkId : 0U;
+}
+
+uint32_t mpu6050PlatformGetResetDelayMs(void)
+{
+    return MPU6050_PORT_RESET_DELAY_MS;
+}
+
+uint32_t mpu6050PlatformGetWakeDelayMs(void)
+{
+    return MPU6050_PORT_WAKE_DELAY_MS;
 }
 
 void mpu6050PlatformDelayMs(uint32_t delayMs)
@@ -140,13 +177,52 @@ void mpu6050PlatformDelayMs(uint32_t delayMs)
 #endif
 }
 
-
-void mpu6050PortGetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg)
+eDrvStatus mpu6050PortGetDefAssembleCfg(eMPU6050MapType device, stMpu6050PortAssembleCfg *cfg)
 {
-    mpu6050LoadPlatformDefaultCfg(device, cfg);
+    if ((cfg == NULL) || !mpu6050PortIsValidDevMap(device)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = gMpu6050PortDefAssembleCfg[device];
+    return DRV_STATUS_OK;
 }
 
-eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050Cfg *cfg, uint8_t iic)
+eDrvStatus mpu6050PortGetAssembleCfg(eMPU6050MapType device, stMpu6050PortAssembleCfg *cfg)
+{
+    stMpu6050PortAssembleCfg *lCfg;
+
+    if (cfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = mpu6050PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = *lCfg;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus mpu6050PortSetAssembleCfg(eMPU6050MapType device, const stMpu6050PortAssembleCfg *cfg)
+{
+    stMpu6050PortAssembleCfg *lCfg;
+
+    if ((cfg == NULL) || !mpu6050PortIsValidAssembleCfg(cfg)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = mpu6050PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *lCfg = *cfg;
+    gMpu6050PortAssembleCfgDone[device] = true;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050PortAssembleCfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -157,7 +233,7 @@ eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050Cfg *cfg, uint8_t iic)
     return DRV_STATUS_OK;
 }
 
-eDrvStatus mpu6050PortAssembleHardIic(stMpu6050Cfg *cfg, uint8_t iic)
+eDrvStatus mpu6050PortAssembleHardIic(stMpu6050PortAssembleCfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -173,7 +249,7 @@ void mpu6050PortDelayMs(uint32_t delayMs)
     mpu6050PlatformDelayMs(delayMs);
 }
 
-bool mpu6050PortIsValidCfg(const stMpu6050Cfg *cfg)
+bool mpu6050PortIsValidAssembleCfg(const stMpu6050PortAssembleCfg *cfg)
 {
     if (cfg == NULL) {
         return false;
@@ -189,20 +265,43 @@ bool mpu6050PortIsValidCfg(const stMpu6050Cfg *cfg)
     }
 }
 
-bool mpu6050PortHasValidIicIf(const stMpu6050Cfg *cfg)
+bool mpu6050PortHasValidIicIf(const stMpu6050PortAssembleCfg *cfg)
 {
     const stMpu6050IicInterface *lInterface;
 
-    lInterface = mpu6050GetPlatformIicInterface(cfg);
+    lInterface = mpu6050PortGetIicIf(cfg);
     return (lInterface != NULL) &&
            (lInterface->init != NULL) &&
            (lInterface->writeReg != NULL) &&
            (lInterface->readReg != NULL);
 }
 
-const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050Cfg *cfg)
+const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050PortAssembleCfg *cfg)
 {
-    return (const stMpu6050PortIicInterface *)mpu6050GetPlatformIicInterface(cfg);
+    if (!mpu6050PortIsValidAssembleCfg(cfg)) {
+        return NULL;
+    }
+
+    return mpu6050PortGetBindIicIf(cfg->transportType);
+}
+
+static bool mpu6050PortIsValidDevMap(eMPU6050MapType device)
+{
+    return ((uint32_t)device < (uint32_t)MPU6050_DEV_MAX);
+}
+
+static stMpu6050PortAssembleCfg *mpu6050PortGetAssembleCfgCtx(eMPU6050MapType device)
+{
+    if (!mpu6050PortIsValidDevMap(device)) {
+        return NULL;
+    }
+
+    if (!gMpu6050PortAssembleCfgDone[device]) {
+        gMpu6050PortAssembleCfg[device] = gMpu6050PortDefAssembleCfg[device];
+        gMpu6050PortAssembleCfgDone[device] = true;
+    }
+
+    return &gMpu6050PortAssembleCfg[device];
 }
 
 static const stMpu6050PortIicInterface *mpu6050PortGetBindIicIf(eMpu6050TransportType type)

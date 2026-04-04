@@ -56,16 +56,7 @@ typedef eDrvStatus eTm1651Status;
 #define TM1651_STATUS_UNSUPPORTED            DRV_STATUS_UNSUPPORTED
 #define TM1651_STATUS_ERROR                  DRV_STATUS_ERROR
 
-typedef eDrvStatus (*tm1651IicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*tm1651WriteFrameFunc)(uint8_t bus, const uint8_t *buffer, uint8_t length);
-
-typedef struct stTm1651IicInterface {
-    tm1651IicInitFunc init;
-    tm1651WriteFrameFunc writeFrame;
-} stTm1651IicInterface;
-
 typedef struct stTm1651Cfg {
-    uint8_t linkId;
     uint8_t brightness;
     uint8_t digitCount;
     bool isDisplayOn;

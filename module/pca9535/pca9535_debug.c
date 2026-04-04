@@ -171,14 +171,16 @@ static const char *pca9535DebugGetStatusText(eDrvStatus status)
 static eConsoleCommandResult pca9535DebugReplyDeviceList(uint32_t transport)
 {
     stPca9535Cfg lCfg;
+    stPca9535PortAssembleCfg lAssembleCfg;
     uint32_t lIndex;
 
     for (lIndex = 0U; lIndex < (uint32_t)PCA9535_DEV_MAX; lIndex++) {
-        pca9535PortGetDefCfg((ePca9535MapType)lIndex, &lCfg);
+        pca9535GetDefCfg((ePca9535MapType)lIndex, &lCfg);
+        pca9535PortGetAssembleCfg((ePca9535MapType)lIndex, &lAssembleCfg);
         if (consoleReply(transport,
             "%s bus=%u addr=%02X ready=%s\n",
             pca9535DebugGetDeviceName((ePca9535MapType)lIndex),
-            (unsigned int)lCfg.linkId,
+            (unsigned int)lAssembleCfg.linkId,
             (unsigned int)lCfg.address,
             pca9535IsReady((ePca9535MapType)lIndex) ? "yes" : "no") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;

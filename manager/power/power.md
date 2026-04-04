@@ -9,17 +9,27 @@
 ## 2. 当前职责
 
 - 提供 `powerInit()` 初始化入口。
+- 提供 `powerStart()` / `powerStop()` 运行态切换入口。
 - 提供 `powerProcess()` 周期处理入口，供 `PowerTask` 调度。
 - 提供 `powerRequestLowPower()` 低功耗请求接口。
-- 提供 `powerGetStatus()` 状态快照接口。
+- 提供 `powerGetState()`、`powerGetLastError()`、`powerGetStatus()` 状态快照接口。
 
-## 3. 当前边界
+## 3. 生命周期约定
+
+- 类型：active service
+- cfg ownership：无外部 cfg，运行态完全由 `power` 自持
+- ready 时机：`powerInit()` 成功后进入 ready
+- repeat init：允许，且保持幂等
+- process 前提：必须先 `powerStart()`
+- stop 语义：退出运行态，保留实例状态与低功耗请求位
+
+## 4. 当前边界
 
 - 不直接依赖 BSP。
 - 不直接依赖任何 `_port.h`。
 - 不在 `system` 中保存电源服务运行态。
 
-## 4. 后续演进方向
+## 5. 后续演进方向
 
 后续可以逐步补入：
 

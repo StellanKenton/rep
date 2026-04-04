@@ -13,8 +13,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
 #include "mpu6050.h"
+#include "mpu6050_assembly.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -32,13 +32,16 @@ extern "C" {
 #endif
 
 typedef stMpu6050IicInterface stMpu6050PortIicInterface;
+typedef stMpu6050AssembleCfg stMpu6050PortAssembleCfg;
 
-void mpu6050PortGetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
-eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050Cfg *cfg, uint8_t iic);
-eDrvStatus mpu6050PortAssembleHardIic(stMpu6050Cfg *cfg, uint8_t iic);
-bool mpu6050PortIsValidCfg(const stMpu6050Cfg *cfg);
-bool mpu6050PortHasValidIicIf(const stMpu6050Cfg *cfg);
-const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050Cfg *cfg);
+eDrvStatus mpu6050PortGetDefAssembleCfg(eMPU6050MapType device, stMpu6050PortAssembleCfg *cfg);
+eDrvStatus mpu6050PortGetAssembleCfg(eMPU6050MapType device, stMpu6050PortAssembleCfg *cfg);
+eDrvStatus mpu6050PortSetAssembleCfg(eMPU6050MapType device, const stMpu6050PortAssembleCfg *cfg);
+eDrvStatus mpu6050PortAssembleSoftIic(stMpu6050PortAssembleCfg *cfg, uint8_t iic);
+eDrvStatus mpu6050PortAssembleHardIic(stMpu6050PortAssembleCfg *cfg, uint8_t iic);
+bool mpu6050PortIsValidAssembleCfg(const stMpu6050PortAssembleCfg *cfg);
+bool mpu6050PortHasValidIicIf(const stMpu6050PortAssembleCfg *cfg);
+const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050PortAssembleCfg *cfg);
 void mpu6050PortDelayMs(uint32_t delayMs);
 
 #ifdef __cplusplus

@@ -73,26 +73,7 @@ typedef enum eMpu6050GyroRange {
     MPU6050_GYRO_RANGE_MAX,
 } eMpu6050GyroRange;
 
-typedef enum eMpu6050TransportType {
-    MPU6050_TRANSPORT_TYPE_NONE = 0,
-    MPU6050_TRANSPORT_TYPE_SOFTWARE,
-    MPU6050_TRANSPORT_TYPE_HARDWARE,
-    MPU6050_TRANSPORT_TYPE_MAX,
-} eMpu6050TransportType;
-
-typedef eDrvStatus (*mpu6050IicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*mpu6050IicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
-typedef eDrvStatus (*mpu6050IicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
-
-typedef struct stMpu6050IicInterface {
-    mpu6050IicInitFunc init;
-    mpu6050IicWriteRegFunc writeReg;
-    mpu6050IicReadRegFunc readReg;
-} stMpu6050IicInterface;
-
 typedef struct stMpu6050Cfg {
-    eMpu6050TransportType transportType;
-    uint8_t linkId;
     uint8_t address;
     uint8_t sampleRateDiv;
     uint8_t dlpfCfg;

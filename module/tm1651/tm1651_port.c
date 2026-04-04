@@ -16,7 +16,10 @@ typedef struct stTm1651PortWriteCtx {
 } stTm1651PortWriteCtx;
 
 static bool gTm1651PortReady = false;
+static bool gTm1651PortAssembleCfgDone[TM1651_DEV_MAX] = {false};
 
+static bool tm1651PortIsValidDevMap(eTm1651MapType device);
+static stTm1651PortAssembleCfg *tm1651PortGetAssembleCfgCtx(eTm1651MapType device);
 static eDrvStatus tm1651PortSoftIicInitAdpt(uint8_t bus);
 static eDrvStatus tm1651PortSoftIicWriteFrameAdpt(uint8_t bus, const uint8_t *buffer, uint8_t length);
 static eDrvStatus tm1651PortSoftIicWriteFrameAction(uint8_t iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
@@ -34,12 +37,19 @@ static const stTm1651PortIicInterface gTm1651PortSoftIicInterface = {
 
 static const stTm1651Cfg gTm1651PortDefCfg[TM1651_DEV_MAX] = {
     [TM1651_DEV0] = {
-        .linkId = DRVANLOGIIC_TM,
         .brightness = 7U,
         .digitCount = TM1651_DEFAULT_DIGIT_COUNT,
         .isDisplayOn = true,
     },
 };
+
+static const stTm1651PortAssembleCfg gTm1651PortDefAssembleCfg[TM1651_DEV_MAX] = {
+    [TM1651_DEV0] = {
+        .linkId = DRVANLOGIIC_TM,
+    },
+};
+
+static stTm1651PortAssembleCfg gTm1651PortAssembleCfg[TM1651_DEV_MAX];
 
 void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg)
 {
@@ -50,26 +60,80 @@ void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg)
     *cfg = gTm1651PortDefCfg[device];
 }
 
-const stTm1651IicInterface *tm1651GetPlatformIicInterface(const stTm1651Cfg *cfg)
+const stTm1651IicInterface *tm1651GetPlatformIicInterface(eTm1651MapType device)
 {
-    if (!tm1651PortIsValidCfg(cfg)) {
+    stTm1651PortAssembleCfg *lCfg;
+
+    lCfg = tm1651PortGetAssembleCfgCtx(device);
+    if ((lCfg == NULL) || !tm1651PortIsValidAssembleCfg(lCfg)) {
         return NULL;
     }
 
     return &gTm1651PortSoftIicInterface;
 }
 
-bool tm1651PlatformIsValidCfg(const stTm1651Cfg *cfg)
+bool tm1651PlatformIsValidAssemble(eTm1651MapType device)
 {
-    return tm1651PortIsValidCfg(cfg);
+    stTm1651PortAssembleCfg *lCfg;
+
+    lCfg = tm1651PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) && tm1651PortIsValidAssembleCfg(lCfg);
 }
 
-void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
+uint8_t tm1651PlatformGetLinkId(eTm1651MapType device)
 {
-    tm1651LoadPlatformDefaultCfg(device, cfg);
+    stTm1651PortAssembleCfg *lCfg;
+
+    lCfg = tm1651PortGetAssembleCfgCtx(device);
+    return (lCfg != NULL) ? lCfg->linkId : 0U;
 }
 
-eDrvStatus tm1651PortAssembleSoftIic(stTm1651Cfg *cfg, uint8_t iic)
+eDrvStatus tm1651PortGetDefAssembleCfg(eTm1651MapType device, stTm1651PortAssembleCfg *cfg)
+{
+    if ((cfg == NULL) || !tm1651PortIsValidDevMap(device)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = gTm1651PortDefAssembleCfg[device];
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus tm1651PortGetAssembleCfg(eTm1651MapType device, stTm1651PortAssembleCfg *cfg)
+{
+    stTm1651PortAssembleCfg *lCfg;
+
+    if (cfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = tm1651PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *cfg = *lCfg;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus tm1651PortSetAssembleCfg(eTm1651MapType device, const stTm1651PortAssembleCfg *cfg)
+{
+    stTm1651PortAssembleCfg *lCfg;
+
+    if ((cfg == NULL) || !tm1651PortIsValidAssembleCfg(cfg)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    lCfg = tm1651PortGetAssembleCfgCtx(device);
+    if (lCfg == NULL) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    *lCfg = *cfg;
+    gTm1651PortAssembleCfgDone[device] = true;
+    return DRV_STATUS_OK;
+}
+
+eDrvStatus tm1651PortAssembleSoftIic(stTm1651PortAssembleCfg *cfg, uint8_t iic)
 {
     if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -79,24 +143,47 @@ eDrvStatus tm1651PortAssembleSoftIic(stTm1651Cfg *cfg, uint8_t iic)
     return DRV_STATUS_OK;
 }
 
-bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg)
+bool tm1651PortIsValidAssembleCfg(const stTm1651PortAssembleCfg *cfg)
 {
     return (cfg != NULL) && ((uint8_t)cfg->linkId < (uint8_t)DRVANLOGIIC_MAX);
 }
 
-bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg)
+bool tm1651PortHasValidIicIf(const stTm1651PortAssembleCfg *cfg)
 {
     const stTm1651IicInterface *lInterface;
 
-    lInterface = tm1651GetPlatformIicInterface(cfg);
+    lInterface = tm1651PortGetIicIf(cfg);
     return (lInterface != NULL) &&
            (lInterface->init != NULL) &&
            (lInterface->writeFrame != NULL);
 }
 
-const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651Cfg *cfg)
+const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651PortAssembleCfg *cfg)
 {
-    return (const stTm1651PortIicInterface *)tm1651GetPlatformIicInterface(cfg);
+    if (!tm1651PortIsValidAssembleCfg(cfg)) {
+        return NULL;
+    }
+
+    return &gTm1651PortSoftIicInterface;
+}
+
+static bool tm1651PortIsValidDevMap(eTm1651MapType device)
+{
+    return ((uint32_t)device < (uint32_t)TM1651_DEV_MAX);
+}
+
+static stTm1651PortAssembleCfg *tm1651PortGetAssembleCfgCtx(eTm1651MapType device)
+{
+    if (!tm1651PortIsValidDevMap(device)) {
+        return NULL;
+    }
+
+    if (!gTm1651PortAssembleCfgDone[device]) {
+        gTm1651PortAssembleCfg[device] = gTm1651PortDefAssembleCfg[device];
+        gTm1651PortAssembleCfgDone[device] = true;
+    }
+
+    return &gTm1651PortAssembleCfg[device];
 }
 
 eDrvStatus tm1651PortInit(void)

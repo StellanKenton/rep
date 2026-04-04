@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "tm1651.h"
+#include "tm1651_assembly.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,12 +22,15 @@ extern "C" {
 #endif
 
 typedef stTm1651IicInterface stTm1651PortIicInterface;
+typedef stTm1651AssembleCfg stTm1651PortAssembleCfg;
 
-void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
-eDrvStatus tm1651PortAssembleSoftIic(stTm1651Cfg *cfg, uint8_t iic);
-bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg);
-bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg);
-const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651Cfg *cfg);
+eDrvStatus tm1651PortGetDefAssembleCfg(eTm1651MapType device, stTm1651PortAssembleCfg *cfg);
+eDrvStatus tm1651PortGetAssembleCfg(eTm1651MapType device, stTm1651PortAssembleCfg *cfg);
+eDrvStatus tm1651PortSetAssembleCfg(eTm1651MapType device, const stTm1651PortAssembleCfg *cfg);
+eDrvStatus tm1651PortAssembleSoftIic(stTm1651PortAssembleCfg *cfg, uint8_t iic);
+bool tm1651PortIsValidAssembleCfg(const stTm1651PortAssembleCfg *cfg);
+bool tm1651PortHasValidIicIf(const stTm1651PortAssembleCfg *cfg);
+const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651PortAssembleCfg *cfg);
 eDrvStatus tm1651PortInit(void);
 bool tm1651PortIsReady(void);
 eDrvStatus tm1651PortSetBrightness(uint8_t brightness);
