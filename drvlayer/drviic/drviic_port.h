@@ -11,6 +11,8 @@
 #ifndef DRVIIC_PORT_H
 #define DRVIIC_PORT_H
 
+#include "drviic_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,11 +27,6 @@ extern "C" {
 
 #define DRVIIC_LOCK_WAIT_MS                   5U
 #define DRVIIC_DEFAULT_TIMEOUT_MS             100U
-
-typedef enum eDrvIicPortMap {
-    DRVIIC_BUS0 = 0,
-    DRVIIC_MAX,
-} eDrvIicPortMap;
 
 #ifdef __cplusplus
 }

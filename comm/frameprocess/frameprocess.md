@@ -16,7 +16,7 @@
 M1 阶段边界：
 
 - `frameprocess.h` 只依赖 `frameparser` 的 core 公共类型，禁止 include `framepareser_port.h`。
-- `frameprocess.c` 只处理协议流程和 core 初始化接口，默认协议、UART、tick、缓冲区等项目绑定统一下沉到 `frameprocess_port.*`。
+- `frameprocess.c` 只处理协议流程和 core 初始化接口，默认协议、UART、tick、缓冲区等项目绑定通过 `frmProcLoadPlatformDefaultCfg()`、`frmProcPlatformInit()`、`frmProcEnsurePlatformFmt()`、`frmProcBuildPlatformPkt()` 等通用平台钩子下沉到 `frameprocess_port.*`。
 - 所有板级默认协议、链路资源和项目绑定都只放在 `frameprocess_port.*`，不要在 `frameprocess` 公共头文件里暴露端口层细节。
 
 按这个边界划分后：
@@ -76,7 +76,7 @@ frameprocess/
 
 负责实现：
 
-- 默认配置加载
+- 默认配置加载入口和平台钩子调用点
 - 多实例上下文数组管理
 - 接收流程 `frmProcProcessRx()`
 - 发送流程 `frmProcProcessTx()`
@@ -121,11 +121,16 @@ frameprocess/
 
 负责实现：
 
-- 复用 `frmPsrPortGetDefProtoCfg()` 加载默认协议配置
+- 复用 `frmPsrLoadPlatformDefaultProtoCfg()` 加载默认协议配置
 - 绑定调试 UART 接收缓冲
 - 提供 UART 发送适配函数
 - 提供 tick 获取函数
 - 提供各实例的 `urgent` 和 `normal` 发送缓冲区
+
+当前落地约束：
+
+- `frameprocess.c` 不再 include `frameprocess_port.h`，也不再直接调用 `frmProcPort*`。
+- `frameprocess_port.c` 负责实现 `frmProcLoadPlatformDefaultCfg()`、`frmProcPlatformInit()`、`frmProcPlatformPollRx()`、`frmProcEnsurePlatformFmt()`、`frmProcBuildPlatformPkt()`，旧的 `frmProcPort*` 仅保留为兼容包装。
 
 ## 4. 多实例模型
 

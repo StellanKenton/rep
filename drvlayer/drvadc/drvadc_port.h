@@ -12,6 +12,8 @@
 
 #include <stdint.h>
 
+#include "drvadc_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,13 +35,6 @@ typedef struct stDrvAdcData {
     uint16_t raw;
     uint16_t mv;
 } stDrvAdcData;
-
-typedef enum eDrvAdcPortMap {
-    DRVADC_CH0 = 0,
-    DRVADC_CH1 = 1,
-    DRVADC_CH2 = 2,
-    DRVADC_MAX,
-} eDrvAdcPortMap;
 
 #ifdef __cplusplus
 }

@@ -2,17 +2,35 @@
 
 #include <stddef.h>
 
-#include "tm1651_port.h"
-
 static stTm1651Device gTm1651Devices[TM1651_DEV_MAX];
 static bool gTm1651DefCfgDone[TM1651_DEV_MAX] = {false};
+
+__attribute__((weak)) void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg)
+{
+    (void)device;
+
+    if (cfg == NULL) {
+        return;
+    }
+
+    cfg->iic = (eDrvAnlogIicPortMap)0;
+    cfg->brightness = 0U;
+    cfg->digitCount = TM1651_DEFAULT_DIGIT_COUNT;
+    cfg->isDisplayOn = false;
+}
+
+__attribute__((weak)) const stTm1651IicInterface *tm1651GetPlatformIicInterface(const stTm1651Cfg *cfg)
+{
+    (void)cfg;
+    return NULL;
+}
 
 static bool tm1651IsValidDevMap(eTm1651MapType device);
 static stTm1651Device *tm1651GetDevCtx(eTm1651MapType device);
 static void tm1651LoadDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
 static bool tm1651IsValidCfg(const stTm1651Cfg *cfg);
 static bool tm1651IsReadyXfer(const stTm1651Device *device);
-static const stTm1651PortIicInterface *tm1651GetIicIf(const stTm1651Device *device);
+static const stTm1651IicInterface *tm1651GetIicIf(const stTm1651Device *device);
 static uint8_t tm1651EncodeSymbol(uint8_t symbol);
 static void tm1651FillBlank(uint8_t *segData, uint8_t length);
 static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_t *buffer, uint8_t length);
@@ -73,7 +91,7 @@ eTm1651Status tm1651SetCfg(eTm1651MapType device, const stTm1651Cfg *cfg)
 
 eTm1651Status tm1651Init(eTm1651MapType device)
 {
-    const stTm1651PortIicInterface *lIicIf;
+    const stTm1651IicInterface *lIicIf;
     stTm1651Device *lDeviceCtx;
     eTm1651Status lStatus;
 
@@ -82,14 +100,14 @@ eTm1651Status tm1651Init(eTm1651MapType device)
         return TM1651_STATUS_INVALID_PARAM;
     }
 
-    if (!tm1651PortHasValidIicIf(&lDeviceCtx->cfg.iicBind)) {
-        return tm1651PortIsValidBind(&lDeviceCtx->cfg.iicBind) ?
+    if (tm1651GetIicIf(lDeviceCtx) == NULL) {
+        return tm1651IsValidCfg(&lDeviceCtx->cfg) ?
                TM1651_STATUS_NOT_READY :
                TM1651_STATUS_INVALID_PARAM;
     }
 
     lIicIf = tm1651GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(lDeviceCtx->cfg.iicBind.bus);
+    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.iic);
     if (lStatus != TM1651_STATUS_OK) {
         return lStatus;
     }
@@ -252,7 +270,7 @@ static void tm1651LoadDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
         return;
     }
 
-    tm1651PortGetDefCfg(device, cfg);
+    tm1651LoadPlatformDefaultCfg(device, cfg);
 }
 
 static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
@@ -264,7 +282,7 @@ static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
     if ((cfg->brightness > 7U) ||
         (cfg->digitCount == 0U) ||
         (cfg->digitCount > TM1651_DIGIT_MAX) ||
-        !tm1651PortIsValidBind(&cfg->iicBind)) {
+        (((uint8_t)cfg->iic >= (uint8_t)DRVANLOGIIC_MAX))) {
         return false;
     }
 
@@ -273,16 +291,20 @@ static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
 
 static bool tm1651IsReadyXfer(const stTm1651Device *device)
 {
-    return (device != NULL) && device->isReady && tm1651PortHasValidIicIf(&device->cfg.iicBind);
+    return (device != NULL) && device->isReady && (tm1651GetIicIf(device) != NULL);
 }
 
-static const stTm1651PortIicInterface *tm1651GetIicIf(const stTm1651Device *device)
+static const stTm1651IicInterface *tm1651GetIicIf(const stTm1651Device *device)
 {
     if (device == NULL) {
         return NULL;
     }
 
-    return tm1651PortGetIicIf(&device->cfg.iicBind);
+    if ((uint8_t)device->cfg.iic >= (uint8_t)DRVANLOGIIC_MAX) {
+        return NULL;
+    }
+
+    return tm1651GetPlatformIicInterface(&device->cfg);
 }
 
 static uint8_t tm1651EncodeSymbol(uint8_t symbol)
@@ -325,7 +347,7 @@ static void tm1651FillBlank(uint8_t *segData, uint8_t length)
 
 static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_t *buffer, uint8_t length)
 {
-    const stTm1651PortIicInterface *lIicIf;
+    const stTm1651IicInterface *lIicIf;
 
     if ((device == NULL) || (buffer == NULL) || (length == 0U)) {
         return TM1651_STATUS_INVALID_PARAM;
@@ -336,7 +358,7 @@ static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_
         return TM1651_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeFrame(device->cfg.iicBind.bus, buffer, length);
+    return lIicIf->writeFrame((uint8_t)device->cfg.iic, buffer, length);
 }
 
 static eTm1651Status tm1651ApplyDisplayCtrl(const stTm1651Device *device)

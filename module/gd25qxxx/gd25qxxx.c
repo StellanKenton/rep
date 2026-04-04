@@ -6,12 +6,32 @@
 ***********************************************************************************/
 #include "gd25qxxx.h"
 
-#include "gd25qxxx_port.h"
-
 #include <stddef.h>
 
 static stGd25qxxxDevice gGd25qxxxDevices[GD25QXXX_DEV_MAX];
 static bool gGd25qxxxDefCfgDone[GD25QXXX_DEV_MAX] = {false};
+
+__attribute__((weak)) void gd25qxxxLoadPlatformDefaultCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
+{
+    (void)device;
+
+    if (cfg == NULL) {
+        return;
+    }
+
+    cfg->spi = (eDrvSpiPortMap)0;
+}
+
+__attribute__((weak)) const stGd25qxxxSpiInterface *gd25qxxxGetPlatformSpiInterface(const stGd25qxxxCfg *cfg)
+{
+    (void)cfg;
+    return NULL;
+}
+
+__attribute__((weak)) void gd25qxxxPlatformDelayMs(uint32_t delayMs)
+{
+    (void)delayMs;
+}
 
 static bool gd25qxxxIsValidDevMap(eGd25qxxxMapType device);
 static stGd25qxxxDevice *gd25qxxxGetDevCtx(eGd25qxxxMapType device);
@@ -23,7 +43,7 @@ static bool gd25qxxxIsValidCapacityId(uint8_t capacityId);
 static bool gd25qxxxIsRangeValid(const stGd25qxxxDevice *device, uint32_t address, uint32_t length);
 static void gd25qxxxFillInfo(stGd25qxxxInfo *info);
 static eGd25qxxxStatus gd25qxxxMapPortStatus(eDrvStatus status);
-static const stGd25qxxxPortSpiInterface *gd25qxxxGetSpiIf(const stGd25qxxxDevice *device);
+static const stGd25qxxxSpiInterface *gd25qxxxGetSpiIf(const stGd25qxxxDevice *device);
 static eGd25qxxxStatus gd25qxxxTransferInt(const stGd25qxxxDevice *device, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength);
 static void gd25qxxxBuildAddrCmd(uint8_t *header, uint8_t command, uint32_t address, uint8_t addressWidth);
 static eGd25qxxxStatus gd25qxxxReadStatus1Int(const stGd25qxxxDevice *device, uint8_t *statusValue);
@@ -72,7 +92,7 @@ eGd25qxxxStatus gd25qxxxSetCfg(eGd25qxxxMapType device, const stGd25qxxxCfg *cfg
 {
     stGd25qxxxDevice *lDeviceCtx;
 
-    if ((cfg == NULL) || !gd25qxxxPortIsValidBind(&cfg->spiBind)) {
+    if ((cfg == NULL) || ((uint8_t)cfg->spi >= (uint8_t)DRVSPI_MAX)) {
         return GD25QXXX_STATUS_INVALID_PARAM;
     }
 
@@ -90,7 +110,7 @@ eGd25qxxxStatus gd25qxxxSetCfg(eGd25qxxxMapType device, const stGd25qxxxCfg *cfg
 
 eGd25qxxxStatus gd25qxxxInit(eGd25qxxxMapType device)
 {
-    const stGd25qxxxPortSpiInterface *lSpiIf;
+    const stGd25qxxxSpiInterface *lSpiIf;
     stGd25qxxxDevice *lDeviceCtx;
     eGd25qxxxStatus lStatus;
 
@@ -99,14 +119,14 @@ eGd25qxxxStatus gd25qxxxInit(eGd25qxxxMapType device)
         return GD25QXXX_STATUS_INVALID_PARAM;
     }
 
-    if (!gd25qxxxPortHasValidSpiIf(&lDeviceCtx->cfg.spiBind)) {
-        return gd25qxxxPortIsValidBind(&lDeviceCtx->cfg.spiBind) ?
+    if (gd25qxxxGetSpiIf(lDeviceCtx) == NULL) {
+        return (((uint8_t)lDeviceCtx->cfg.spi) < (uint8_t)DRVSPI_MAX) ?
                GD25QXXX_STATUS_NOT_READY :
                GD25QXXX_STATUS_INVALID_PARAM;
     }
 
-    lSpiIf = gd25qxxxPortGetSpiIf(&lDeviceCtx->cfg.spiBind);
-    lStatus = gd25qxxxMapPortStatus(lSpiIf->init(lDeviceCtx->cfg.spiBind.bus));
+    lSpiIf = gd25qxxxGetSpiIf(lDeviceCtx);
+    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
     if (lStatus != GD25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -154,7 +174,7 @@ const stGd25qxxxInfo *gd25qxxxGetInfo(eGd25qxxxMapType device)
 
 eGd25qxxxStatus gd25qxxxReadJedecId(eGd25qxxxMapType device, uint8_t *manufacturerId, uint8_t *memoryType, uint8_t *capacityId)
 {
-    const stGd25qxxxPortSpiInterface *lSpiIf;
+    const stGd25qxxxSpiInterface *lSpiIf;
     stGd25qxxxDevice *lDeviceCtx;
     eGd25qxxxStatus lStatus;
 
@@ -167,12 +187,12 @@ eGd25qxxxStatus gd25qxxxReadJedecId(eGd25qxxxMapType device, uint8_t *manufactur
         return GD25QXXX_STATUS_INVALID_PARAM;
     }
 
-    lSpiIf = gd25qxxxPortGetSpiIf(&lDeviceCtx->cfg.spiBind);
+    lSpiIf = gd25qxxxGetSpiIf(lDeviceCtx);
     if (lSpiIf == NULL) {
         return GD25QXXX_STATUS_NOT_READY;
     }
 
-    lStatus = gd25qxxxMapPortStatus(lSpiIf->init(lDeviceCtx->cfg.spiBind.bus));
+    lStatus = gd25qxxxMapPortStatus(lSpiIf->init((uint8_t)lDeviceCtx->cfg.spi));
     if (lStatus != GD25QXXX_STATUS_OK) {
         return lStatus;
     }
@@ -432,7 +452,7 @@ static void gd25qxxxLoadDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
         return;
     }
 
-    gd25qxxxPortGetDefCfg(device, cfg);
+    gd25qxxxLoadPlatformDefaultCfg(device, cfg);
 }
 
 static void gd25qxxxClrInfo(stGd25qxxxInfo *info)
@@ -453,7 +473,7 @@ static void gd25qxxxClrInfo(stGd25qxxxInfo *info)
 
 static bool gd25qxxxIsValidDev(const stGd25qxxxDevice *device)
 {
-    return (device != NULL) && gd25qxxxPortIsValidBind(&device->cfg.spiBind);
+    return (device != NULL) && (((uint8_t)device->cfg.spi) < (uint8_t)DRVSPI_MAX);
 }
 
 static bool gd25qxxxIsReadyXfer(const stGd25qxxxDevice *device)
@@ -514,25 +534,25 @@ static eGd25qxxxStatus gd25qxxxMapPortStatus(eDrvStatus status)
     }
 }
 
-static const stGd25qxxxPortSpiInterface *gd25qxxxGetSpiIf(const stGd25qxxxDevice *device)
+static const stGd25qxxxSpiInterface *gd25qxxxGetSpiIf(const stGd25qxxxDevice *device)
 {
     if (!gd25qxxxIsValidDev(device)) {
         return NULL;
     }
 
-    return gd25qxxxPortGetSpiIf(&device->cfg.spiBind);
+    return gd25qxxxGetPlatformSpiInterface(&device->cfg);
 }
 
 static eGd25qxxxStatus gd25qxxxTransferInt(const stGd25qxxxDevice *device, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength)
 {
-    const stGd25qxxxPortSpiInterface *lSpiIf;
+    const stGd25qxxxSpiInterface *lSpiIf;
 
     lSpiIf = gd25qxxxGetSpiIf(device);
     if ((lSpiIf == NULL) || (lSpiIf->transfer == NULL)) {
         return GD25QXXX_STATUS_NOT_READY;
     }
 
-    return gd25qxxxMapPortStatus(lSpiIf->transfer(device->cfg.spiBind.bus,
+    return gd25qxxxMapPortStatus(lSpiIf->transfer((uint8_t)device->cfg.spi,
                                                    writeBuffer,
                                                    writeLength,
                                                    secondWriteBuffer,
@@ -644,7 +664,7 @@ static eGd25qxxxStatus gd25qxxxWaitReadyInt(const stGd25qxxxDevice *device, uint
             return GD25QXXX_STATUS_TIMEOUT;
         }
 
-        gd25qxxxPortDelayMs(GD25QXXX_BUSY_POLL_DELAY_MS);
+        gd25qxxxPlatformDelayMs(GD25QXXX_BUSY_POLL_DELAY_MS);
         lElapsedMs += GD25QXXX_BUSY_POLL_DELAY_MS;
     }
 }

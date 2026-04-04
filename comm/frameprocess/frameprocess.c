@@ -8,9 +8,51 @@
 
 #include "Rep/console/log.h"
 #include "frameprocess_pack.h"
-#include "frameprocess_port.h"
 
 #define FRM_PROC_TAG  "FrmProc"
+
+extern eFrmProcStatus frmProcLoadPlatformDefaultCfg(eFrmProcMapType proc, stFrmProcCfg *cfg);
+extern eFrmProcStatus frmProcPlatformInit(eFrmProcMapType proc);
+extern void frmProcPlatformPollRx(eFrmProcMapType proc);
+extern eFrmProcStatus frmProcEnsurePlatformFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg);
+extern eFrmProcStatus frmProcBuildPlatformPkt(eFrmProcMapType proc, uint8_t cmd, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen);
+
+__attribute__((weak)) eFrmProcStatus frmProcLoadPlatformDefaultCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
+{
+    (void)proc;
+    (void)cfg;
+    return FRM_PROC_STATUS_UNSUPPORTED;
+}
+
+__attribute__((weak)) eFrmProcStatus frmProcPlatformInit(eFrmProcMapType proc)
+{
+    (void)proc;
+    return FRM_PROC_STATUS_UNSUPPORTED;
+}
+
+__attribute__((weak)) void frmProcPlatformPollRx(eFrmProcMapType proc)
+{
+    (void)proc;
+}
+
+__attribute__((weak)) eFrmProcStatus frmProcEnsurePlatformFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg)
+{
+    (void)proc;
+    (void)cfg;
+    return FRM_PROC_STATUS_UNSUPPORTED;
+}
+
+__attribute__((weak)) eFrmProcStatus frmProcBuildPlatformPkt(eFrmProcMapType proc, uint8_t cmd, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen)
+{
+    (void)proc;
+    (void)cmd;
+    (void)payloadBuf;
+    (void)payloadLen;
+    (void)pktBuf;
+    (void)pktBufSize;
+    (void)pktLen;
+    return FRM_PROC_STATUS_UNSUPPORTED;
+}
 
 static stFrmProcCfg gFrmProcCfg[FRAME_PROC_MAX];
 static bool gFrmProcHasCfg[FRAME_PROC_MAX];
@@ -54,7 +96,7 @@ static eFrmProcStatus frmProcEnsureCfgLoaded(eFrmProcMapType proc)
     }
 
     if (!gFrmProcHasCfg[proc]) {
-        if (frmProcPortGetDefCfg(proc, &gFrmProcCfg[proc]) != FRM_PROC_STATUS_OK) {
+        if (frmProcLoadPlatformDefaultCfg(proc, &gFrmProcCfg[proc]) != FRM_PROC_STATUS_OK) {
             return FRM_PROC_STATUS_ERROR;
         }
         gFrmProcHasCfg[proc] = true;
@@ -192,7 +234,7 @@ static eFrmProcStatus frmProcBuildAndQueueTx(stFrmProcCtx *ctx, eFrmProcMapType 
         return FRM_PROC_STATUS_BUILD_ERROR;
     }
 
-    if (frmProcPortBuildPkt(proc, cmd, ctx->txPayloadBuf, lPayloadLen, ctx->txFrameBuf, sizeof(ctx->txFrameBuf), &lFrameLen) != FRM_PROC_STATUS_OK) {
+    if (frmProcBuildPlatformPkt(proc, cmd, ctx->txPayloadBuf, lPayloadLen, ctx->txFrameBuf, sizeof(ctx->txFrameBuf), &lFrameLen) != FRM_PROC_STATUS_OK) {
         return FRM_PROC_STATUS_BUILD_ERROR;
     }
 
@@ -215,7 +257,7 @@ static void frmProcProcessRx(eFrmProcMapType proc, stFrmProcCtx *ctx)
     uint8_t lCmd;
     uint32_t lCount;
 
-    frmProcPortPollRx(proc);
+    frmProcPlatformPollRx(proc);
     for (lCount = 0U; lCount < FRM_PROC_MAX_RX_PER_CALL; lCount++) {
         lPsrStatus = frmPsrProc(&ctx->parser, &lPacket);
         if (lPsrStatus != FRM_PSR_OK) {
@@ -383,7 +425,7 @@ static void frmProcProcessTx(eFrmProcMapType proc, stFrmProcCtx *ctx)
 
 eFrmProcStatus frmProcGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
 {
-    return frmProcPortGetDefCfg(proc, cfg);
+    return frmProcLoadPlatformDefaultCfg(proc, cfg);
 }
 
 eFrmProcStatus frmProcSetCfg(eFrmProcMapType proc, const stFrmProcCfg *cfg)
@@ -417,10 +459,10 @@ eFrmProcStatus frmProcInit(eFrmProcMapType proc)
     (void)memset(lCtx, 0, sizeof(*lCtx));
     lCtx->cfg = gFrmProcCfg[proc];
 
-    if (frmProcPortInit(proc) != FRM_PROC_STATUS_OK) {
+    if (frmProcPlatformInit(proc) != FRM_PROC_STATUS_OK) {
         return FRM_PROC_STATUS_ERROR;
     }
-    if (frmProcPortEnsureFmt(proc, &lCtx->cfg) != FRM_PROC_STATUS_OK) {
+    if (frmProcEnsurePlatformFmt(proc, &lCtx->cfg) != FRM_PROC_STATUS_OK) {
         return FRM_PROC_STATUS_BUILD_ERROR;
     }
     if (ringBufferInit(&lCtx->urgentTxRb, lCtx->cfg.urgentQueue.storage, lCtx->cfg.urgentQueue.capacity) != RINGBUFFER_OK) {

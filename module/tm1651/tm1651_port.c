@@ -19,7 +19,6 @@ static bool gTm1651PortReady = false;
 static eDrvStatus tm1651PortSoftIicInitAdpt(uint8_t bus);
 static eDrvStatus tm1651PortSoftIicWriteFrameAdpt(uint8_t bus, const uint8_t *buffer, uint8_t length);
 static eDrvStatus tm1651PortSoftIicWriteFrameAction(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, void *context);
-static const stTm1651PortIicInterface *tm1651PortGetBindIicIf(eTm1651PortIicType type);
 static eDrvStatus tm1651PortEnsureReady(void);
 static uint16_t tm1651PortGetHalfPeriodUs(const stDrvAnlogIicBspInterface *bspInterface);
 static void tm1651PortDelayHalfPeriod(const stDrvAnlogIicBspInterface *bspInterface);
@@ -27,38 +26,21 @@ static void tm1651PortSendStart(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterfa
 static void tm1651PortSendStop(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface);
 static eDrvStatus tm1651PortWriteByteLsbFirst(eDrvAnlogIicPortMap iic, stDrvAnlogIicBspInterface *bspInterface, uint8_t value);
 
-static const stTm1651PortIicInterface gTm1651PortIicInterfaces[TM1651_PORT_IIC_TYPE_MAX] = {
-    [TM1651_PORT_IIC_TYPE_SOFTWARE] = {
-        .init = tm1651PortSoftIicInitAdpt,
-        .writeFrame = tm1651PortSoftIicWriteFrameAdpt,
-    },
+static const stTm1651PortIicInterface gTm1651PortSoftIicInterface = {
+    .init = tm1651PortSoftIicInitAdpt,
+    .writeFrame = tm1651PortSoftIicWriteFrameAdpt,
 };
 
 static const stTm1651Cfg gTm1651PortDefCfg[TM1651_DEV_MAX] = {
     [TM1651_DEV0] = {
-        .iicBind = {
-            .type = TM1651_PORT_IIC_TYPE_SOFTWARE,
-            .bus = (uint8_t)DRVANLOGIIC_TM,
-            .iicIf = &gTm1651PortIicInterfaces[TM1651_PORT_IIC_TYPE_SOFTWARE],
-        },
+        .iic = DRVANLOGIIC_TM,
         .brightness = 7U,
         .digitCount = TM1651_DEFAULT_DIGIT_COUNT,
         .isDisplayOn = true,
     },
 };
 
-void tm1651PortGetDefBind(stTm1651PortIicBinding *bind)
-{
-    if (bind == NULL) {
-        return;
-    }
-
-    bind->type = TM1651_PORT_IIC_TYPE_SOFTWARE;
-    bind->bus = (uint8_t)DRVANLOGIIC_TM;
-    bind->iicIf = tm1651PortGetBindIicIf(bind->type);
-}
-
-void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
+void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg)
 {
     if ((cfg == NULL) || ((uint32_t)device >= (uint32_t)TM1651_DEV_MAX)) {
         return;
@@ -67,50 +49,48 @@ void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
     *cfg = gTm1651PortDefCfg[device];
 }
 
-eDrvStatus tm1651PortSetSoftIic(stTm1651PortIicBinding *bind, eDrvAnlogIicPortMap iic)
+const stTm1651IicInterface *tm1651GetPlatformIicInterface(const stTm1651Cfg *cfg)
 {
-    if ((bind == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
+    if (!tm1651PortIsValidCfg(cfg)) {
+        return NULL;
+    }
+
+    return &gTm1651PortSoftIicInterface;
+}
+
+void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
+{
+    tm1651LoadPlatformDefaultCfg(device, cfg);
+}
+
+eDrvStatus tm1651PortSetSoftIic(stTm1651Cfg *cfg, eDrvAnlogIicPortMap iic)
+{
+    if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    bind->type = TM1651_PORT_IIC_TYPE_SOFTWARE;
-    bind->bus = (uint8_t)iic;
-    bind->iicIf = tm1651PortGetBindIicIf(bind->type);
+    cfg->iic = iic;
     return DRV_STATUS_OK;
 }
 
-bool tm1651PortIsValidBind(const stTm1651PortIicBinding *bind)
+bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg)
 {
-    if (bind == NULL) {
-        return false;
-    }
-
-    switch (bind->type) {
-        case TM1651_PORT_IIC_TYPE_SOFTWARE:
-            return (bind->bus < (uint8_t)DRVANLOGIIC_MAX) &&
-                   (bind->iicIf == &gTm1651PortIicInterfaces[TM1651_PORT_IIC_TYPE_SOFTWARE]);
-        default:
-            return false;
-    }
+    return (cfg != NULL) && ((uint8_t)cfg->iic < (uint8_t)DRVANLOGIIC_MAX);
 }
 
-bool tm1651PortHasValidIicIf(const stTm1651PortIicBinding *bind)
+bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg)
 {
-    const stTm1651PortIicInterface *lInterface;
+    const stTm1651IicInterface *lInterface;
 
-    lInterface = tm1651PortGetIicIf(bind);
+    lInterface = tm1651GetPlatformIicInterface(cfg);
     return (lInterface != NULL) &&
            (lInterface->init != NULL) &&
            (lInterface->writeFrame != NULL);
 }
 
-const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651PortIicBinding *bind)
+const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651Cfg *cfg)
 {
-    if (!tm1651PortIsValidBind(bind)) {
-        return NULL;
-    }
-
-    return bind->iicIf;
+    return (const stTm1651PortIicInterface *)tm1651GetPlatformIicInterface(cfg);
 }
 
 eDrvStatus tm1651PortInit(void)
@@ -218,19 +198,6 @@ eDrvStatus tm1651PortShowError(uint16_t value)
     }
 
     return tm1651ShowError(TM1651_DEV0, value);
-}
-
-static const stTm1651PortIicInterface *tm1651PortGetBindIicIf(eTm1651PortIicType type)
-{
-    if ((uint32_t)type >= (uint32_t)TM1651_PORT_IIC_TYPE_MAX) {
-        return NULL;
-    }
-
-    if (type == TM1651_PORT_IIC_TYPE_NONE) {
-        return NULL;
-    }
-
-    return &gTm1651PortIicInterfaces[type];
 }
 
 static eDrvStatus tm1651PortEnsureReady(void)

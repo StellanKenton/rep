@@ -11,8 +11,17 @@
 
 #include <string.h>
 
-#include "ringbuffer_port.h"
+__attribute__((weak)) void ringBufferEnterCritical(void)
+{
+}
 
+__attribute__((weak)) void ringBufferExitCritical(void)
+{
+}
+
+__attribute__((weak)) void ringBufferMemoryBarrier(void)
+{
+}
 /**
 * @brief : Check whether the requested capacity is a power of two.
 * @param : capacity Ring buffer capacity in bytes.
@@ -196,12 +205,12 @@ eRingBufferStatus ringBufferReset(stRingBuffer *rb)
         return RINGBUFFER_ERROR_PARAM;
     }
 
-    RINGBUFFER_PORT_ENTER_CRITICAL();
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferEnterCritical();
+    ringBufferMemoryBarrier();
     rb->head = 0U;
     rb->tail = 0U;
-    RINGBUFFER_PORT_MEMORY_BARRIER();
-    RINGBUFFER_PORT_EXIT_CRITICAL();
+    ringBufferMemoryBarrier();
+    ringBufferExitCritical();
 
     return RINGBUFFER_OK;
 }
@@ -301,7 +310,7 @@ eRingBufferStatus ringBufferPushByte(stRingBuffer *rb, uint8_t data)
 
     lWriteIndex = ringBufferToPhysicalIndex(rb, rb->head);
     rb->buffer[lWriteIndex] = data;
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     rb->head++;
 
     return RINGBUFFER_OK;
@@ -330,10 +339,10 @@ eRingBufferStatus ringBufferPopByte(stRingBuffer *rb, uint8_t *data)
         return RINGBUFFER_ERROR_EMPTY;
     }
 
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     lReadIndex = ringBufferToPhysicalIndex(rb, rb->tail);
     *data = rb->buffer[lReadIndex];
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     rb->tail++;
 
     return RINGBUFFER_OK;
@@ -362,7 +371,7 @@ eRingBufferStatus ringBufferPeekByte(const stRingBuffer *rb, uint8_t *data)
         return RINGBUFFER_ERROR_EMPTY;
     }
 
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     lReadIndex = ringBufferToPhysicalIndex(rb, rb->tail);
     *data = rb->buffer[lReadIndex];
 
@@ -396,7 +405,7 @@ uint32_t ringBufferWrite(stRingBuffer *rb, const uint8_t *src, uint32_t length)
     }
 
     ringBufferCopyIn(rb, rb->head, src, lWriteLength);
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     rb->head += lWriteLength;
 
     return lWriteLength;
@@ -428,9 +437,9 @@ uint32_t ringBufferRead(stRingBuffer *rb, uint8_t *dst, uint32_t length)
         return 0U;
     }
 
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     ringBufferCopyOut(rb, rb->tail, dst, lReadLength);
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     rb->tail += lReadLength;
 
     return lReadLength;
@@ -462,7 +471,7 @@ uint32_t ringBufferPeek(const stRingBuffer *rb, uint8_t *dst, uint32_t length)
         return 0U;
     }
 
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     ringBufferCopyOut(rb, rb->tail, dst, lReadLength);
 
     return lReadLength;
@@ -493,7 +502,7 @@ uint32_t ringBufferDiscard(stRingBuffer *rb, uint32_t length)
         return 0U;
     }
 
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     rb->tail += lDiscardLength;
 
     return lDiscardLength;
@@ -533,7 +542,7 @@ uint32_t ringBufferWriteOverwrite(stRingBuffer *rb, const uint8_t *src, uint32_t
         lWriteLength = rb->capacity;
     }
 
-    RINGBUFFER_PORT_ENTER_CRITICAL();
+    ringBufferEnterCritical();
 
     lFree = rb->capacity - ringBufferGetUsedInternal(rb);
     lOverflowLength = (lWriteLength > lFree) ? (lWriteLength - lFree) : 0U;
@@ -543,15 +552,15 @@ uint32_t ringBufferWriteOverwrite(stRingBuffer *rb, const uint8_t *src, uint32_t
     }
 
     ringBufferCopyIn(rb, rb->head, src, lWriteLength);
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
     lNewHead = rb->head + lWriteLength;
     rb->head = lNewHead;
     if (ringBufferGetUsedInternal(rb) > rb->capacity) {
         rb->tail = rb->head - rb->capacity;
     }
-    RINGBUFFER_PORT_MEMORY_BARRIER();
+    ringBufferMemoryBarrier();
 
-    RINGBUFFER_PORT_EXIT_CRITICAL();
+    ringBufferExitCritical();
 
     return lInputLength;
 }

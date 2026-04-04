@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvspi_port.h"
+#include "drvspi_types.h"
 
 #ifdef __cplusplus
 extern "C" {

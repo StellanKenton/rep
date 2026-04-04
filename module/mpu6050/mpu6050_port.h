@@ -31,13 +31,14 @@ extern "C" {
 #define MPU6050_PORT_WAKE_DELAY_MS             10U
 #endif
 
-void mpu6050PortGetDefBind(stMpu6050PortIicBinding *bind);
+typedef stMpu6050IicInterface stMpu6050PortIicInterface;
+
 void mpu6050PortGetDefCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
-eDrvStatus mpu6050PortSetSoftIic(stMpu6050PortIicBinding *bind, eDrvAnlogIicPortMap iic);
-eDrvStatus mpu6050PortSetHardIic(stMpu6050PortIicBinding *bind, eDrvIicPortMap iic);
-bool mpu6050PortIsValidBind(const stMpu6050PortIicBinding *bind);
-bool mpu6050PortHasValidIicIf(const stMpu6050PortIicBinding *bind);
-const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050PortIicBinding *bind);
+eDrvStatus mpu6050PortSetSoftIic(stMpu6050Cfg *cfg, eDrvAnlogIicPortMap iic);
+eDrvStatus mpu6050PortSetHardIic(stMpu6050Cfg *cfg, eDrvIicPortMap iic);
+bool mpu6050PortIsValidCfg(const stMpu6050Cfg *cfg);
+bool mpu6050PortHasValidIicIf(const stMpu6050Cfg *cfg);
+const stMpu6050PortIicInterface *mpu6050PortGetIicIf(const stMpu6050Cfg *cfg);
 void mpu6050PortDelayMs(uint32_t delayMs);
 
 #ifdef __cplusplus

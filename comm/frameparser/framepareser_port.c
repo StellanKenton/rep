@@ -18,6 +18,14 @@
 #include "task.h"
 #endif
 
+extern uint32_t frmPsrGetPlatformTickMs(void);
+extern void frmPsrLoadPlatformDefaultCfg(stFrmPsrCfg *cfg);
+extern void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCfg);
+extern void frmPsrLoadPlatformDefaultProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg);
+extern uint32_t frmPsrGetPlatformFmtCount(void);
+extern bool frmPsrSetPlatformFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt);
+extern const stFrmPsrFmt *frmPsrGetPlatformFmt(eFrameParMapType protocol);
+
 typedef struct stFrmPsrPortSlot {
     stFrmPsrFmt fmt;
     bool isUsed;
@@ -158,16 +166,7 @@ static bool frmPsrPortIsValidProtocol(eFrameParMapType protocol)
     return ((uint32_t)protocol < (uint32_t)FRAME_PROTOCOL_MAX);
 }
 
-uint32_t frmPsrPortGetTickMs(void)
-{
-#if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
-    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-#else
-    return 0U;
-#endif
-}
-
-void frmPsrPortApplyDftCfg(stFrmPsrCfg *cfg)
+void frmPsrLoadPlatformDefaultCfg(stFrmPsrCfg *cfg)
 {
     if (cfg == NULL) {
         return;
@@ -186,7 +185,7 @@ void frmPsrPortApplyDftCfg(stFrmPsrCfg *cfg)
     }
 }
 
-void frmPsrPortApplyDftRunCfg(stFrmPsrRunCfg *runCfg)
+void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCfg)
 {
     if (runCfg == NULL) {
         return;
@@ -201,13 +200,62 @@ void frmPsrPortApplyDftRunCfg(stFrmPsrRunCfg *runCfg)
     }
 }
 
-void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
+void frmPsrLoadPlatformDefaultProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
 {
     if ((protoCfg == NULL) || (!frmPsrPortIsValidProtocol(protocol))) {
         return;
     }
 
     *protoCfg = gFrmPsrPortDefProtoCfg[protocol];
+}
+
+uint32_t frmPsrGetPlatformFmtCount(void)
+{
+    return (uint32_t)FRAME_PROTOCOL_MAX;
+}
+
+bool frmPsrSetPlatformFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt)
+{
+    if ((!frmPsrPortIsValidProtocol(protocol)) || (!frmPsrIsFmtValid(fmt))) {
+        return false;
+    }
+
+    gFrmPsrPortSlots[protocol].fmt = *fmt;
+    gFrmPsrPortSlots[protocol].isUsed = true;
+    return true;
+}
+
+const stFrmPsrFmt *frmPsrGetPlatformFmt(eFrameParMapType protocol)
+{
+    if ((!frmPsrPortIsValidProtocol(protocol)) || (!gFrmPsrPortSlots[protocol].isUsed)) {
+        return NULL;
+    }
+
+    return &gFrmPsrPortSlots[protocol].fmt;
+}
+
+uint32_t frmPsrPortGetTickMs(void)
+{
+#if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
+    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+#else
+    return 0U;
+#endif
+}
+
+void frmPsrPortApplyDftCfg(stFrmPsrCfg *cfg)
+{
+    frmPsrLoadPlatformDefaultCfg(cfg);
+}
+
+void frmPsrPortApplyDftRunCfg(stFrmPsrRunCfg *runCfg)
+{
+    frmPsrLoadPlatformDefaultRunCfg(runCfg);
+}
+
+void frmPsrPortGetDefProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
+{
+    frmPsrLoadPlatformDefaultProtoCfg(protocol, protoCfg);
 }
 
 eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize)
@@ -221,27 +269,17 @@ eFrmPsrSta frmPsrPortInitByProto(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg
 
 uint32_t frmPsrPortGetFmtCnt(void)
 {
-    return (uint32_t)FRAME_PROTOCOL_MAX;
+    return frmPsrGetPlatformFmtCount();
 }
 
 bool frmPsrPortSetFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt)
 {
-    if ((!frmPsrPortIsValidProtocol(protocol)) || (!frmPsrIsFmtValid(fmt))) {
-        return false;
-    }
-
-    gFrmPsrPortSlots[protocol].fmt = *fmt;
-    gFrmPsrPortSlots[protocol].isUsed = true;
-    return true;
+    return frmPsrSetPlatformFmt(protocol, fmt);
 }
 
 const stFrmPsrFmt *frmPsrPortGetFmt(eFrameParMapType protocol)
 {
-    if ((!frmPsrPortIsValidProtocol(protocol)) || (!gFrmPsrPortSlots[protocol].isUsed)) {
-        return NULL;
-    }
-
-    return &gFrmPsrPortSlots[protocol].fmt;
+    return frmPsrGetPlatformFmt(protocol);
 }
 
 eFrmPsrSta frmPsrPortInit(stFrmPsr *psr, stRingBuffer *ringBuf, stFrmPsrCfg *cfg)

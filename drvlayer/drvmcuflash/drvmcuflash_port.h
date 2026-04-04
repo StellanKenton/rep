@@ -10,6 +10,8 @@
 #ifndef DRVMCUFLASH_PORT_H
 #define DRVMCUFLASH_PORT_H
 
+#include "drvmcuflash_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,11 +33,6 @@ extern "C" {
 #ifndef DRVMCUFLASH_AREA_USER_SIZE
 #define DRVMCUFLASH_AREA_USER_SIZE           0x00020000U
 #endif
-
-typedef enum eDrvMcuFlashAreaMap {
-    DRVMCUFLASH_AREA_USER = 0,
-    DRVMCUFLASH_MAX,
-} eDrvMcuFlashAreaMap;
 
 #ifdef __cplusplus
 }

@@ -39,8 +39,17 @@ static uint32_t gDrvMcuFlashCriticalDepth = 0U;
 #endif
 #endif
 
-extern stDrvMcuFlashBspInterface gDrvMcuFlashBspInterface;
-extern eDrvStatus drvMcuFlashPortGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info);
+__attribute__((weak)) const stDrvMcuFlashBspInterface *drvMcuFlashGetPlatformBspInterface(void)
+{
+    return NULL;
+}
+
+__attribute__((weak)) eDrvStatus drvMcuFlashGetPlatformAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
+{
+    (void)area;
+    (void)info;
+    return DRV_STATUS_UNSUPPORTED;
+}
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_NONE) && (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
 static void drvMcuFlashEnterCritical(void)
@@ -77,12 +86,15 @@ static bool drvMcuFlashHasValidMutableBuffer(uint8_t *buffer, uint32_t length)
 
 static bool drvMcuFlashHasValidBspInterface(void)
 {
-    return (gDrvMcuFlashBspInterface.init != NULL) &&
-           (gDrvMcuFlashBspInterface.unlock != NULL) &&
-           (gDrvMcuFlashBspInterface.lock != NULL) &&
-           (gDrvMcuFlashBspInterface.eraseSector != NULL) &&
-           (gDrvMcuFlashBspInterface.program != NULL) &&
-           (gDrvMcuFlashBspInterface.getSectorInfo != NULL);
+    const stDrvMcuFlashBspInterface *lBspInterface = drvMcuFlashGetPlatformBspInterface();
+
+    return (lBspInterface != NULL) &&
+           (lBspInterface->init != NULL) &&
+           (lBspInterface->unlock != NULL) &&
+           (lBspInterface->lock != NULL) &&
+           (lBspInterface->eraseSector != NULL) &&
+           (lBspInterface->program != NULL) &&
+           (lBspInterface->getSectorInfo != NULL);
 }
 
 static eDrvStatus drvMcuFlashResolveRange(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t length, uint32_t *startAddress, uint32_t *endAddress)
@@ -93,7 +105,7 @@ static eDrvStatus drvMcuFlashResolveRange(eDrvMcuFlashAreaMap area, uint32_t off
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    if (drvMcuFlashPortGetAreaInfo(area, &lAreaInfo) != DRV_STATUS_OK) {
+    if (drvMcuFlashGetPlatformAreaInfo(area, &lAreaInfo) != DRV_STATUS_OK) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
@@ -192,6 +204,7 @@ static void drvMcuFlashUnlock(void)
 
 eDrvStatus drvMcuFlashInit(void)
 {
+    const stDrvMcuFlashBspInterface *lBspInterface;
     eDrvStatus lStatus;
 
     if (gDrvMcuFlashInitialized) {
@@ -205,6 +218,11 @@ eDrvStatus drvMcuFlashInit(void)
         return DRV_STATUS_NOT_READY;
     }
 
+    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    if (lBspInterface == NULL) {
+        return DRV_STATUS_NOT_READY;
+    }
+
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     lStatus = drvMcuFlashEnsureMutex();
     if (lStatus != DRV_STATUS_OK) {
@@ -212,7 +230,7 @@ eDrvStatus drvMcuFlashInit(void)
     }
 #endif
 
-    lStatus = gDrvMcuFlashBspInterface.init();
+    lStatus = lBspInterface->init();
     if (lStatus != DRV_STATUS_OK) {
         #if (DRVMCUFLASH_LOG_SUPPORT == 1)
         LOG_E(DRVMCUFLASH_LOG_TAG, "BSP init failed, status=%d", (int)lStatus);
@@ -235,11 +253,12 @@ eDrvStatus drvMcuFlashGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInf
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    return drvMcuFlashPortGetAreaInfo(area, info);
+    return drvMcuFlashGetPlatformAreaInfo(area, info);
 }
 
 eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *buffer, uint32_t length)
 {
+    const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;
     uint32_t lEndAddress;
     eDrvStatus lStatus;
@@ -249,6 +268,11 @@ eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *b
     }
 
     if (!drvMcuFlashIsReady()) {
+        return DRV_STATUS_NOT_READY;
+    }
+
+    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    if (lBspInterface == NULL) {
         return DRV_STATUS_NOT_READY;
     }
 
@@ -271,6 +295,7 @@ eDrvStatus drvMcuFlashRead(eDrvMcuFlashAreaMap area, uint32_t offset, uint8_t *b
 
 eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uint8_t *buffer, uint32_t length)
 {
+    const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;
     uint32_t lEndAddress;
     eDrvStatus lStatus;
@@ -281,6 +306,11 @@ eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uin
     }
 
     if (!drvMcuFlashIsReady()) {
+        return DRV_STATUS_NOT_READY;
+    }
+
+    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    if (lBspInterface == NULL) {
         return DRV_STATUS_NOT_READY;
     }
 
@@ -297,14 +327,14 @@ eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uin
     (void)lEndAddress;
     lStatus = drvMcuFlashCheckWriteRequirement(lStartAddress, buffer, length);
     if (lStatus == DRV_STATUS_OK) {
-        lStatus = gDrvMcuFlashBspInterface.unlock();
+        lStatus = lBspInterface->unlock();
     }
 
     if (lStatus == DRV_STATUS_OK) {
-        lStatus = gDrvMcuFlashBspInterface.program(lStartAddress, buffer, length);
+        lStatus = lBspInterface->program(lStartAddress, buffer, length);
     }
 
-    lLockStatus = gDrvMcuFlashBspInterface.lock();
+    lLockStatus = lBspInterface->lock();
     drvMcuFlashUnlock();
 
     if (lStatus != DRV_STATUS_OK) {
@@ -316,6 +346,7 @@ eDrvStatus drvMcuFlashWrite(eDrvMcuFlashAreaMap area, uint32_t offset, const uin
 
 eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t length)
 {
+    const stDrvMcuFlashBspInterface *lBspInterface;
     uint32_t lStartAddress;
     uint32_t lEndAddress;
     uint32_t lAddress;
@@ -333,6 +364,11 @@ eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t 
         return DRV_STATUS_NOT_READY;
     }
 
+    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    if (lBspInterface == NULL) {
+        return DRV_STATUS_NOT_READY;
+    }
+
     lStatus = drvMcuFlashResolveRange(area, offset, length, &lStartAddress, &lEndAddress);
     if (lStatus != DRV_STATUS_OK) {
         return lStatus;
@@ -343,16 +379,16 @@ eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t 
         return lLockStatus;
     }
 
-    lStatus = gDrvMcuFlashBspInterface.unlock();
+    lStatus = lBspInterface->unlock();
     if (lStatus != DRV_STATUS_OK) {
-        lLockStatus = gDrvMcuFlashBspInterface.lock();
+        lLockStatus = lBspInterface->lock();
         drvMcuFlashUnlock();
         return (lLockStatus == DRV_STATUS_OK) ? lStatus : lLockStatus;
     }
 
     lAddress = lStartAddress;
     while ((lStatus == DRV_STATUS_OK) && (lAddress < lEndAddress)) {
-        lStatus = gDrvMcuFlashBspInterface.getSectorInfo(lAddress, &lSectorIndex, &lSectorStart, &lSectorSize);
+        lStatus = lBspInterface->getSectorInfo(lAddress, &lSectorIndex, &lSectorStart, &lSectorSize);
         if (lStatus != DRV_STATUS_OK) {
             break;
         }
@@ -362,7 +398,7 @@ eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t 
             break;
         }
 
-        lStatus = gDrvMcuFlashBspInterface.eraseSector(lSectorIndex);
+        lStatus = lBspInterface->eraseSector(lSectorIndex);
         if (lStatus != DRV_STATUS_OK) {
             break;
         }
@@ -370,7 +406,7 @@ eDrvStatus drvMcuFlashErase(eDrvMcuFlashAreaMap area, uint32_t offset, uint32_t 
         lAddress = lSectorStart + lSectorSize;
     }
 
-    lLockStatus = gDrvMcuFlashBspInterface.lock();
+    lLockStatus = lBspInterface->lock();
     drvMcuFlashUnlock();
 
     if (lStatus != DRV_STATUS_OK) {

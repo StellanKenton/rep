@@ -42,30 +42,18 @@ typedef enum ePca9535DevMap {
 #define PCA9535_STATUS_UNSUPPORTED           DRV_STATUS_UNSUPPORTED
 #define PCA9535_STATUS_ERROR                 DRV_STATUS_ERROR
 
-typedef enum ePca9535PortIicType {
-    PCA9535_PORT_IIC_TYPE_NONE = 0,
-    PCA9535_PORT_IIC_TYPE_SOFTWARE,
-    PCA9535_PORT_IIC_TYPE_MAX,
-} ePca9535PortIicType;
+typedef eDrvStatus (*pca9535IicInitFunc)(uint8_t bus);
+typedef eDrvStatus (*pca9535IicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
+typedef eDrvStatus (*pca9535IicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
 
-typedef eDrvStatus (*pca9535PortIicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*pca9535PortIicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
-typedef eDrvStatus (*pca9535PortIicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
-
-typedef struct stPca9535PortIicInterface {
-    pca9535PortIicInitFunc init;
-    pca9535PortIicWriteRegFunc writeReg;
-    pca9535PortIicReadRegFunc readReg;
-} stPca9535PortIicInterface;
-
-typedef struct stPca9535PortIicBinding {
-    ePca9535PortIicType type;
-    uint8_t bus;
-    const stPca9535PortIicInterface *iicIf;
-} stPca9535PortIicBinding;
+typedef struct stPca9535IicInterface {
+    pca9535IicInitFunc init;
+    pca9535IicWriteRegFunc writeReg;
+    pca9535IicReadRegFunc readReg;
+} stPca9535IicInterface;
 
 typedef struct stPca9535Cfg {
-    stPca9535PortIicBinding iicBind;
+    eDrvAnlogIicPortMap iic;
     uint8_t address;
     uint16_t outputValue;
     uint16_t polarityMask;

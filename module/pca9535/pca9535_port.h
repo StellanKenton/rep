@@ -47,12 +47,13 @@ extern "C" {
 #define LED_PRESS_GREEN                      PCA9535_PORT_LED_PRESS_GREEN
 #define LED_PRESS_BLUE                       PCA9535_PORT_LED_PRESS_BLUE
 
-void pca9535PortGetDefBind(stPca9535PortIicBinding *bind);
+typedef stPca9535IicInterface stPca9535PortIicInterface;
+
 void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
-eDrvStatus pca9535PortSetSoftIic(stPca9535PortIicBinding *bind, eDrvAnlogIicPortMap iic);
-bool pca9535PortIsValidBind(const stPca9535PortIicBinding *bind);
-bool pca9535PortHasValidIicIf(const stPca9535PortIicBinding *bind);
-const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535PortIicBinding *bind);
+eDrvStatus pca9535PortSetSoftIic(stPca9535Cfg *cfg, eDrvAnlogIicPortMap iic);
+bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg);
+bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg);
+const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535Cfg *cfg);
 eDrvStatus pca9535PortInit(void);
 bool pca9535PortIsReady(void);
 eDrvStatus pca9535PortLedOff(void);

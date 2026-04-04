@@ -14,6 +14,62 @@
 
 #define FRM_PSR_LOG_TAG  "FrmPsr"
 
+__attribute__((weak)) uint32_t frmPsrGetPlatformTickMs(void)
+{
+    return 0U;
+}
+
+__attribute__((weak)) void frmPsrLoadPlatformDefaultCfg(stFrmPsrCfg *cfg)
+{
+    if (cfg == NULL) {
+        return;
+    }
+
+    if (cfg->minHeadLen == 0U) {
+        cfg->minHeadLen = cfg->headPatLen;
+    }
+
+    if (cfg->getTick == NULL) {
+        cfg->getTick = frmPsrGetPlatformTickMs;
+    }
+}
+
+__attribute__((weak)) void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCfg)
+{
+    if ((runCfg == NULL) || (runCfg->getTick != NULL)) {
+        return;
+    }
+
+    runCfg->getTick = frmPsrGetPlatformTickMs;
+}
+
+__attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
+{
+    (void)protocol;
+
+    if (protoCfg != NULL) {
+        (void)memset(protoCfg, 0, sizeof(*protoCfg));
+    }
+}
+
+__attribute__((weak)) uint32_t frmPsrGetPlatformFmtCount(void)
+{
+    return 0U;
+}
+
+__attribute__((weak)) bool frmPsrSetPlatformFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt)
+{
+    (void)protocol;
+    (void)fmt;
+    return false;
+}
+
+__attribute__((weak)) const stFrmPsrFmt *frmPsrGetPlatformFmt(eFrameParMapType protocol)
+{
+    (void)protocol;
+    return NULL;
+}
+
 static uint32_t frmPsrMinU32(uint32_t left, uint32_t right);
 static uint32_t frmPsrToPhyIdx(const stRingBuffer *ringBuf, uint32_t logIdx);
 static uint32_t frmPsrPeekOff(const stRingBuffer *ringBuf, uint32_t off, uint8_t *buf, uint32_t len);

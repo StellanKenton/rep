@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvmcuflash_port.h"
+#include "drvmcuflash_types.h"
 
 #ifdef __cplusplus
 extern "C" {

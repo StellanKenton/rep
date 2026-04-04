@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvuart_port.h"
+#include "drvuart_types.h"
 #include "ringbuffer.h"
 
 #ifdef __cplusplus

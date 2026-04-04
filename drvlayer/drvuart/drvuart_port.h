@@ -11,6 +11,8 @@
 #ifndef DRVUART_PORTMAP_H
 #define DRVUART_PORTMAP_H
 
+#include "drvuart_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,11 +35,6 @@ extern "C" {
 #endif
 
 #define DRVUART_RECVLEN_DEBUGUART    1024U
-
-typedef enum eDrvUartPortMapTable {
-    DRVUART_WIRELESS = 0,      // PC10 PC11
-    DRVUART_MAX,
-} eDrvUartPortMap;
 
 #ifdef __cplusplus
 }

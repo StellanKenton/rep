@@ -2,17 +2,52 @@
 
 #include <stddef.h>
 
-#include "pca9535_port.h"
-
 static stPca9535Device gPca9535Devices[PCA9535_DEV_MAX];
 static bool gPca9535DefCfgDone[PCA9535_DEV_MAX] = {false};
+
+__attribute__((weak)) void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg)
+{
+    (void)device;
+
+    if (cfg == NULL) {
+        return;
+    }
+
+    cfg->iic = (eDrvAnlogIicPortMap)0;
+    cfg->address = 0U;
+    cfg->outputValue = 0U;
+    cfg->polarityMask = 0U;
+    cfg->directionMask = 0U;
+    cfg->resetBeforeInit = false;
+}
+
+__attribute__((weak)) const stPca9535IicInterface *pca9535GetPlatformIicInterface(const stPca9535Cfg *cfg)
+{
+    (void)cfg;
+    return NULL;
+}
+
+__attribute__((weak)) void pca9535PlatformResetInit(void)
+{
+}
+
+__attribute__((weak)) void pca9535PlatformResetWrite(bool assertReset)
+{
+    (void)assertReset;
+}
+
+__attribute__((weak)) void pca9535PlatformDelayMs(uint32_t delayMs)
+{
+    (void)delayMs;
+}
 
 static bool pca9535IsValidDevMap(ePca9535MapType device);
 static stPca9535Device *pca9535GetDevCtx(ePca9535MapType device);
 static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg);
+static bool pca9535IsValidCfg(const stPca9535Cfg *cfg);
 static bool pca9535IsValidDev(const stPca9535Device *device);
 static bool pca9535IsReadyXfer(const stPca9535Device *device);
-static const stPca9535PortIicInterface *pca9535GetIicIf(const stPca9535Device *device);
+static const stPca9535IicInterface *pca9535GetIicIf(const stPca9535Device *device);
 static eDrvStatus pca9535WriteRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t value);
 static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t *value);
 static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regAddr, uint16_t value);
@@ -39,7 +74,7 @@ eDrvStatus pca9535GetDefCfg(ePca9535MapType device)
 
 eDrvStatus pca9535Init(ePca9535MapType device)
 {
-    const stPca9535PortIicInterface *lIicIf;
+    const stPca9535IicInterface *lIicIf;
     stPca9535Device *lDeviceCtx;
     eDrvStatus lStatus;
 
@@ -48,24 +83,24 @@ eDrvStatus pca9535Init(ePca9535MapType device)
         return PCA9535_STATUS_INVALID_PARAM;
     }
 
-    if (!pca9535PortHasValidIicIf(&lDeviceCtx->cfg.iicBind)) {
-        return pca9535PortIsValidBind(&lDeviceCtx->cfg.iicBind) ?
+    if (pca9535GetIicIf(lDeviceCtx) == NULL) {
+        return pca9535IsValidCfg(&lDeviceCtx->cfg) ?
                PCA9535_STATUS_NOT_READY :
                PCA9535_STATUS_INVALID_PARAM;
     }
 
     lIicIf = pca9535GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(lDeviceCtx->cfg.iicBind.bus);
+    lStatus = lIicIf->init((uint8_t)lDeviceCtx->cfg.iic);
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }
 
     if (lDeviceCtx->cfg.resetBeforeInit) {
-        pca9535PortResetInit();
-        pca9535PortResetWrite(true);
-        pca9535PortDelayMs(PCA9535_PORT_RESET_ASSERT_MS);
-        pca9535PortResetWrite(false);
-        pca9535PortDelayMs(PCA9535_PORT_RESET_RELEASE_MS);
+        pca9535PlatformResetInit();
+        pca9535PlatformResetWrite(true);
+        pca9535PlatformDelayMs(PCA9535_PORT_RESET_ASSERT_MS);
+        pca9535PlatformResetWrite(false);
+        pca9535PlatformDelayMs(PCA9535_PORT_RESET_RELEASE_MS);
     }
 
     lDeviceCtx->isReady = false;
@@ -285,7 +320,12 @@ static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
         return;
     }
 
-    pca9535PortGetDefCfg(device, cfg);
+    pca9535LoadPlatformDefaultCfg(device, cfg);
+}
+
+static bool pca9535IsValidCfg(const stPca9535Cfg *cfg)
+{
+    return (cfg != NULL) && ((uint8_t)cfg->iic < (uint8_t)DRVANLOGIIC_MAX);
 }
 
 static bool pca9535IsValidDev(const stPca9535Device *device)
@@ -294,7 +334,7 @@ static bool pca9535IsValidDev(const stPca9535Device *device)
         return false;
     }
 
-    if (!pca9535PortIsValidBind(&device->cfg.iicBind)) {
+    if (!pca9535IsValidCfg(&device->cfg)) {
         return false;
     }
 
@@ -304,33 +344,37 @@ static bool pca9535IsValidDev(const stPca9535Device *device)
 
 static bool pca9535IsReadyXfer(const stPca9535Device *device)
 {
-    return (device != NULL) && device->isReady && pca9535PortHasValidIicIf(&device->cfg.iicBind);
+    return (device != NULL) && device->isReady && (pca9535GetIicIf(device) != NULL);
 }
 
-static const stPca9535PortIicInterface *pca9535GetIicIf(const stPca9535Device *device)
+static const stPca9535IicInterface *pca9535GetIicIf(const stPca9535Device *device)
 {
     if (device == NULL) {
         return NULL;
     }
 
-    return pca9535PortGetIicIf(&device->cfg.iicBind);
+    if (!pca9535IsValidCfg(&device->cfg)) {
+        return NULL;
+    }
+
+    return pca9535GetPlatformIicInterface(&device->cfg);
 }
 
 static eDrvStatus pca9535WriteRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t value)
 {
-    const stPca9535PortIicInterface *lIicIf;
+    const stPca9535IicInterface *lIicIf;
 
     lIicIf = pca9535GetIicIf(device);
     if (lIicIf == NULL) {
         return PCA9535_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeReg(device->cfg.iicBind.bus, device->cfg.address, &regAddr, 1U, &value, 1U);
+    return lIicIf->writeReg((uint8_t)device->cfg.iic, device->cfg.address, &regAddr, 1U, &value, 1U);
 }
 
 static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t *value)
 {
-    const stPca9535PortIicInterface *lIicIf;
+    const stPca9535IicInterface *lIicIf;
 
     if (value == NULL) {
         return PCA9535_STATUS_INVALID_PARAM;
@@ -341,12 +385,12 @@ static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_NOT_READY;
     }
 
-    return lIicIf->readReg(device->cfg.iicBind.bus, device->cfg.address, &regAddr, 1U, value, 1U);
+    return lIicIf->readReg((uint8_t)device->cfg.iic, device->cfg.address, &regAddr, 1U, value, 1U);
 }
 
 static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regAddr, uint16_t value)
 {
-    const stPca9535PortIicInterface *lIicIf;
+    const stPca9535IicInterface *lIicIf;
     uint8_t lBuffer[2];
 
     lIicIf = pca9535GetIicIf(device);
@@ -356,12 +400,12 @@ static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regA
 
     lBuffer[0] = (uint8_t)(value & 0x00FFU);
     lBuffer[1] = (uint8_t)((value >> 8U) & 0x00FFU);
-    return lIicIf->writeReg(device->cfg.iicBind.bus, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    return lIicIf->writeReg((uint8_t)device->cfg.iic, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
 }
 
 static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAddr, uint16_t *value)
 {
-    const stPca9535PortIicInterface *lIicIf;
+    const stPca9535IicInterface *lIicIf;
     uint8_t lBuffer[2];
     eDrvStatus lStatus;
 
@@ -374,7 +418,7 @@ static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_NOT_READY;
     }
 
-    lStatus = lIicIf->readReg(device->cfg.iicBind.bus, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    lStatus = lIicIf->readReg((uint8_t)device->cfg.iic, device->cfg.address, &regAddr, 1U, lBuffer, 2U);
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }

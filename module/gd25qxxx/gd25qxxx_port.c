@@ -28,37 +28,19 @@ static void gd25qxxxPortEnableCycleCnt(void);
 
 static eDrvStatus gd25qxxxPortHardSpiInitAdpt(uint8_t bus);
 static eDrvStatus gd25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData);
-static const stGd25qxxxPortSpiInterface *gd25qxxxPortGetBindSpiIf(eGd25qxxxPortSpiType type);
 
-static const stGd25qxxxPortSpiInterface gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT_SPI_TYPE_MAX] = {
-    [GD25QXXX_PORT_SPI_TYPE_HARDWARE] = {
-        .init = gd25qxxxPortHardSpiInitAdpt,
-        .transfer = gd25qxxxPortHardSpiTransferAdpt,
-    },
+static const stGd25qxxxPortSpiInterface gGd25qxxxPortHardSpiInterface = {
+    .init = gd25qxxxPortHardSpiInitAdpt,
+    .transfer = gd25qxxxPortHardSpiTransferAdpt,
 };
 
 static const stGd25qxxxCfg gGd25qxxxPortDefCfg[GD25QXXX_DEV_MAX] = {
     [GD25Q32_MEM] = {
-        .spiBind = {
-            .type = GD25QXXX_PORT_SPI_TYPE_HARDWARE,
-            .bus = (uint8_t)DRVSPI_BUS0,
-            .spiIf = &gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT_SPI_TYPE_HARDWARE],
-        },
+        .spi = DRVSPI_BUS0,
     },
 };
 
-void gd25qxxxPortGetDefBind(stGd25qxxxPortSpiBinding *bind)
-{
-    if (bind == NULL) {
-        return;
-    }
-
-    bind->type = GD25QXXX_PORT_SPI_TYPE_HARDWARE;
-    bind->bus = (uint8_t)DRVSPI_BUS0;
-    bind->spiIf = gd25qxxxPortGetBindSpiIf(bind->type);
-}
-
-void gd25qxxxPortGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
+void gd25qxxxLoadPlatformDefaultCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
 {
     if ((cfg == NULL) || ((uint32_t)device >= (uint32_t)GD25QXXX_DEV_MAX)) {
         return;
@@ -67,53 +49,16 @@ void gd25qxxxPortGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
     *cfg = gGd25qxxxPortDefCfg[device];
 }
 
-eDrvStatus gd25qxxxPortSetHardSpi(stGd25qxxxPortSpiBinding *bind, eDrvSpiPortMap spi)
+const stGd25qxxxSpiInterface *gd25qxxxGetPlatformSpiInterface(const stGd25qxxxCfg *cfg)
 {
-    if ((bind == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
-        return DRV_STATUS_INVALID_PARAM;
-    }
-
-    bind->type = GD25QXXX_PORT_SPI_TYPE_HARDWARE;
-    bind->bus = (uint8_t)spi;
-    bind->spiIf = gd25qxxxPortGetBindSpiIf(bind->type);
-    return DRV_STATUS_OK;
-}
-
-bool gd25qxxxPortIsValidBind(const stGd25qxxxPortSpiBinding *bind)
-{
-    if (bind == NULL) {
-        return false;
-    }
-
-    switch (bind->type) {
-        case GD25QXXX_PORT_SPI_TYPE_HARDWARE:
-            return (bind->bus < (uint8_t)DRVSPI_MAX) &&
-                   (bind->spiIf == &gGd25qxxxPortSpiInterfaces[GD25QXXX_PORT_SPI_TYPE_HARDWARE]);
-        default:
-            return false;
-    }
-}
-
-bool gd25qxxxPortHasValidSpiIf(const stGd25qxxxPortSpiBinding *bind)
-{
-    const stGd25qxxxPortSpiInterface *lInterface;
-
-    lInterface = gd25qxxxPortGetSpiIf(bind);
-    return (lInterface != NULL) &&
-           (lInterface->init != NULL) &&
-           (lInterface->transfer != NULL);
-}
-
-const stGd25qxxxPortSpiInterface *gd25qxxxPortGetSpiIf(const stGd25qxxxPortSpiBinding *bind)
-{
-    if (!gd25qxxxPortIsValidBind(bind)) {
+    if (!gd25qxxxPortIsValidCfg(cfg)) {
         return NULL;
     }
 
-    return bind->spiIf;
+    return &gGd25qxxxPortHardSpiInterface;
 }
 
-void gd25qxxxPortDelayMs(uint32_t delayMs)
+void gd25qxxxPlatformDelayMs(uint32_t delayMs)
 {
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     TickType_t lDelayTicks;
@@ -159,6 +104,46 @@ void gd25qxxxPortDelayMs(uint32_t delayMs)
 #endif
 }
 
+void gd25qxxxPortGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg)
+{
+    gd25qxxxLoadPlatformDefaultCfg(device, cfg);
+}
+
+eDrvStatus gd25qxxxPortSetHardSpi(stGd25qxxxCfg *cfg, eDrvSpiPortMap spi)
+{
+    if ((cfg == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    cfg->spi = spi;
+    return DRV_STATUS_OK;
+}
+
+bool gd25qxxxPortIsValidCfg(const stGd25qxxxCfg *cfg)
+{
+    return (cfg != NULL) && ((uint8_t)cfg->spi < (uint8_t)DRVSPI_MAX);
+}
+
+bool gd25qxxxPortHasValidSpiIf(const stGd25qxxxCfg *cfg)
+{
+    const stGd25qxxxSpiInterface *lInterface;
+
+    lInterface = gd25qxxxGetPlatformSpiInterface(cfg);
+    return (lInterface != NULL) &&
+           (lInterface->init != NULL) &&
+           (lInterface->transfer != NULL);
+}
+
+const stGd25qxxxPortSpiInterface *gd25qxxxPortGetSpiIf(const stGd25qxxxCfg *cfg)
+{
+    return (const stGd25qxxxPortSpiInterface *)gd25qxxxGetPlatformSpiInterface(cfg);
+}
+
+void gd25qxxxPortDelayMs(uint32_t delayMs)
+{
+    gd25qxxxPlatformDelayMs(delayMs);
+}
+
 #if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
 static void gd25qxxxPortEnableCycleCnt(void)
 {
@@ -172,19 +157,6 @@ static void gd25qxxxPortEnableCycleCnt(void)
     gGd25qxxxPortCycleCntReady = true;
 }
 #endif
-
-static const stGd25qxxxPortSpiInterface *gd25qxxxPortGetBindSpiIf(eGd25qxxxPortSpiType type)
-{
-    if ((uint32_t)type >= (uint32_t)GD25QXXX_PORT_SPI_TYPE_MAX) {
-        return NULL;
-    }
-
-    if (type == GD25QXXX_PORT_SPI_TYPE_NONE) {
-        return NULL;
-    }
-
-    return &gGd25qxxxPortSpiInterfaces[type];
-}
 
 static eDrvStatus gd25qxxxPortHardSpiInitAdpt(uint8_t bus)
 {

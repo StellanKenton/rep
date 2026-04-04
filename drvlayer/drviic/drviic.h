@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drviic_port.h"
+#include "drviic_types.h"
 
 #ifdef __cplusplus
 extern "C" {

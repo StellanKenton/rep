@@ -22,25 +22,18 @@ static eDrvStatus pca9535PortEnsureReady(void);
 static eDrvStatus pca9535PortSoftIicInitAdpt(uint8_t bus);
 static eDrvStatus pca9535PortSoftIicWriteRegAdpt(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
 static eDrvStatus pca9535PortSoftIicReadRegAdpt(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
-static const stPca9535PortIicInterface *pca9535PortGetBindIicIf(ePca9535PortIicType type);
 
 #define PCA9535_PORT_LOG_TAG                 "Pca9535Port"
 
-static const stPca9535PortIicInterface gPca9535PortIicInterfaces[PCA9535_PORT_IIC_TYPE_MAX] = {
-    [PCA9535_PORT_IIC_TYPE_SOFTWARE] = {
-        .init = pca9535PortSoftIicInitAdpt,
-        .writeReg = pca9535PortSoftIicWriteRegAdpt,
-        .readReg = pca9535PortSoftIicReadRegAdpt,
-    },
+static const stPca9535PortIicInterface gPca9535PortSoftIicInterface = {
+    .init = pca9535PortSoftIicInitAdpt,
+    .writeReg = pca9535PortSoftIicWriteRegAdpt,
+    .readReg = pca9535PortSoftIicReadRegAdpt,
 };
 
 static const stPca9535Cfg gPca9535PortDefCfg[PCA9535_DEV_MAX] = {
     [PCA9535_DEV0] = {
-        .iicBind = {
-            .type = PCA9535_PORT_IIC_TYPE_SOFTWARE,
-            .bus = (uint8_t)DRVANLOGIIC_PCA,
-            .iicIf = &gPca9535PortIicInterfaces[PCA9535_PORT_IIC_TYPE_SOFTWARE],
-        },
+        .iic = DRVANLOGIIC_PCA,
         .address = PCA9535_IIC_ADDRESS_HLL,
         .outputValue = 0xFFFFU,
         .polarityMask = 0x0000U,
@@ -49,18 +42,7 @@ static const stPca9535Cfg gPca9535PortDefCfg[PCA9535_DEV_MAX] = {
     },
 };
 
-void pca9535PortGetDefBind(stPca9535PortIicBinding *bind)
-{
-    if (bind == NULL) {
-        return;
-    }
-
-    bind->type = PCA9535_PORT_IIC_TYPE_SOFTWARE;
-    bind->bus = (uint8_t)DRVANLOGIIC_PCA;
-    bind->iicIf = pca9535PortGetBindIicIf(bind->type);
-}
-
-void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
+void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg)
 {
     if ((cfg == NULL) || ((uint32_t)device >= (uint32_t)PCA9535_DEV_MAX)) {
         return;
@@ -69,51 +51,108 @@ void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
     *cfg = gPca9535PortDefCfg[device];
 }
 
-eDrvStatus pca9535PortSetSoftIic(stPca9535PortIicBinding *bind, eDrvAnlogIicPortMap iic)
+const stPca9535IicInterface *pca9535GetPlatformIicInterface(const stPca9535Cfg *cfg)
 {
-    if ((bind == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
+    if (!pca9535PortIsValidCfg(cfg)) {
+        return NULL;
+    }
+
+    return &gPca9535PortSoftIicInterface;
+}
+
+void pca9535PlatformResetInit(void)
+{
+    GPIO_InitTypeDef lGpioInit = {0};
+
+    pca9535PortEnableGpioClock(PCA9535_RESET_GPIO_Port);
+
+    lGpioInit.Pin = PCA9535_RESET_Pin;
+    lGpioInit.Mode = GPIO_MODE_OUTPUT_PP;
+    lGpioInit.Pull = GPIO_NOPULL;
+    lGpioInit.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(PCA9535_RESET_GPIO_Port, &lGpioInit);
+    pca9535PlatformResetWrite(false);
+}
+
+void pca9535PlatformResetWrite(bool assertReset)
+{
+    HAL_GPIO_WritePin(PCA9535_RESET_GPIO_Port,
+                      PCA9535_RESET_Pin,
+                      assertReset ? GPIO_PIN_RESET : GPIO_PIN_SET);
+}
+
+void pca9535PlatformDelayMs(uint32_t delayMs)
+{
+#if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
+    TickType_t lDelayTicks;
+
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        lDelayTicks = pdMS_TO_TICKS(delayMs);
+        if ((delayMs > 0U) && (lDelayTicks == 0U)) {
+            lDelayTicks = 1U;
+        }
+        vTaskDelay(lDelayTicks);
+        return;
+    }
+#endif
+
+    if (delayMs == 0U) {
+        return;
+    }
+
+    pca9535PortEnableCycleCnt();
+
+    {
+        uint32_t lCyclesPerMs = SystemCoreClock / 1000U;
+        uint32_t lStartCycles;
+        uint32_t lWaitCycles;
+
+        if (lCyclesPerMs == 0U) {
+            lCyclesPerMs = 1U;
+        }
+
+        lWaitCycles = lCyclesPerMs * delayMs;
+        lStartCycles = DWT->CYCCNT;
+        while ((DWT->CYCCNT - lStartCycles) < lWaitCycles) {
+            __NOP();
+        }
+    }
+}
+
+void pca9535PortGetDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
+{
+    pca9535LoadPlatformDefaultCfg(device, cfg);
+}
+
+eDrvStatus pca9535PortSetSoftIic(stPca9535Cfg *cfg, eDrvAnlogIicPortMap iic)
+{
+    if ((cfg == NULL) || ((uint8_t)iic >= (uint8_t)DRVANLOGIIC_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    bind->type = PCA9535_PORT_IIC_TYPE_SOFTWARE;
-    bind->bus = (uint8_t)iic;
-    bind->iicIf = pca9535PortGetBindIicIf(bind->type);
+    cfg->iic = iic;
     return DRV_STATUS_OK;
 }
 
-bool pca9535PortIsValidBind(const stPca9535PortIicBinding *bind)
+bool pca9535PortIsValidCfg(const stPca9535Cfg *cfg)
 {
-    if (bind == NULL) {
-        return false;
-    }
-
-    switch (bind->type) {
-        case PCA9535_PORT_IIC_TYPE_SOFTWARE:
-            return (bind->bus < (uint8_t)DRVANLOGIIC_MAX) &&
-                   (bind->iicIf == &gPca9535PortIicInterfaces[PCA9535_PORT_IIC_TYPE_SOFTWARE]);
-        default:
-            return false;
-    }
+    return (cfg != NULL) && ((uint8_t)cfg->iic < (uint8_t)DRVANLOGIIC_MAX);
 }
 
-bool pca9535PortHasValidIicIf(const stPca9535PortIicBinding *bind)
+bool pca9535PortHasValidIicIf(const stPca9535Cfg *cfg)
 {
-    const stPca9535PortIicInterface *lInterface;
+    const stPca9535IicInterface *lInterface;
 
-    lInterface = pca9535PortGetIicIf(bind);
+    lInterface = pca9535GetPlatformIicInterface(cfg);
     return (lInterface != NULL) &&
            (lInterface->init != NULL) &&
            (lInterface->writeReg != NULL) &&
            (lInterface->readReg != NULL);
 }
 
-const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535PortIicBinding *bind)
+const stPca9535PortIicInterface *pca9535PortGetIicIf(const stPca9535Cfg *cfg)
 {
-    if (!pca9535PortIsValidBind(bind)) {
-        return NULL;
-    }
-
-    return bind->iicIf;
+    return (const stPca9535PortIicInterface *)pca9535GetPlatformIicInterface(cfg);
 }
 
 eDrvStatus pca9535PortInit(void)
@@ -274,61 +313,17 @@ eDrvStatus pca9535PortReadInputPort(uint16_t *value)
 
 void pca9535PortResetInit(void)
 {
-    GPIO_InitTypeDef lGpioInit = {0};
-
-    pca9535PortEnableGpioClock(PCA9535_RESET_GPIO_Port);
-
-    lGpioInit.Pin = PCA9535_RESET_Pin;
-    lGpioInit.Mode = GPIO_MODE_OUTPUT_PP;
-    lGpioInit.Pull = GPIO_NOPULL;
-    lGpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(PCA9535_RESET_GPIO_Port, &lGpioInit);
-    pca9535PortResetWrite(false);
+    pca9535PlatformResetInit();
 }
 
 void pca9535PortResetWrite(bool assertReset)
 {
-    HAL_GPIO_WritePin(PCA9535_RESET_GPIO_Port,
-                      PCA9535_RESET_Pin,
-                      assertReset ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    pca9535PlatformResetWrite(assertReset);
 }
 
 void pca9535PortDelayMs(uint32_t delayMs)
 {
-#if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
-    TickType_t lDelayTicks;
-
-    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
-        lDelayTicks = pdMS_TO_TICKS(delayMs);
-        if ((delayMs > 0U) && (lDelayTicks == 0U)) {
-            lDelayTicks = 1U;
-        }
-        vTaskDelay(lDelayTicks);
-        return;
-    }
-#endif
-
-    if (delayMs == 0U) {
-        return;
-    }
-
-    pca9535PortEnableCycleCnt();
-
-    {
-        uint32_t lCyclesPerMs = SystemCoreClock / 1000U;
-        uint32_t lStartCycles;
-        uint32_t lWaitCycles;
-
-        if (lCyclesPerMs == 0U) {
-            lCyclesPerMs = 1U;
-        }
-
-        lWaitCycles = lCyclesPerMs * delayMs;
-        lStartCycles = DWT->CYCCNT;
-        while ((DWT->CYCCNT - lStartCycles) < lWaitCycles) {
-            __NOP();
-        }
-    }
+    pca9535PlatformDelayMs(delayMs);
 }
 
 static void pca9535PortEnableCycleCnt(void)
@@ -373,19 +368,6 @@ static void pca9535PortEnableGpioClock(GPIO_TypeDef *gpioPort)
         return;
     }
 #endif
-}
-
-static const stPca9535PortIicInterface *pca9535PortGetBindIicIf(ePca9535PortIicType type)
-{
-    if ((uint32_t)type >= (uint32_t)PCA9535_PORT_IIC_TYPE_MAX) {
-        return NULL;
-    }
-
-    if (type == PCA9535_PORT_IIC_TYPE_NONE) {
-        return NULL;
-    }
-
-    return &gPca9535PortIicInterfaces[type];
 }
 
 static eDrvStatus pca9535PortApplyShowMask(uint16_t mask)

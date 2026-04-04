@@ -11,6 +11,8 @@
 #ifndef DRVGPIO_PORT_H
 #define DRVGPIO_PORT_H
 
+#include "drvgpio_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,20 +25,6 @@ extern "C" {
 #ifndef DRVGPIO_CONSOLE_SUPPORT
 #define DRVGPIO_CONSOLE_SUPPORT         1
 #endif
-
-typedef enum eDrvGpioPinState {
-    DRVGPIO_PIN_RESET = 0,
-    DRVGPIO_PIN_SET,
-    DRVGPIO_PIN_STATE_INVALID
-} eDrvGpioPinState;
-
-typedef enum eDrvGpioPinMap {
-    DRVGPIO_LEDR = 0,           // OUT PC0
-    DRVGPIO_LEDG = 1,           // OUT PC1
-    DRVGPIO_LEDB = 2,           // OUT PC2
-    DRVGPIO_KEY = 3,            // IN PC13
-    DRVGPIO_MAX,
-} eDrvGpioPinMap;
 
 #ifdef __cplusplus
 }

@@ -20,7 +20,7 @@ static const stDrvMcuFlashAreaInfo gDrvMcuFlashAreas[DRVMCUFLASH_MAX] = {
     },
 };
 
-stDrvMcuFlashBspInterface gDrvMcuFlashBspInterface = {
+static stDrvMcuFlashBspInterface gDrvMcuFlashBspInterface = {
     .init = bspMcuFlashInit,
     .unlock = bspMcuFlashUnlock,
     .lock = bspMcuFlashLock,
@@ -29,7 +29,12 @@ stDrvMcuFlashBspInterface gDrvMcuFlashBspInterface = {
     .getSectorInfo = bspMcuFlashGetSectorInfo,
 };
 
-eDrvStatus drvMcuFlashPortGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
+const stDrvMcuFlashBspInterface *drvMcuFlashGetPlatformBspInterface(void)
+{
+    return &gDrvMcuFlashBspInterface;
+}
+
+eDrvStatus drvMcuFlashGetPlatformAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
 {
     if ((info == NULL) || (area >= DRVMCUFLASH_MAX)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -41,5 +46,10 @@ eDrvStatus drvMcuFlashPortGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAre
 
     *info = gDrvMcuFlashAreas[area];
     return DRV_STATUS_OK;
+}
+
+eDrvStatus drvMcuFlashPortGetAreaInfo(eDrvMcuFlashAreaMap area, stDrvMcuFlashAreaInfo *info)
+{
+    return drvMcuFlashGetPlatformAreaInfo(area, info);
 }
 /**************************End of file********************************/

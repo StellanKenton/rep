@@ -140,9 +140,9 @@
 - 提供 `CreatePacket(index, payload...)` 发送包构建接口。
 - 提供 `LinkRingBuf(...)`、`SetProtoCfg(...)` 之类的链接函数，把环形缓冲区、输出缓冲区和协议参数在 port 层完成组装，再交给 core 初始化。
 
-推荐像 `module` 层一样先定义逻辑协议编号，例如 `eFrameParMapType`，再由 port 层围绕该编号提供 `SetFmt/GetFmt/InitFmt/SelFmt/MkPkt` 等接口。这样上层协议只需要知道自己使用哪个逻辑协议，而不需要直接管理底层解析器细节。
+推荐像 `module` 层一样先定义逻辑协议编号，例如 `eFrameParMapType`，再由平台钩子围绕该编号提供 `frmPsrSetPlatformFmt()`、`frmPsrGetPlatformFmt()` 等通用注册接口，`framepareser_port.*` 只保留兼容包装。这样上层协议只需要知道自己使用哪个逻辑协议，而不需要直接管理底层解析器细节。
 
-进一步对齐 `module` 风格后，port 层还应提供按逻辑协议编号组织的默认协议配置表，例如 `gFrmPsrPortDefProtoCfg[FRAME_PROTOCOL_MAX]`，并暴露 `frmPsrPortGetDefProtoCfg(protocol, &cfg)` 这类接口，让上层先取默认协议参数，再按需覆写局部字段。
+进一步对齐 `module` 风格后，平台层还应提供按逻辑协议编号组织的默认协议配置表，例如 `gFrmPsrPortDefProtoCfg[FRAME_PROTOCOL_MAX]`，并通过 `frmPsrLoadPlatformDefaultProtoCfg(protocol, &cfg)` 这类通用入口暴露，让上层或其他模块 port 先取默认协议参数，再按需覆写局部字段。
 
 ## 9. 发送流程
 

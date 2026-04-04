@@ -35,6 +35,9 @@ extern "C" {
 #define LOG_PORT_UART_INPUT_ENABLE       0
 #endif
 
+const stLogInterface *logGetPlatformInterfaces(void);
+uint32_t logGetPlatformInterfaceCount(void);
+
 const stLogInterface *logPortGetInterfaces(void);
 uint32_t logPortGetInterfaceCount(void);
 

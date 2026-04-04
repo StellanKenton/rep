@@ -241,6 +241,13 @@
 
 - 完成最复杂模块的分层闭环。
 
+完成结果：
+
+1. `frameprocess.c` 不再 include 自身 `frameprocess_port.h`，也不再直接调用 `frmProcPort*`。
+2. `frameprocess_port.c` 改为实现通用平台钩子，由兼容包装保留旧 `frmProcPort*` 入口。
+3. `frameprocess_port.c` 不再直接 include `framepareser_port.h`，改为通过 `frameparser` 的通用平台入口装载默认协议和格式。
+4. `frameparser` 默认协议、格式注册能力收敛为通用平台入口，`framepareser_port.*` 仅保留项目绑定实现和兼容包装。
+
 ### 里程碑 M6. 回归检查固化
 
 范围：

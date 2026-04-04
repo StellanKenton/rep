@@ -7,6 +7,8 @@
 #ifndef DRVSPI_PORT_H
 #define DRVSPI_PORT_H
 
+#include "drvspi_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,11 +24,6 @@ extern "C" {
 #define DRVSPI_LOCK_WAIT_MS                   5U
 #define DRVSPI_DEFAULT_TIMEOUT_MS             100U
 #define DRVSPI_DEFAULT_READ_FILL_DATA         0xFFU
-
-typedef enum eDrvSpiPortMap {
-    DRVSPI_BUS0 = 0,
-    DRVSPI_MAX,
-} eDrvSpiPortMap;
 
 #ifdef __cplusplus
 }

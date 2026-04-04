@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvadc_port.h"
+#include "drvadc_types.h"
 
 #ifdef __cplusplus
 extern "C" {

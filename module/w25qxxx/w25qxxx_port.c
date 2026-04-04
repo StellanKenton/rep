@@ -24,44 +24,22 @@ static bool gW25qxxxPortCycleCntReady = false;
 static void w25qxxxPortEnableCycleCnt(void);
 static eDrvStatus w25qxxxPortHardSpiInitAdpt(uint8_t bus);
 static eDrvStatus w25qxxxPortHardSpiTransferAdpt(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData);
-static const stW25qxxxPortSpiInterface *w25qxxxPortGetBindSpiIf(eW25qxxxPortSpiType type);
 
-static const stW25qxxxPortSpiInterface gW25qxxxPortSpiInterfaces[W25QXXX_PORT_SPI_TYPE_MAX] = {
-    [W25QXXX_PORT_SPI_TYPE_HARDWARE] = {
-        .init = w25qxxxPortHardSpiInitAdpt,
-        .transfer = w25qxxxPortHardSpiTransferAdpt,
-    },
+static const stW25qxxxPortSpiInterface gW25qxxxPortHardSpiInterface = {
+    .init = w25qxxxPortHardSpiInitAdpt,
+    .transfer = w25qxxxPortHardSpiTransferAdpt,
 };
 
 static const stW25qxxxCfg gW25qxxxPortDefCfg[W25QXXX_DEV_MAX] = {
     [W25QXXX_DEV0] = {
-        .spiBind = {
-            .type = W25QXXX_PORT_SPI_TYPE_HARDWARE,
-            .bus = (uint8_t)DRVSPI_BUS0,
-            .spiIf = &gW25qxxxPortSpiInterfaces[W25QXXX_PORT_SPI_TYPE_HARDWARE],
-        },
+        .spi = DRVSPI_BUS0,
     },
     [W25QXXX_DEV1] = {
-        .spiBind = {
-            .type = W25QXXX_PORT_SPI_TYPE_HARDWARE,
-            .bus = (uint8_t)DRVSPI_BUS1,
-            .spiIf = &gW25qxxxPortSpiInterfaces[W25QXXX_PORT_SPI_TYPE_HARDWARE],
-        },
+        .spi = DRVSPI_BUS1,
     },
 };
 
-void w25qxxxPortGetDefBind(stW25qxxxPortSpiBinding *bind)
-{
-    if (bind == NULL) {
-        return;
-    }
-
-    bind->type = W25QXXX_PORT_SPI_TYPE_HARDWARE;
-    bind->bus = (uint8_t)DRVSPI_BUS0;
-    bind->spiIf = w25qxxxPortGetBindSpiIf(bind->type);
-}
-
-void w25qxxxPortGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
+void w25qxxxLoadPlatformDefaultCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
 {
     if ((cfg == NULL) || ((uint32_t)device >= (uint32_t)W25QXXX_DEV_MAX)) {
         return;
@@ -70,53 +48,16 @@ void w25qxxxPortGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
     *cfg = gW25qxxxPortDefCfg[device];
 }
 
-eDrvStatus w25qxxxPortSetHardSpi(stW25qxxxPortSpiBinding *bind, eDrvSpiPortMap spi)
+const stW25qxxxSpiInterface *w25qxxxGetPlatformSpiInterface(const stW25qxxxCfg *cfg)
 {
-    if ((bind == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
-        return DRV_STATUS_INVALID_PARAM;
-    }
-
-    bind->type = W25QXXX_PORT_SPI_TYPE_HARDWARE;
-    bind->bus = (uint8_t)spi;
-    bind->spiIf = w25qxxxPortGetBindSpiIf(bind->type);
-    return DRV_STATUS_OK;
-}
-
-bool w25qxxxPortIsValidBind(const stW25qxxxPortSpiBinding *bind)
-{
-    if (bind == NULL) {
-        return false;
-    }
-
-    switch (bind->type) {
-        case W25QXXX_PORT_SPI_TYPE_HARDWARE:
-            return (bind->bus < (uint8_t)DRVSPI_MAX) &&
-                   (bind->spiIf == &gW25qxxxPortSpiInterfaces[W25QXXX_PORT_SPI_TYPE_HARDWARE]);
-        default:
-            return false;
-    }
-}
-
-bool w25qxxxPortHasValidSpiIf(const stW25qxxxPortSpiBinding *bind)
-{
-    const stW25qxxxPortSpiInterface *lInterface;
-
-    lInterface = w25qxxxPortGetSpiIf(bind);
-    return (lInterface != NULL) &&
-           (lInterface->init != NULL) &&
-           (lInterface->transfer != NULL);
-}
-
-const stW25qxxxPortSpiInterface *w25qxxxPortGetSpiIf(const stW25qxxxPortSpiBinding *bind)
-{
-    if (!w25qxxxPortIsValidBind(bind)) {
+    if (!w25qxxxPortIsValidCfg(cfg)) {
         return NULL;
     }
 
-    return bind->spiIf;
+    return &gW25qxxxPortHardSpiInterface;
 }
 
-void w25qxxxPortDelayMs(uint32_t delayMs)
+void w25qxxxPlatformDelayMs(uint32_t delayMs)
 {
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
     TickType_t lDelayTicks;
@@ -162,6 +103,46 @@ void w25qxxxPortDelayMs(uint32_t delayMs)
 #endif
 }
 
+void w25qxxxPortGetDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
+{
+    w25qxxxLoadPlatformDefaultCfg(device, cfg);
+}
+
+eDrvStatus w25qxxxPortSetHardSpi(stW25qxxxCfg *cfg, eDrvSpiPortMap spi)
+{
+    if ((cfg == NULL) || ((uint8_t)spi >= (uint8_t)DRVSPI_MAX)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    cfg->spi = spi;
+    return DRV_STATUS_OK;
+}
+
+bool w25qxxxPortIsValidCfg(const stW25qxxxCfg *cfg)
+{
+    return (cfg != NULL) && ((uint8_t)cfg->spi < (uint8_t)DRVSPI_MAX);
+}
+
+bool w25qxxxPortHasValidSpiIf(const stW25qxxxCfg *cfg)
+{
+    const stW25qxxxSpiInterface *lInterface;
+
+    lInterface = w25qxxxGetPlatformSpiInterface(cfg);
+    return (lInterface != NULL) &&
+           (lInterface->init != NULL) &&
+           (lInterface->transfer != NULL);
+}
+
+const stW25qxxxPortSpiInterface *w25qxxxPortGetSpiIf(const stW25qxxxCfg *cfg)
+{
+    return (const stW25qxxxPortSpiInterface *)w25qxxxGetPlatformSpiInterface(cfg);
+}
+
+void w25qxxxPortDelayMs(uint32_t delayMs)
+{
+    w25qxxxPlatformDelayMs(delayMs);
+}
+
 static void w25qxxxPortEnableCycleCnt(void)
 {
 #if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
@@ -174,19 +155,6 @@ static void w25qxxxPortEnableCycleCnt(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     gW25qxxxPortCycleCntReady = true;
 #endif
-}
-
-static const stW25qxxxPortSpiInterface *w25qxxxPortGetBindSpiIf(eW25qxxxPortSpiType type)
-{
-    if ((uint32_t)type >= (uint32_t)W25QXXX_PORT_SPI_TYPE_MAX) {
-        return NULL;
-    }
-
-    if (type == W25QXXX_PORT_SPI_TYPE_NONE) {
-        return NULL;
-    }
-
-    return &gW25qxxxPortSpiInterfaces[type];
 }
 
 static eDrvStatus w25qxxxPortHardSpiInitAdpt(uint8_t bus)

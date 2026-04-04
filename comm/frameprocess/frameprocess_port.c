@@ -6,13 +6,22 @@
 
 #include <string.h>
 
-#include "Rep/comm/frameparser/framepareser_port.h"
 #include "Rep/drvlayer/drvuart/drvuart.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
 #include "task.h"
 #endif
+
+extern void frmPsrLoadPlatformDefaultProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg);
+extern bool frmPsrSetPlatformFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt);
+extern const stFrmPsrFmt *frmPsrGetPlatformFmt(eFrameParMapType protocol);
+
+extern eFrmProcStatus frmProcLoadPlatformDefaultCfg(eFrmProcMapType proc, stFrmProcCfg *cfg);
+extern eFrmProcStatus frmProcPlatformInit(eFrmProcMapType proc);
+extern void frmProcPlatformPollRx(eFrmProcMapType proc);
+extern eFrmProcStatus frmProcEnsurePlatformFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg);
+extern eFrmProcStatus frmProcBuildPlatformPkt(eFrmProcMapType proc, uint8_t cmd, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen);
 
 typedef struct stFrmProcPortFmtCtx {
     stFrmPsrProtoCfg protoCfg;
@@ -158,7 +167,7 @@ uint32_t frmProcPortGetTickMs(void)
 #endif
 }
 
-eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
+eFrmProcStatus frmProcLoadPlatformDefaultCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
 {
     stFrmPsrProtoCfg lProtoCfg;
 
@@ -167,7 +176,7 @@ eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
     }
 
     (void)memset(cfg, 0, sizeof(*cfg));
-    frmPsrPortGetDefProtoCfg(frmProcPortGetProtocol(proc), &lProtoCfg);
+    frmPsrLoadPlatformDefaultProtoCfg(frmProcPortGetProtocol(proc), &lProtoCfg);
     cfg->protocol = frmProcPortGetProtocol(proc);
     cfg->protoCfg = lProtoCfg;
     cfg->getTick = frmProcPortGetTickMs;
@@ -185,17 +194,27 @@ eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
 
 eFrmProcStatus frmProcPortInit(eFrmProcMapType proc)
 {
+    return frmProcPlatformInit(proc);
+}
+
+void frmProcPortPollRx(eFrmProcMapType proc)
+{
+    frmProcPlatformPollRx(proc);
+}
+
+eFrmProcStatus frmProcPlatformInit(eFrmProcMapType proc)
+{
     (void)proc;
     return (drvUartInit(DRVUART_WIRELESS) == DRV_STATUS_OK) ? FRM_PROC_STATUS_OK : FRM_PROC_STATUS_ERROR;
 }
 
-void frmProcPortPollRx(eFrmProcMapType proc)
+void frmProcPlatformPollRx(eFrmProcMapType proc)
 {
     (void)proc;
     (void)drvUartGetDataLen(DRVUART_WIRELESS);
 }
 
-eFrmProcStatus frmProcPortEnsureFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg)
+eFrmProcStatus frmProcEnsurePlatformFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg)
 {
     stFrmPsrFmt lFmt;
     stFrmProcPortFmtCtx *lFmtCtx;
@@ -238,7 +257,7 @@ eFrmProcStatus frmProcPortEnsureFmt(eFrmProcMapType proc, const stFrmProcCfg *cf
     lFmt.txFmt.crcCalcFunc = frmProcPortCalcCrc;
     lFmt.txFmt.userCtx = lFmtCtx;
 
-    if (!frmPsrPortSetFmt(cfg->protocol, &lFmt)) {
+    if (!frmPsrSetPlatformFmt(cfg->protocol, &lFmt)) {
         return FRM_PROC_STATUS_BUILD_ERROR;
     }
 
@@ -248,15 +267,36 @@ eFrmProcStatus frmProcPortEnsureFmt(eFrmProcMapType proc, const stFrmProcCfg *cf
 
 eFrmProcStatus frmProcPortBuildPkt(eFrmProcMapType proc, uint8_t cmd, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen)
 {
+    return frmProcBuildPlatformPkt(proc, cmd, payloadBuf, payloadLen, pktBuf, pktBufSize, pktLen);
+}
+
+eFrmProcStatus frmProcBuildPlatformPkt(eFrmProcMapType proc, uint8_t cmd, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen)
+{
     eFrmPsrSta lPsrStatus;
+    const stFrmPsrFmt *lFmt;
 
     if ((!frmProcPortIsValidProc(proc)) || (pktBuf == NULL) || (pktLen == NULL)) {
         return FRM_PROC_STATUS_INVALID_PARAM;
     }
 
     gFrmProcPortFmtCtx[proc].currentTxCmd = cmd;
-    lPsrStatus = frmPsrPortMkPkt(frmProcPortGetProtocol(proc), payloadBuf, payloadLen, pktBuf, pktBufSize, pktLen);
+    lFmt = frmPsrGetPlatformFmt(frmProcPortGetProtocol(proc));
+    if (lFmt == NULL) {
+        return FRM_PROC_STATUS_BUILD_ERROR;
+    }
+
+    lPsrStatus = frmPsrMkPktByFmt(lFmt, payloadBuf, payloadLen, pktBuf, pktBufSize, pktLen);
     return (lPsrStatus == FRM_PSR_OK) ? FRM_PROC_STATUS_OK : FRM_PROC_STATUS_BUILD_ERROR;
+}
+
+eFrmProcStatus frmProcPortGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg)
+{
+    return frmProcLoadPlatformDefaultCfg(proc, cfg);
+}
+
+eFrmProcStatus frmProcPortEnsureFmt(eFrmProcMapType proc, const stFrmProcCfg *cfg)
+{
+    return frmProcEnsurePlatformFmt(proc, cfg);
 }
 
 eFrmProcStatus frmProcPortTxFrame(eFrmProcMapType proc, const uint8_t *frameBuf, uint16_t frameLen)

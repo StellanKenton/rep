@@ -20,13 +20,23 @@ static const stLogInterface gLogPortInterfaces[LOG_PORT_INTERFACE_COUNT] = {
     },
 };
 
-const stLogInterface *logPortGetInterfaces(void)
+const stLogInterface *logGetPlatformInterfaces(void)
 {
     return gLogPortInterfaces;
 }
 
-uint32_t logPortGetInterfaceCount(void)
+uint32_t logGetPlatformInterfaceCount(void)
 {
     return LOG_PORT_INTERFACE_COUNT;
+}
+
+const stLogInterface *logPortGetInterfaces(void)
+{
+    return logGetPlatformInterfaces();
+}
+
+uint32_t logPortGetInterfaceCount(void)
+{
+    return logGetPlatformInterfaceCount();
 }
 /**************************End of file********************************/

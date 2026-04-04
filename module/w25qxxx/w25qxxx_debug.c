@@ -219,7 +219,7 @@ static eConsoleCommandResult w25qxxxDebugReplyDeviceList(uint32_t transport)
         if (consoleReply(transport,
             "%s bus=%u ready=%s\n",
             w25qxxxDebugGetDeviceName((eW25qxxxMapType)lIndex),
-            (unsigned int)lCfg.spiBind.bus,
+            (unsigned int)lCfg.spi,
             w25qxxxIsReady((eW25qxxxMapType)lIndex) ? "yes" : "no") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }

@@ -19,7 +19,7 @@ static bool mpu6050DebugParseHexNibble(char value, uint8_t *nibble);
 static bool mpu6050DebugParseHexByte(const char *text, uint8_t *value);
 static const char *mpu6050DebugGetDeviceName(eMPU6050MapType device);
 static const char *mpu6050DebugGetStatusText(eDrvStatus status);
-static const char *mpu6050DebugGetBindTypeText(eMpu6050PortIicType type);
+static const char *mpu6050DebugGetBindTypeText(eMpu6050IicType type);
 static eConsoleCommandResult mpu6050DebugReplyDeviceList(uint32_t transport);
 static eConsoleCommandResult mpu6050DebugHandleInit(uint32_t transport, eMPU6050MapType device);
 static eConsoleCommandResult mpu6050DebugHandleId(uint32_t transport, eMPU6050MapType device);
@@ -153,12 +153,12 @@ static const char *mpu6050DebugGetStatusText(eDrvStatus status)
     }
 }
 
-static const char *mpu6050DebugGetBindTypeText(eMpu6050PortIicType type)
+static const char *mpu6050DebugGetBindTypeText(eMpu6050IicType type)
 {
     switch (type) {
-        case MPU6050_PORT_IIC_TYPE_SOFTWARE:
+        case MPU6050_IIC_TYPE_SOFTWARE:
             return "soft_iic";
-        case MPU6050_PORT_IIC_TYPE_HARDWARE:
+        case MPU6050_IIC_TYPE_HARDWARE:
             return "hard_iic";
         default:
             return "none";
@@ -175,8 +175,8 @@ static eConsoleCommandResult mpu6050DebugReplyDeviceList(uint32_t transport)
         if (consoleReply(transport,
             "%s bind=%s bus=%u addr=%02X ready=%s\n",
             mpu6050DebugGetDeviceName((eMPU6050MapType)lIndex),
-            mpu6050DebugGetBindTypeText(lCfg.iicBind.type),
-            (unsigned int)lCfg.iicBind.bus,
+            mpu6050DebugGetBindTypeText(lCfg.iicType),
+            (unsigned int)lCfg.iicBus,
             (unsigned int)lCfg.address,
             mpu6050IsReady((eMPU6050MapType)lIndex) ? "yes" : "no") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;

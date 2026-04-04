@@ -24,12 +24,13 @@ extern "C" {
 #define GD25QXXX_PORT_READ_FILL_DATA          0xFFU
 #endif
 
-void gd25qxxxPortGetDefBind(stGd25qxxxPortSpiBinding *bind);
+typedef stGd25qxxxSpiInterface stGd25qxxxPortSpiInterface;
+
 void gd25qxxxPortGetDefCfg(eGd25qxxxMapType device, stGd25qxxxCfg *cfg);
-eDrvStatus gd25qxxxPortSetHardSpi(stGd25qxxxPortSpiBinding *bind, eDrvSpiPortMap spi);
-bool gd25qxxxPortIsValidBind(const stGd25qxxxPortSpiBinding *bind);
-bool gd25qxxxPortHasValidSpiIf(const stGd25qxxxPortSpiBinding *bind);
-const stGd25qxxxPortSpiInterface *gd25qxxxPortGetSpiIf(const stGd25qxxxPortSpiBinding *bind);
+eDrvStatus gd25qxxxPortSetHardSpi(stGd25qxxxCfg *cfg, eDrvSpiPortMap spi);
+bool gd25qxxxPortIsValidCfg(const stGd25qxxxCfg *cfg);
+bool gd25qxxxPortHasValidSpiIf(const stGd25qxxxCfg *cfg);
+const stGd25qxxxPortSpiInterface *gd25qxxxPortGetSpiIf(const stGd25qxxxCfg *cfg);
 void gd25qxxxPortDelayMs(uint32_t delayMs);
 
 #ifdef __cplusplus

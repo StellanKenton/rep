@@ -73,31 +73,26 @@ typedef enum eMpu6050GyroRange {
     MPU6050_GYRO_RANGE_MAX,
 } eMpu6050GyroRange;
 
-typedef enum eMpu6050PortIicType {
-    MPU6050_PORT_IIC_TYPE_NONE = 0,
-    MPU6050_PORT_IIC_TYPE_SOFTWARE,
-    MPU6050_PORT_IIC_TYPE_HARDWARE,
-    MPU6050_PORT_IIC_TYPE_MAX,
-} eMpu6050PortIicType;
+typedef enum eMpu6050IicType {
+    MPU6050_IIC_TYPE_NONE = 0,
+    MPU6050_IIC_TYPE_SOFTWARE,
+    MPU6050_IIC_TYPE_HARDWARE,
+    MPU6050_IIC_TYPE_MAX,
+} eMpu6050IicType;
 
-typedef eDrvStatus (*mpu6050PortIicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*mpu6050PortIicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
-typedef eDrvStatus (*mpu6050PortIicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
+typedef eDrvStatus (*mpu6050IicInitFunc)(uint8_t bus);
+typedef eDrvStatus (*mpu6050IicWriteRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, const uint8_t *buffer, uint16_t length);
+typedef eDrvStatus (*mpu6050IicReadRegFunc)(uint8_t bus, uint8_t address, const uint8_t *regBuf, uint16_t regLen, uint8_t *buffer, uint16_t length);
 
-typedef struct stMpu6050PortIicInterface {
-    mpu6050PortIicInitFunc init;
-    mpu6050PortIicWriteRegFunc writeReg;
-    mpu6050PortIicReadRegFunc readReg;
-} stMpu6050PortIicInterface;
-
-typedef struct stMpu6050PortIicBinding {
-    eMpu6050PortIicType type;
-    uint8_t bus;
-    const stMpu6050PortIicInterface *iicIf;
-} stMpu6050PortIicBinding;
+typedef struct stMpu6050IicInterface {
+    mpu6050IicInitFunc init;
+    mpu6050IicWriteRegFunc writeReg;
+    mpu6050IicReadRegFunc readReg;
+} stMpu6050IicInterface;
 
 typedef struct stMpu6050Cfg {
-    stMpu6050PortIicBinding iicBind;
+    eMpu6050IicType iicType;
+    uint8_t iicBus;
     uint8_t address;
     uint8_t sampleRateDiv;
     uint8_t dlpfCfg;

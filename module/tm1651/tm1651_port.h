@@ -20,12 +20,13 @@ extern "C" {
 #define TM1651_CONSOLE_SUPPORT               1
 #endif
 
-void tm1651PortGetDefBind(stTm1651PortIicBinding *bind);
+typedef stTm1651IicInterface stTm1651PortIicInterface;
+
 void tm1651PortGetDefCfg(eTm1651MapType device, stTm1651Cfg *cfg);
-eDrvStatus tm1651PortSetSoftIic(stTm1651PortIicBinding *bind, eDrvAnlogIicPortMap iic);
-bool tm1651PortIsValidBind(const stTm1651PortIicBinding *bind);
-bool tm1651PortHasValidIicIf(const stTm1651PortIicBinding *bind);
-const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651PortIicBinding *bind);
+eDrvStatus tm1651PortSetSoftIic(stTm1651Cfg *cfg, eDrvAnlogIicPortMap iic);
+bool tm1651PortIsValidCfg(const stTm1651Cfg *cfg);
+bool tm1651PortHasValidIicIf(const stTm1651Cfg *cfg);
+const stTm1651PortIicInterface *tm1651PortGetIicIf(const stTm1651Cfg *cfg);
 eDrvStatus tm1651PortInit(void);
 bool tm1651PortIsReady(void);
 eDrvStatus tm1651PortSetBrightness(uint8_t brightness);

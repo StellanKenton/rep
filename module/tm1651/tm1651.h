@@ -56,28 +56,16 @@ typedef eDrvStatus eTm1651Status;
 #define TM1651_STATUS_UNSUPPORTED            DRV_STATUS_UNSUPPORTED
 #define TM1651_STATUS_ERROR                  DRV_STATUS_ERROR
 
-typedef enum eTm1651PortIicType {
-    TM1651_PORT_IIC_TYPE_NONE = 0,
-    TM1651_PORT_IIC_TYPE_SOFTWARE,
-    TM1651_PORT_IIC_TYPE_MAX,
-} eTm1651PortIicType;
+typedef eDrvStatus (*tm1651IicInitFunc)(uint8_t bus);
+typedef eDrvStatus (*tm1651WriteFrameFunc)(uint8_t bus, const uint8_t *buffer, uint8_t length);
 
-typedef eDrvStatus (*tm1651PortIicInitFunc)(uint8_t bus);
-typedef eDrvStatus (*tm1651PortWriteFrameFunc)(uint8_t bus, const uint8_t *buffer, uint8_t length);
-
-typedef struct stTm1651PortIicInterface {
-    tm1651PortIicInitFunc init;
-    tm1651PortWriteFrameFunc writeFrame;
-} stTm1651PortIicInterface;
-
-typedef struct stTm1651PortIicBinding {
-    eTm1651PortIicType type;
-    uint8_t bus;
-    const stTm1651PortIicInterface *iicIf;
-} stTm1651PortIicBinding;
+typedef struct stTm1651IicInterface {
+    tm1651IicInitFunc init;
+    tm1651WriteFrameFunc writeFrame;
+} stTm1651IicInterface;
 
 typedef struct stTm1651Cfg {
-    stTm1651PortIicBinding iicBind;
+    eDrvAnlogIicPortMap iic;
     uint8_t brightness;
     uint8_t digitCount;
     bool isDisplayOn;

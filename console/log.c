@@ -8,7 +8,6 @@
 * @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "log.h"
-#include "log_port.h"
 
 #include <inttypes.h>
 #include <stddef.h>
@@ -80,6 +79,16 @@ static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, ui
 static bool logLoadNextFrame(stLogOutputState *state);
 static void logProcessInterface(const stLogInterface *interface, stLogOutputState *state);
 
+__attribute__((weak)) const stLogInterface *logGetPlatformInterfaces(void)
+{
+    return NULL;
+}
+
+__attribute__((weak)) uint32_t logGetPlatformInterfaceCount(void)
+{
+    return 0U;
+}
+
 static uint32_t logGetDefaultTimestamp(void)
 {
 #if (REP_MCU_PLATFORM == REP_MCU_PLATFORM_ESP32)
@@ -91,11 +100,11 @@ static uint32_t logGetDefaultTimestamp(void)
 #endif
 }
 
-static stLogOutputState gLogOutputStates[LOG_PORT_INTERFACE_COUNT];
+static stLogOutputState gLogOutputStates[REP_LOG_OUTPUT_PORT];
 
 static const stLogInterface *logGetInterfaces(void)
 {
-    return logPortGetInterfaces();
+    return logGetPlatformInterfaces();
 }
 
 static bool logIsValidOutputInterface(const stLogInterface *interface)
@@ -375,7 +384,7 @@ static bool logLoadNextFrame(stLogOutputState *state)
 
 static uint32_t logGetAvailableInterfaceCount(void)
 {
-    return logPortGetInterfaceCount();
+    return logGetPlatformInterfaceCount();
 }
 
 static uint32_t logGetInterfaceCount(void)

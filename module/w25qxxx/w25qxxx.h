@@ -64,28 +64,16 @@ typedef eDrvStatus eW25qxxxStatus;
 #define W25QXXX_STATUS_ERROR              DRV_STATUS_ERROR
 #define W25QXXX_STATUS_OUT_OF_RANGE       ((eW25qxxxStatus)(DRV_STATUS_ERROR + 1))
 
-typedef enum eW25qxxxPortSpiType {
-    W25QXXX_PORT_SPI_TYPE_NONE = 0,
-    W25QXXX_PORT_SPI_TYPE_HARDWARE,
-    W25QXXX_PORT_SPI_TYPE_MAX,
-} eW25qxxxPortSpiType;
+typedef eDrvStatus (*w25qxxxSpiInitFunc)(uint8_t bus);
+typedef eDrvStatus (*w25qxxxSpiTransferFunc)(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData);
 
-typedef eDrvStatus (*w25qxxxPortSpiInitFunc)(uint8_t bus);
-typedef eDrvStatus (*w25qxxxPortSpiTransferFunc)(uint8_t bus, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength, uint8_t readFillData);
-
-typedef struct stW25qxxxPortSpiInterface {
-    w25qxxxPortSpiInitFunc init;
-    w25qxxxPortSpiTransferFunc transfer;
-} stW25qxxxPortSpiInterface;
-
-typedef struct stW25qxxxPortSpiBinding {
-    eW25qxxxPortSpiType type;
-    uint8_t bus;
-    const stW25qxxxPortSpiInterface *spiIf;
-} stW25qxxxPortSpiBinding;
+typedef struct stW25qxxxSpiInterface {
+    w25qxxxSpiInitFunc init;
+    w25qxxxSpiTransferFunc transfer;
+} stW25qxxxSpiInterface;
 
 typedef struct stW25qxxxCfg {
-    stW25qxxxPortSpiBinding spiBind;
+    eDrvSpiPortMap spi;
 } stW25qxxxCfg;
 
 typedef struct stW25qxxxInfo {

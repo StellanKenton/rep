@@ -15,7 +15,7 @@
 #include <stdint.h>
 
 #include "rep_config.h"
-#include "drvanlogiic_port.h"
+#include "drvanlogiic_types.h"
 
 #ifdef __cplusplus
 extern "C" {

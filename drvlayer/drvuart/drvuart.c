@@ -20,9 +20,31 @@
 
 static bool gDrvUartInitialized[DRVUART_MAX];
 
-extern stDrvUartBspInterface gDrvUartBspInterface[DRVUART_MAX];
-extern stRingBuffer *drvUartPortGetRingBuffer(eDrvUartPortMap uart);
-extern eDrvStatus drvUartPortGetStorageConfig(eDrvUartPortMap uart, uint8_t **storage, uint32_t *capacity);
+__attribute__((weak)) const stDrvUartBspInterface *drvUartGetPlatformBspInterfaces(void)
+{
+    return NULL;
+}
+
+__attribute__((weak)) stRingBuffer *drvUartGetPlatformRingBuffer(eDrvUartPortMap uart)
+{
+    (void)uart;
+    return NULL;
+}
+
+__attribute__((weak)) eDrvStatus drvUartGetPlatformStorageConfig(eDrvUartPortMap uart, uint8_t **storage, uint32_t *capacity)
+{
+    (void)uart;
+
+    if (storage != NULL) {
+        *storage = NULL;
+    }
+
+    if (capacity != NULL) {
+        *capacity = 0U;
+    }
+
+    return DRV_STATUS_UNSUPPORTED;
+}
 
 /**
 * @brief : Check if the provided logical UART mapping is valid.
@@ -41,11 +63,18 @@ static bool drvUartIsValid(eDrvUartPortMap uart)
 **/
 static stDrvUartBspInterface *drvUartGetBspInterface(eDrvUartPortMap uart)
 {
+    const stDrvUartBspInterface *lInterfaces;
+
     if (!drvUartIsValid(uart)) {
         return NULL;
     }
 
-    return &gDrvUartBspInterface[uart];
+    lInterfaces = drvUartGetPlatformBspInterfaces();
+    if (lInterfaces == NULL) {
+        return NULL;
+    }
+
+    return (stDrvUartBspInterface *)&lInterfaces[uart];
 }
 
 /**
@@ -107,7 +136,7 @@ static eDrvStatus drvUartSyncRxData(eDrvUartPortMap uart)
         return DRV_STATUS_NOT_READY;
     }
 
-    lRingBuffer = drvUartPortGetRingBuffer(uart);
+    lRingBuffer = drvUartGetPlatformRingBuffer(uart);
     if (lRingBuffer == NULL) {
         return DRV_STATUS_ERROR;
     }
@@ -170,7 +199,7 @@ eDrvStatus drvUartInit(eDrvUartPortMap uart)
         return DRV_STATUS_NOT_READY;
     }
 
-    lStatus = drvUartPortGetStorageConfig(uart, &lStorage, &lCapacity);
+    lStatus = drvUartGetPlatformStorageConfig(uart, &lStorage, &lCapacity);
     if (lStatus != DRV_STATUS_OK) {
         #if (DRVUART_LOG_SUPPORT == 1)
         LOG_E(DRVUART_LOG_TAG, "Get storage config failed for uart %u, status=%d", (unsigned int)uart, (int)lStatus);
@@ -187,7 +216,7 @@ eDrvStatus drvUartInit(eDrvUartPortMap uart)
 
     lStorage = lBspInterface->Buffer;
 
-    lRingBuffer = drvUartPortGetRingBuffer(uart);
+    lRingBuffer = drvUartGetPlatformRingBuffer(uart);
     if (lRingBuffer == NULL) {
         #if (DRVUART_LOG_SUPPORT == 1)
         LOG_E(DRVUART_LOG_TAG, "UART %u ring buffer is not available", (unsigned int)uart);
@@ -321,7 +350,7 @@ eDrvStatus drvUartReceive(eDrvUartPortMap uart, uint8_t *buffer, uint16_t length
         return lStatus;
     }
 
-    lRingBuffer = drvUartPortGetRingBuffer(uart);
+    lRingBuffer = drvUartGetPlatformRingBuffer(uart);
     if (lRingBuffer == NULL) {
         return DRV_STATUS_ERROR;
     }
@@ -358,7 +387,7 @@ uint16_t drvUartGetDataLen(eDrvUartPortMap uart)
         return 0U;
     }
 
-    lUsed = ringBufferGetUsed(drvUartPortGetRingBuffer(uart));
+    lUsed = ringBufferGetUsed(drvUartGetPlatformRingBuffer(uart));
     if (lUsed > UINT16_MAX) {
         return UINT16_MAX;
     }
@@ -385,7 +414,7 @@ stRingBuffer* drvUartGetRingBuffer(eDrvUartPortMap uart)
         return NULL;
     }
 
-    return drvUartPortGetRingBuffer(uart);
+    return drvUartGetPlatformRingBuffer(uart);
 }
 
 
