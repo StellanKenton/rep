@@ -1,24 +1,93 @@
+---
+doc_role: repo-rule
+layer: rule
+module: projectrule
+status: active
+portability: project-bound
+public_headers: []
+core_files:
+	- projectrule.md
+port_files: []
+debug_files: []
+depends_on:
+	- rule.md
+	- coderule.md
+forbidden_depends_on:
+	- core 反向依赖 port
+required_hooks: []
+optional_hooks: []
+common_utils: []
+copy_minimal_set:
+	- rule/projectrule.md
+read_next:
+	- ../drvlayer/drvrule.md
+	- ../module/module.md
+---
+
 # 项目规则
 
-- 所有文件夹下的代码如果涉及console相关，需要有宏定义确定是否打开。
-- 编写drvXxx模块时，先参考drvgpio、drvuart等现有模块的结构和接口，优先复用局部主流设计。
-- 如果编写某个模块的驱动时，需要依赖其他驱动，那么把模块的接口设计成只依赖于该驱动的公共层接口，并用函数指针的方式指向其他驱动的公共接口。
-- drvlayer层的核心思想是让bsp层的代码来适配drvxxx的函数指针，drvxxx层的代码不依赖于bsp层的代码，这样就可以实现drvxxx层的代码复用。
-- module层的核心思想是让module层的接口函数指针去适配drvxxx的公共接口。
-- 函数、变量名称、宏定义、数据类型不要太长，尽可能使用缩写，但要保证可读性和唯一性。
+本文档定义仓库级架构硬约束，同时补充文档层面的硬约束。
 
-## Core-Port 分层强约束
+## 1. 基本原则
 
-- core 只允许依赖本模块 core 公共头文件以及更底层模块的 core 公共接口，禁止 include 本模块或其他模块的 `_port.h`。
-- 允许直接接触 `_port.h`、`XxxPort*`、板级绑定细节的文件只限于 `*_port.c`、`*_port.h` 和 `*_debug.*`。
-- 所有 core 公共头文件禁止暴露 `PortBinding`、`PortInterface`、`PortType`、`PortProtoCfg` 这类 port 概念，公共 API 只能暴露稳定语义和抽象配置。
-- 如果 core 初始化需要默认资源、tick、总线、缓冲区或 IO 动作，统一改为由 port 预组装普通配置数据，或由 port 在初始化阶段注入适配回调，禁止 core 通过 extern 或直接调用反向依赖 port。
-- system 和业务层如果需要项目绑定信息，必须经由模块 core 公共接口获取，不能跨层直接 include 下层模块 `_port.h`。
+- 涉及 console 的能力必须由宏开关显式控制。
+- 新驱动优先参考 `drvgpio`、`drvuart` 等现有主流结构，不自行发明新的分层模式。
+- 若某模块依赖其他驱动或工具，只能依赖其公共层接口，不能跨层直连 BSP 或私有结构。
+- `drvlayer` 的核心目标是让 BSP 适配 `drvxxx` 的公共契约。
+- `module` 的核心目标是让 assembly / hook 契约适配下层 drv 公共接口。
 
-## 模块改造模板
+## 2. Core-Port 强约束
 
-1. 先清理公共头文件，把 `_port.h` include、Port 命名类型和板级绑定字段移出公共 API。
-2. 识别 core `.c` 里的 port 依赖，把它们归类为默认配置、资源映射、底层 IO、时序/延时、缓冲区、临界区。
-3. 把这些依赖收敛成 core 可消费的抽象配置或私有适配结构，不在公共头文件暴露 port 概念。
-4. 在 `*_port.c` 中完成实际绑定，把 BSP、驱动和 core 串起来，保持 core 代码不需要感知板级差异。
-5. 每改完一个模块，立刻扫描非 port、非 debug 文件中的 `_port.h` include、`XxxPort*` 调用和 `extern` port 符号，确认没有回归再进入下一个模块。
+- core 只允许依赖本模块公共头文件以及更底层模块的公共接口。
+- 非 port、非 debug 文件禁止 include `_port.h`，也禁止直接调用 `XxxPort*`、`XxxPlatform*` 私有绑定接口。
+- 公共头文件禁止暴露板级绑定字段、port 私有类型和 BSP 句柄。
+- 默认资源、tick、总线、缓冲区、延时等项目绑定项必须通过 platform hook、assembly 配置或默认 cfg 注入给 core。
+- `system` 和业务层如果需要项目绑定信息，必须经由模块公共 API 获取，不能跨层读取下层绑定细节。
+
+## 3. 文档层硬约束
+
+每个叶子目录主文档必须满足：
+
+1. 文件名尽量与目录同名。
+2. 开头明确声明“这是当前目录的权威入口文档”。
+3. 具有统一 front matter。
+4. 明确区分公共 API、assembly / hook API、debug API。
+5. 补齐 `函数指针 / port / assembly 契约表`。
+6. 补齐 `公共函数使用契约表`。
+7. 写出 `复制到其他工程的最小步骤`。
+8. 写出 `改动落点矩阵`。
+
+父目录总文档必须写清：
+
+- 本层目标和边界。
+- 允许依赖与禁止依赖。
+- 下级目录主文档必须包含哪些章节。
+- 本层命名模式与常见反例。
+- 本层复制到其他工程时，port / assembly 一般如何处理。
+
+## 4. 公共 API / assembly API / debug API 分离规则
+
+- 公共 API：面向上层稳定调用，只写在主文档 `对外公共接口` 章节。
+- assembly API：面向项目装配、默认绑定和 hook 注入，只写在 `函数指针 / port / assembly 契约` 章节。
+- debug API：只用于联调、console 和诊断，必须说明可选性和宏开关。
+
+禁止把 debug 注册函数写成核心初始化强依赖，也禁止让 debug 入口承担真正业务逻辑。
+
+## 5. 复制到外部项目的最低说明要求
+
+当目录被标记为 `standalone` 或 `layer-dependent` 时，主文档必须明确：
+
+- 最小依赖文件集。
+- 需要额外补齐的外部符号或 hook。
+- 可以裁剪掉的 debug / console 文件。
+- 默认映射和默认资源需要在哪一层重写。
+
+当目录被标记为 `project-bound` 时，主文档必须明确哪些内容只能参考，不能直接搬运。
+
+## 6. 模块改造模板
+
+1. 先清理公共头文件中的 port 概念暴露。
+2. 识别 core 对平台的真实依赖，并归类成 cfg、hook、延时、资源映射等最小动作。
+3. 用 platform hook 或 assembly 配置把这些依赖收敛成稳定 contract。
+4. 把板级实现、默认资源和 debug 注册留在绑定层。
+5. 改完后检查非 port、非 debug 文件中是否仍残留 `_port.h` include、`XxxPort*` 调用或 port extern。

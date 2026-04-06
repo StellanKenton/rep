@@ -1,263 +1,118 @@
-# Module 层文档总说明
+---
+doc_role: layer-guide
+layer: module
+module: module
+status: active
+portability: layer-dependent
+public_headers: []
+core_files:
+    - module.md
+port_files: []
+debug_files: []
+depends_on:
+    - ../rule/projectrule.md
+forbidden_depends_on:
+    - core 直连 bsp 或下层 _port.h
+required_hooks: []
+optional_hooks: []
+common_utils: []
+copy_minimal_set:
+    - module/
+read_next:
+    - mpu6050/mpu6050.md
+    - w25qxxx/w25qxxx.md
+---
 
-## 1. 文档定位
+# Module 层总文档
 
-`USER/Rep/module/module.md` 只做一件事：指导如何在本工程生成一个新的 module。
+这是 `module/` 的权威入口文档。
 
-它回答的是通用问题：
+## 1. 本层目标和边界
 
-- 为什么新模块必须拆成 core 和 port。
-- 新模块应该有哪些文件。
-- 对外 API、配置结构、状态码、实例管理应该怎么组织。
-- port 层需要向 core 层提供什么最小能力。
-- 新模块从建目录到可编译，建议按什么顺序推进。
-- 寄存器也应该放在core的h文件下，port层不应该直接看到寄存器地址和命令，而是通过接口表提供更抽象的访问能力。
+`module` 层承载具体器件或功能模块的稳定语义，位于 `drvlayer` 之上、业务编排之下。
 
-它不负责描述某个具体模块的寄存器、命令时序或适配细节。那些内容应写在各自模块目录里的 `<module>.md` 中。
+本层负责：
 
-## 2. 文档分工
+- 定义模块公共 API。
+- 管理 `Cfg`、运行态、`isReady` 和初始化流程。
+- 把寄存器访问、协议访问或器件语义留在 core。
+- 通过 assembly / platform hook 适配下层 drv 公共接口。
 
-module 目录下的文档按下面方式分工：
+本层不负责：
 
-- `module.md`：新建模块的通用生成规范。
-- `<module>/<module>.md`：该模块内部文件如何分工、core 需要什么、port 应如何链接 drv 来满足 core。
+- 直接处理 BSP 或 MCU 细节。
+- 在公共 API 中暴露 `PortBinding`、`PortInterface` 之类的项目绑定类型。
 
-判断原则如下：
+## 2. 生命周期模板
 
-- 只要这段内容对大多数新模块都成立，写进 `module.md`。
-- 只要这段内容依赖某个具体模块的寄存器、命令、传输形式或初始化流程，写进对应模块自己的 md。
+本层优先采用 `passive module` 模式：
 
-## 3. 标准目录结构
+- `GetDefCfg()`：向调用者写入稳定默认配置。
+- `GetCfg()`：返回模块当前持有的配置快照。
+- `SetCfg()`：写入新配置并清掉 ready / 缓存。
+- `Init()`：只消费当前 cfg，不顺手生成默认值。
+- `IsReady()` / `GetInfo()`：暴露运行态只读查询。
 
-新模块默认采用下面的目录结构：
+只有真正需要周期运行时，才升级为 `active service` 或 `recoverable service`。
 
-```text
-<module>/
-    <module>.h
-    <module>.c
-    <module>_port.h
-    <module>_port.c
-    <module>_debug.h
-    <module>_debug.c
-    <module>.md
-```
+## 3. 公共 API 与 assembly API 的分离方式
 
-各文件职责固定如下：
+- 公共 API：写在 `<module>.h`，只暴露稳定语义。
+- assembly API：写在 `*_assembly.h` 或 `XxxPlatform*` provider 中，用于默认 transport / linkId / bus 绑定。
+- debug API：写在 `*_debug.*`，只能提供可裁剪联调能力。
 
-- `<module>.h`：公共宏、状态码、枚举、结构体、公共函数声明。
-- `<module>.c`：模块核心逻辑，只表达模块语义，不直接依赖 bsp。
-- `<module>_port.h`：port 绑定结构、port 接口表、平台相关钩子声明。
-- `<module>_port.c`：默认总线映射、drv 适配函数、延时函数、板级连接方式。
-- `<module>_debug.h/.c`：可选 debug / console 注册接口与调试命令实现，必须受宏开关控制。
-- `<module>.md`：本模块内部设计说明，重点写 core 和 port 的契约。
+推荐 API 顺序：
 
-## 4. 分层原则
+1. `GetDefCfg`
+2. `GetCfg`
+3. `SetCfg`
+4. `Init`
+5. `IsReady` / `GetInfo`
+6. 业务读写接口
 
-### 4.1 core 层负责什么
+## 4. 下级目录主文档必须写清的内容
 
-`<module>.c/.h` 负责：
+每个模块主文档至少要写清：
 
-- 模块公共语义。
-- 参数校验。
-- 默认配置装载触发。
-- 初始化流程编排。
-- 寄存器访问、协议读写、业务读写逻辑。
-- 运行时状态维护，例如 `isReady`、缓存、探测结果、统计信息。
+- `GetDefCfg/GetCfg/SetCfg/Init` 的真实 contract。
+- ready 条件、repeat init、hot reconfig 和 recover path。
+- assembly / platform hook 契约表。
+- 对下层 drv 的公共函数使用表。
+- 哪些文件属于 core，哪些属于 assembly/debug。
 
-`<module>.c/.h` 不负责：
+## 5. 本层通用命名模式
 
-- GPIO、bus 对应哪一路外设。
-- 使用硬件 IIC、软件 IIC、硬件 SPI 还是其他板级资源。
-- FreeRTOS 与裸机差异。
-- 直接调用 bsp 层函数。
+推荐模式：
 
-### 4.2 port 层负责什么
+- `<module>.h/.c`：公共语义与业务流程。
+- `<module>_assembly.h`：装配期 contract。
+- `xxxLoadPlatformDefaultCfg()`：默认 cfg provider。
+- `xxxGetPlatformInterface()`：最小底层动作 provider。
+- `xxxPlatformDelayMs()`：平台等待钩子。
 
-`<module>_port.c/.h` 负责：
+## 6. 常见错误写法和反例
 
-- 默认绑定和默认配置。
-- 把 drv 公共接口适配成 core 所需的最小动作集合。
-- 把逻辑 bus 编号转换成 drv 枚举。
-- 延时、等待、平台差异处理。
-- 当前板子的连接方式。
+- 在公共头文件中直接 include `drviic_port.h`、`drvspi_port.h` 等下层绑定头。
+- 把默认 bus / linkId 等项目绑定字段塞进公共 API。
+- 把寄存器语义放进 assembly adapter，而不是留在 core。
+- 文档只写“依赖 drviic”却不写实际调用哪些 `drvIic*` 接口。
 
-`<module>_port.c/.h` 不负责：
+## 7. 复制到其他工程时如何处理
 
-- 寄存器语义。
-- 业务状态机。
-- 初始化顺序本身。
-- 面向上层的业务 API。
+本层大多数目录属于 `layer-dependent`：
 
-## 5. 生成新模块时先确定的四件事
+- core 可复用。
+- assembly / platform hook 需要重写或重绑。
+- debug 文件通常可裁剪。
 
-开始写代码前，先明确这四件事：
+复制时先保留 `<module>.h/.c` 和 `*_assembly.h`，再根据主文档重写默认 provider。
 
-1. 这个模块对上真正要暴露哪些稳定能力。
-2. 这个模块对下最少需要哪些 drv 动作。
-3. 哪些默认值属于“当前硬件怎么接的”，因此应放在 port 层。
-4. 哪些字段属于运行态，因此应放在内部 `Device/Ctx` 而不是 `Cfg`。
+## 8. AI 推荐阅读顺序
 
-这四件事明确后，文件结构和接口设计基本就固定了。
-
-## 6. 推荐的数据结构
-
-### 6.1 逻辑设备编号
-
-如果模块对应固定数量的板级器件，优先使用逻辑设备编号：
-
-```c
-typedef enum eXxxDevMap {
-    XXX_DEV0 = 0,
-    XXX_DEV1,
-    XXX_DEV_MAX,
-} eXxxMapType;
-```
-
-这样可以统一：
-
-- 上层入口。
-- 默认映射。
-- 内部上下文数组。
-
-### 6.2 配置与运行态分离
-
-推荐至少拆成下面两层：
-
-```c
-typedef struct stXxxCfg {
-    stXxxPortBind bind;
-} stXxxCfg;
-
-typedef struct stXxxDevice {
-    stXxxCfg cfg;
-    bool isReady;
-} stXxxDevice;
-```
-
-补充原则：
-
-- `Cfg` 只放可配置项。
-- `Device/Ctx` 持有 `Cfg`，并补充所有运行态。
-- 缓存、探测结果、统计值不要混进 `Cfg`。
-
-### 6.3 最小 port 接口表
-
-core 不应该直接看到完整 drv API，而应该只看到自己真正需要的最小动作。
-
-例如：
-
-```c
-typedef eDrvStatus (*xxxPortInitFunc)(uint8_t bus);
-typedef eDrvStatus (*xxxPortReadRegFunc)(uint8_t bus, ...);
-typedef eDrvStatus (*xxxPortWriteRegFunc)(uint8_t bus, ...);
-
-typedef struct stXxxPortInterface {
-    xxxPortInitFunc init;
-    xxxPortReadRegFunc readReg;
-    xxxPortWriteRegFunc writeReg;
-} stXxxPortInterface;
-```
-
-接口表设计规则：
-
-- 只保留 core 真正调用的动作。
-- 函数参数直接服务于 core 的访问语义。
-- 不把 drv 私有结构体、bsp 句柄或硬件细节泄露给 core。
-
-## 7. port 链接函数怎么设计
-
-port 层最重要的内容不是默认映射，而是“链接函数”如何把 drv 接到 core。
-
-这里的链接函数，指的就是 `*_port.c` 里那组 adapter，例如：
-
-- `xxxPortHardIicInitAdpt()`
-- `xxxPortHardIicReadRegAdpt()`
-- `xxxPortHardIicWriteRegAdpt()`
-- `xxxPortHardSpiTransferAdpt()`
-
-这些函数必须满足以下要求：
-
-1. 函数签名由 core 需要的最小动作决定，而不是照搬 drv 全接口。
-2. 函数内部先校验 `bus` 和关键参数，再调用底层 drv。
-3. 返回值统一使用 `eDrvStatus` 或模块约定的兼容状态。
-4. 不在 adapter 里混入业务语义，例如寄存器初始化顺序、容量推导、数据解析。
-5. 如果底层 drv 需要组包，组包动作可以放在 adapter 中，但组包后的语义仍然要保持通用。
-
-换句话说，adapter 只做“翻译”，不做“决策”。
-
-## 8. core 对 port 的典型需求
-
-新模块设计时，可以先从 core 反推 port 需要提供什么能力。常见模式如下：
-
-### 8.1 寄存器类模块
-
-适用于传感器、控制器、编解码器等：
-
-- `init(bus)`
-- `readReg(bus, address, regBuf, regLen, buffer, length)`
-- `writeReg(bus, address, regBuf, regLen, buffer, length)`
-- `delayMs(delayMs)`
-
-### 8.2 流式传输类模块
-
-适用于 SPI Flash、显示器、某些总线外设：
-
-- `init(bus)`
-- `transfer(bus, writeBuffer, writeLength, secondWriteBuffer, secondWriteLength, readBuffer, readLength, readFillData)`
-- `delayMs(delayMs)`
-
-### 8.3 查询状态类模块
-
-如果模块初始化或业务流程要轮询底层状态，可以在 core 中组织轮询逻辑，port 只提供一次原子访问能力。不要把轮询策略写进 port。
-
-## 9. 推荐 API 形态
-
-通用情况下，建议公共 API 按下面顺序组织：
-
-- `<module>GetDefCfg(device, &cfg)`
-- `<module>GetCfg(device, &cfg)`
-- `<module>SetCfg(device, &cfg)`
-- `<module>Init(device)`
-- `<module>IsReady(device)`
-- `<module>GetInfo(device)` 或 `<module>GetState(device)`
-- `<module>ReadReg()` / `<module>WriteReg()` / `<module>ReadId()`
-- `<module>ReadXxx()` / `<module>WriteXxx()` / `<module>SetXxx()` / `<module>EraseXxx()`
-
-不是每个模块都要全部具备，但顺序建议尽量统一。
-
-## 10. 生命周期分类与 cfg ownership
-
-建议把模块生命周期统一成下面三类：
-
-- passive module：`GetDefCfg/GetCfg/SetCfg + Init + API`，不需要周期 `Process()`。
-- active service：`GetDefCfg/GetCfg/SetCfg + Init + Start + Process/Task + Stop`。
-- recoverable service：在 active service 基础上补 `Fault/GetLastError/Recover`。
-
-P1 阶段至少要把下面几条变成仓库事实：
-
-- `GetDefCfg(device, &cfg)` 只把默认值写到调用者提供的缓冲区，不直接修改模块内部运行态。
-- `GetCfg(device, &cfg)` 返回模块当前持有的配置快照。
-- `SetCfg(device, &cfg)` 把调用者配置拷贝进模块上下文，并清掉 `isReady` 与相关缓存。
-- `Init(device)` 只消费模块当前持有的 cfg，不再承担“顺手生成默认值”的职责。
-- hot reconfig 统一走 `GetCfg/GetDefCfg -> 修改 cfg -> SetCfg -> Init`。
-
-对 passive module，文档至少要明确：
-
-- cfg ownership：调用者持有临时 cfg，模块内部持有 `SetCfg()` 后的快照。
-- ready 条件：哪些 bring-up 步骤成功后才允许 `isReady = true`。
-- repeat init：允许重复 `Init()`，但应视为基于当前 cfg 的重初始化。
-- hot reconfig：允许，但必须先 `SetCfg()`，再重新 `Init()`。
-- recover path：失败后如何回到可用状态，通常是重新 `SetCfg() + Init()`。
-
-## 11. 初始化流程模板
-
-`Init()` 建议按下面顺序实现：
-
-1. 获取设备上下文。
-2. 校验设备编号是否合法。
-3. 校验配置是否合法。
-4. 校验绑定是否合法。
-5. 校验 port 接口表是否完整。
+1. 先读本文件。
+2. 再读目标模块主文档。
+3. 再读 `*_assembly.h`。
+4. 最后读 `.h/.c` 和 `*_debug.*`。
 6. 初始化底层总线。
 7. 清理 `isReady` 和旧缓存。
 8. 读取关键 ID 或在线状态。

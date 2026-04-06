@@ -25,528 +25,136 @@ M1 阶段边界：
 - 调整板级连接或默认链路时，优先修改 `frameprocess_port`。
 - 调整 ACK、实例流程或调度策略时，优先修改 `frameprocess` 核心层。
 
-## 2. 替换范围
-
-该模块计划替换当前 `USER/appcomm/appcomm.h` 和 `USER/appcomm/appcomm.c` 的职责，并继续复用以下基础组件：
-
-- `Rep/comm/frameparser`：负责接收帧解析和发送组包。
-- `Rep/ringbuffer`：负责双发送队列的底层字节缓冲。
-- `Rep/drvlayer/drvuart`：负责底层 UART 收发。
-- `Rep/system/systask_port.c`：继续保留任务创建位置，任务回调改为调用 `frameprocess` 对外接口。
-
-建议分阶段完成替换：
-
-1. 第一阶段仅替换 `appcomm` 逻辑，不立即清理 `frameparser_port` 和已有 `AppComm` 协议常量。
-2. 确认编译和运行稳定后，再进行命名统一和遗留符号清理。
-
-这样可以先保证迁移正确，再处理命名一致性问题。
-
-## 3. 建议文件划分
-
-推荐目录结构如下：
-
-```text
-frameprocess/
-    frameprocess.h
-    frameprocess.c
-    frameprocess_data.h
-    frameprocess_data.c
-    frameprocess_port.h
-    frameprocess_port.c
-    frameprocess.md
-```
-
-各文件职责建议如下。
-
-### 3.1 frameprocess.h
-
-负责定义：
-
-- 逻辑实例枚举 `eFrmProcMapType`
-- 命令字枚举 `eFrmProcCmdType`
-- 模块状态码 `eFrmProcStatus`
-- 收发标志位联合体
-- 双发送队列配置结构
-- ACK 配置结构和 ACK 运行状态结构
-- 实例配置结构 `stFrmProcCfg`
-- 实例上下文结构 `stFrmProcCtx`
-- 对外公共接口声明
-
-### 3.2 frameprocess.c
-
-负责实现：
-
-- 默认配置加载入口和平台钩子调用点
-- 多实例上下文数组管理
-- 接收流程 `frmProcProcessRx()`
-- 发送流程 `frmProcProcessTx()`
-- ACK 立即回复路径
-- ACK 等待、超时、重发和失败退出
-- 双环形缓冲区入队、出队和优先级调度
-- 对外发送接口
-
-### 3.3 frameprocess_data.h
-
-负责定义协议相关的数据结构：
-
-- 各命令的接收结构体 `stFrmDataRxXxx`
-- 各命令的发送结构体 `stFrmDataTxXxx`
-- 接收标志位联合体 `unFrmDataRxFlags`
-- 发送标志位联合体 `unFrmDataTxFlags`
-- 接收数据存储结构 `stFrmDataRxStore`
-- 发送数据存储结构 `stFrmDataTxStore`
-
-### 3.4 frameprocess_data.c
-
-负责实现：
-
-- 命令字到结构体的 payload 解析
-- 结构体到 payload 的编码
-- 各命令 payload 长度校验
-- 接收完成后写入 `rx store`
-- 发送前从 `tx store` 读取并序列化
-
-### 3.5 frameprocess_port.h
-
-负责声明：
-
-- 默认实例配置
-- `frameparser` 默认协议配置获取接口
-- UART 发送适配接口
-- tick 获取接口
-- 默认 ring buffer 存储区获取接口
-- 默认 `urgent` 和 `normal` 队列容量配置
-
-### 3.6 frameprocess_port.c
-
-负责实现：
-
-- 复用 `frmPsrLoadPlatformDefaultProtoCfg()` 加载默认协议配置
-- 绑定调试 UART 接收缓冲
-- 提供 UART 发送适配函数
-- 提供 tick 获取函数
-- 提供各实例的 `urgent` 和 `normal` 发送缓冲区
-
-当前落地约束：
-
-- `frameprocess.c` 不再 include `frameprocess_port.h`，也不再直接调用 `frmProcPort*`。
-- `frameprocess_port.c` 负责实现 `frmProcLoadPlatformDefaultCfg()`、`frmProcPlatformInit()`、`frmProcPlatformPollRx()`、`frmProcEnsurePlatformFmt()`、`frmProcBuildPlatformPkt()`，旧的 `frmProcPort*` 仅保留为兼容包装。
-
-## 4. 多实例模型
-
-建议通过枚举管理多个 `frameprocess` 实例，例如：
-
-```c
-typedef enum eFrmProcMap {
-    FRAME_PROC0 = 0,
-    FRAME_PROC1,
-    FRAME_PROC_MAX,
-} eFrmProcMapType;
-```
-
-每个实例维护一套独立上下文，至少包括：
-
-- 一个 `frameparser` 实例
-- 一份接收数据存储
-- 一份发送数据存储
-- 一个 `urgent` 发送 ring buffer
-- 一个 `normal` 发送 ring buffer
-- 一个 ACK 运行状态对象
-- 一个当前发送槽
-
-这样当链路从单路调试 UART 扩展到蓝牙串口或第二路串口时，只需要在 `port` 层补充默认绑定，不需要重写核心流程。
-
-## 5. 协议数据层设计
-
-### 5.1 命令枚举
-
-建议统一使用命令字枚举，不在流程代码里直接使用裸值：
-
-```c
-typedef enum eFrmProcCmd {
-    FRM_PROC_CMD_HANDSHAKE = 0x01,
-    FRM_PROC_CMD_HEARTBEAT = 0x03,
-    FRM_PROC_CMD_DISCONNECT = 0x04,
-    FRM_PROC_CMD_SELF_CHECK = 0x05,
-    FRM_PROC_CMD_GET_DEVICE_INFO = 0x11,
-    FRM_PROC_CMD_GET_BLE_INFO = 0x13,
-    FRM_PROC_CMD_CPR_DATA = 0x31,
-} eFrmProcCmdType;
-```
-
-### 5.2 接收结构体和发送结构体拆分
-
-建议按数据流向拆分结构体，避免同一个结构体同时表示“收到的数据”和“待发送的数据”。
-
-示例：
-
-```c
-typedef struct stFrmDataRxHandshake {
-    uint8_t cipher[16];
-} stFrmDataRxHandshake;
-
-typedef struct stFrmDataTxHandshake {
-    uint8_t macString[12];
-} stFrmDataTxHandshake;
-```
-
-其他命令建议保持同样风格，例如：
-
-- `stFrmDataRxHeartbeat`
-- `stFrmDataTxHeartbeat`
-- `stFrmDataRxDisconnect`
-- `stFrmDataTxDisconnect`
-- `stFrmDataTxSelfCheck`
-- `stFrmDataTxDeviceInfo`
-- `stFrmDataTxBleInfo`
-- `stFrmDataTxCprData`
-
-### 5.3 数据存储
-
-建议在 `frameprocess_data.h` 中集中定义接收与发送数据存储区：
-
-```c
-typedef struct stFrmDataRxStore {
-    unFrmDataRxFlags flags;
-    stFrmDataRxHandshake handshake;
-    stFrmDataRxHeartbeat heartbeat;
-    stFrmDataRxDisconnect disconnect;
-    stFrmDataRxGetDeviceInfo getDeviceInfo;
-    stFrmDataRxGetBleInfo getBleInfo;
-} stFrmDataRxStore;
-
-typedef struct stFrmDataTxStore {
-    unFrmDataTxFlags flags;
-    stFrmDataTxHandshake handshake;
-    stFrmDataTxHeartbeat heartbeat;
-    stFrmDataTxDisconnect disconnect;
-    stFrmDataTxSelfCheck selfCheck;
-    stFrmDataTxDeviceInfo deviceInfo;
-    stFrmDataTxBleInfo bleInfo;
-    stFrmDataTxCprData cprData;
-} stFrmDataTxStore;
-```
-
-建议遵循以下约束：
-
-- 接收解析成功后，先写 `rx store`，再置对应 `rx flag`。
-- 发送接口调用后，先写 `tx store`，再置对应 `tx flag`。
-- `process` 层只根据标志决定流程，不直接处理具体 payload 字节拷贝。
-
-## 6. 标志位联合体设计
-
-发送和接收都可以使用联合体 bit 位表示状态，建议分为“数据标志”和“流程标志”两类。
-
-### 6.1 接收标志
-
-```c
-typedef union unFrmDataRxFlags {
-    uint32_t value;
-    struct {
-        uint32_t handshake : 1;
-        uint32_t heartbeat : 1;
-        uint32_t disconnect : 1;
-        uint32_t getDeviceInfo : 1;
-        uint32_t getBleInfo : 1;
-        uint32_t ackFrame : 1;
-        uint32_t reserved : 26;
-    } bits;
-} unFrmDataRxFlags;
-```
-
-### 6.2 发送标志
-
-```c
-typedef union unFrmDataTxFlags {
-    uint32_t value;
-    struct {
-        uint32_t handshake : 1;
-        uint32_t heartbeat : 1;
-        uint32_t disconnect : 1;
-        uint32_t selfCheck : 1;
-        uint32_t deviceInfo : 1;
-        uint32_t bleInfo : 1;
-        uint32_t cprData : 1;
-        uint32_t ackPending : 1;
-        uint32_t reserved : 24;
-    } bits;
-} unFrmDataTxFlags;
-```
-
-此外，建议增加流程运行标志位联合体，用于表示：
-
-- `isInit`
-- `isLinkUp`
-- `isTxBusy`
-- `isWaitingAck`
-- `hasImmediateAck`
-
-这样可以把业务数据标志和流程控制标志分开管理，减少状态耦合。
-
-## 7. 接收流程设计
-
-建议将接收流程固定为以下顺序：
-
-1. `frmProcProcessRx()` 调用 `frmPsrProc()`，从 `frameparser` 获取完整帧。
-2. 读取完整帧中的 `cmd`、`payloadLen` 和原始帧缓存。
-3. 如果命令需要立即 ACK，则先生成 ACK 发送动作。
-4. 调用 `frameprocess_data.c` 的解析函数，把 payload 写入对应接收结构。
-5. 置对应 `rx flag`。
-6. 根据命令触发业务处理或生成响应发送数据。
-7. 调用 `frmPsrFreePkt()` 释放当前帧。
-
-这里的职责边界应保持明确：
-
-- `process` 负责流程控制。
-- `data` 负责 payload 与结构体之间的转换。
-- 不应在 `process` 中手写各命令的字节拷贝细节。
-
-## 8. 发送流程设计
-
-建议把发送流程拆成三个阶段。
-
-### 8.1 上层写入发送结构体
-
-例如：
-
+---
+doc_role: service-spec
+layer: comm
+module: frameprocess
+status: active
+portability: layer-dependent
+public_headers:
+    - frameprocess.h
+    - frameprocess_data.h
+core_files:
+    - frameprocess.c
+    - frameprocess_data.c
+    - frameprocess_pack.c
+port_files: []
+debug_files: []
+depends_on:
+    - ../frameparser/frameparser.md
+    - ../../tools/ringbuffer/ringbuffer.md
+forbidden_depends_on:
+    - frameprocess core 直连 UART 或 parser 私有绑定
+required_hooks:
+    - stFrmProcCfg.getTick
+    - stFrmProcCfg.txFrame
+    - stFrmProcCfg.protoCfg.getRingBuf
+    - stFrmProcCfg.protoCfg.pktLenFunc
+    - stFrmProcCfg.protoCfg.crcCalcFunc
+optional_hooks:
+    - stFrmProcCfg.protoCfg.headLenFunc
+    - stFrmProcCfg.protoCfg.getTick
+common_utils:
+    - tools/ringbuffer
+read_next:
+    - ../comm.md
+    - ../frameparser/frameparser.md
+---
+
+# FrameProcess 模块说明
+
+这是当前目录的权威入口文档。
+
+补充阅读文档：当前仓库历史上有把本目录写成“迁移计划”的内容，后续一律以本文件为最终 contract。
+
+## 1. 模块定位
+
+`frameprocess` 负责完整链路的帧接收、payload 结构化解析、发送排队、优先级调度和 ACK 超时重发。它建立在 `frameparser` 之上，但不直接持有底层 UART 或 BSP 细节。
+
+## 2. 目录内文件职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `frameprocess.h` | 实例枚举、命令枚举、状态码、cfg、ctx、公共 API |
+| `frameprocess.c` | RX/TX 主流程、ACK 状态机、双队列调度 |
+| `frameprocess_data.h/.c` | payload 与结构体的解析 / 编码 |
+| `frameprocess_pack.h/.c` | 业务封装辅助 |
+| `frameprocess.md` | 当前目录 contract |
+
+## 3. 对外公共接口
+
+稳定公共头文件：`frameprocess.h`、`frameprocess_data.h`
+
+稳定 API：
+
+- `frmProcGetDefCfg()`
+- `frmProcSetCfg()`
+- `frmProcInit()`
+- `frmProcIsReady()`
+- `frmProcProcess()`
 - `frmProcPostSelfCheck()`
 - `frmProcPostDisconnect()`
 - `frmProcPostCprData()`
+- `frmProcGetRxStore()` / `frmProcClearRxFlags()`
 
-这些接口只负责三件事：
+调用顺序：
 
-1. 校验参数。
-2. 将业务数据写入对应 `tx struct`。
-3. 置对应 `tx flag`，并指定优先级为 `urgent` 或 `normal`。
+1. 先取默认 cfg 并完成必要覆写。
+2. `SetCfg()` 后 `Init()`。
+3. 周期调用 `frmProcProcess()`。
+4. 上层通过 `Post*` 接口写入待发业务数据，通过 `GetRxStore()` 读取接收结果。
 
-### 8.2 process 编码待发数据
+## 4. 配置、状态与生命周期
 
-`frmProcProcessTx()` 建议执行以下动作：
+`frameprocess` 是链路 service：
 
-1. 扫描待发 `tx flag`。
-2. 调用 `frameprocess_data.c` 将结构体编码为 payload。
-3. 调用 `frmPsrPortMkPkt()` 生成完整协议帧。
-4. 将完整帧写入 `urgent` 或 `normal` ring buffer。
+- `Init()` 建立 parser、双队列和 ACK 状态对象。
+- `Process()` 负责 `RX -> BuildPendingTx -> AckTimeout -> TX`。
+- `unFrmProcRunFlags` 只描述流程状态，不承载业务 payload。
+- 当前优先级固定为：`immediateAck -> urgentTxRb -> normalTxRb`。
 
-### 8.3 调度器发送完整帧
+## 5. 依赖白名单与黑名单
 
-建议发送优先级固定为：
+- 允许依赖：`frameparser`、`ringbuffer`、`frameprocess_data`。
+- 禁止依赖：在 `frameprocess.c` 中直接 include UART 私有头或 parser 私有绑定头。
+- 禁止做法：让 `Post*` 接口直接驱动 UART 发送。
 
-1. 立即 ACK
-2. `urgent` ring buffer
-3. `normal` ring buffer
+## 6. 函数指针 / port / assembly 契约
 
-只要 `urgent` 队列中仍有待发帧，`normal` 队列就不应抢先发送。
+| 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `stFrmProcCfg.getTick` | 必需 | 当前工程链路 provider | ACK 超时与流程调度 | `uint32_t (*)(void)` | 返回单调 tick | 缺失则无法初始化 | cfg 已准备 | 用于 ACK 和链路超时 |
+| `stFrmProcCfg.txFrame` | 必需 | 当前工程链路 provider | TX 主流程 | `eFrmProcStatus (*)(proc, frameBuf, frameLen)` | 完整帧交给底层发送 | 返回 busy/timeout/error | cfg 已准备 | `Post*` 不直接调用它 |
+| `stFrmProcCfg.protoCfg.getRingBuf` | 必需 | 当前工程链路 provider | parser 初始化 | `stRingBuffer *(*)(void *userCtx)` | 返回 RX ring buffer | `NULL` 视为未装配 | protoCfg 已准备 | RX ownership 在 provider 侧 |
+| `stFrmProcCfg.protoCfg.pktLenFunc` | 必需 | 协议 provider | parser 解析 | 见 `frameparser` | 返回合法总包长 | `0` 视为不可判定或非法 | 格式合法 | 协议相关逻辑 |
+| `stFrmProcCfg.protoCfg.crcCalcFunc` | 必需 | 协议 provider | parser 解析与组包 | 见 `frameparser` | CRC 计算成功 | 结果不匹配则解析失败 | 格式合法 | 接收与发送共用 |
 
-## 9. 双环形缓冲区设计
+## 7. 公共函数使用契约
 
-### 9.1 使用双队列的原因
+| 来源模块 | 公共函数 | 允许在哪些文件调用 | 用途 | 调用前提 | 典型调用顺序 | 返回值处理 | 禁止做法 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `frameparser` | `frmPsrInitByProtoCfg` / `frmPsrProc` / `frmPsrFreePkt` / `frmPsrMkPkt` | `frameprocess.c` | RX 解析和 TX 组包 | cfg / protoCfg 已准备 | `Init -> Proc -> Free` | 解析失败进入错误或等待态 | 在业务层直接管理 parser 状态 |
+| `ringbuffer` | `ringBufferWrite/Read/Peek` | `frameprocess.c` | urgent / normal 队列管理 | 队列已初始化 | `Build -> Enqueue -> Dequeue` | 无空间时返回 `NO_SPACE` 或降级策略 | 直接写裸 payload 不加帧长前缀 |
+| `frameprocess_data` | `frmProcDataParseRx` / `frmProcDataBuildTx` | `frameprocess.c` | payload 与结构体转换 | cmd 合法 | `ParseRx` 或 `BuildTx` | `false` 视为 parse/build 失败 | 在 `frameprocess.c` 手写 payload 字节拷贝 |
 
-如果只保留单一发送队列，CPR 上报等普通数据可能阻塞握手回复、断开回复或 ACK 帧，导致上位机误判超时。因此发送路径需要显式区分高优先级和普通优先级。
+## 8. 改动落点矩阵
 
-### 9.2 建议队列模型
+| 需求 | 应改文件 | 不该改的文件 |
+| --- | --- | --- |
+| 改 ACK、队列调度、实例流程 | `frameprocess.c/.h` | `frameprocess_data.c` payload 细节 |
+| 新增命令结构体和 payload 编解码 | `frameprocess_data.*` | `frameprocess.c` 主流程 |
+| 改默认协议、tick、发送链路绑定 | 当前工程 cfg / provider | `frameprocess.c` 核心状态机 |
 
-每个实例维护两个字节 ring buffer：
+## 9. 复制到其他工程的最小步骤
 
-- `urgentTxRb`：容量较小，例如 256 或 512 字节。
-- `normalTxRb`：容量较大，例如 1024 或 2048 字节。
+最小依赖集：`frameprocess.h/.c`、`frameprocess_data.h/.c`、`frameparser`、`ringbuffer`。
 
-两个队列都不直接存裸 payload，而是存完整帧记录：
+外部项目必须补齐：tick hook、完整帧发送函数、parser protoCfg、RX ring buffer provider。若协议不同，还要重写 `frameprocess_data` 的编解码。
 
-```text
-[frameLen high][frameLen low][frame bytes...]
-```
+## 10. 验证清单
 
-这样出队时无需重新组包，ACK 重发时也可以直接复用原始帧缓存。
+- 单实例下 `RX -> ACK -> TX` 顺序稳定。
+- `urgent` 队列不会被 `normal` 队列抢占。
+- ACK 超时和重发次数符合配置。
+- `Post*` 接口只写数据，不直接驱动底层发送。
 
-### 9.3 入队规则
-
-- 握手回复、心跳回复、断开回复和 ACK 帧默认进入 `urgent`。
-- CPR 数据、自检上报、设备信息等默认进入 `normal`。
-- 上层可以根据接口参数显式指定优先级。
-
-### 9.4 出队规则
-
-调度器每次发送时按以下顺序检查：
-
-1. 是否存在立即 ACK。
-2. 是否存在 `urgentTxRb` 数据。
-3. 是否存在 `normalTxRb` 数据。
-
-每次只发送一帧，等待 UART 空闲后再继续发送下一帧，避免多个缓存源并发争用同一发送通道。
-
-## 10. ACK 设计
-
-### 10.1 ACK 基本规则
-
-ACK 建议分为“接收后立即回复 ACK”和“发送后等待 ACK”两部分。
-
-接收侧规则：
-
-- 当收到的帧满足 ACK 条件时，立即回复一帧匹配的 ACK 数据。
-
-发送侧规则：
-
-- 首次发送后进入 `waitingAck`。
-- 若 100 ms 内未收到匹配 ACK，则重发一次。
-- 再过 100 ms 仍未收到，则再重发一次。
-- 总发送次数达到 3 次后仍未收到 ACK，则记为失败并退出等待状态。
-
-### 10.2 ACK 运行状态
-
-建议单独定义 ACK 运行状态结构：
-
-```c
-typedef struct stFrmProcAckState {
-    uint8_t frameBuf[FRM_PROC_MAX_PKT_LEN];
-    uint16_t frameLen;
-    uint32_t sendTickMs;
-    uint8_t retryCount;
-    uint8_t maxRetryCount;
-    uint16_t timeoutMs;
-    bool isWaiting;
-} stFrmProcAckState;
-```
-
-该结构只保存当前等待 ACK 的单帧信息。对于单串口链路，这样的模型更简单，也更容易保证状态一致性。
-
-### 10.3 ACK 匹配约束
-
-这里需要先明确 ACK 判定条件。
-
-当前协议文档约定：
-
-- `Byte0~1` 为帧头。
-- `Byte2` 为版本号，当前固定为 `0x01`。
-- `Byte3` 为命令字。
-
-因此，如果直接按“第 3 个 byte 为 `0x01` 时回复 ACK”理解，现有协议会出现语义冲突，因为版本字节本身固定就是 `0x01`。
-
-建议当前方案按以下前提执行：
-
-- ACK 判定条件以 `cmd == 0x01` 为准，即握手命令需要 ACK。
-
-如果 ACK 条件实际上需要按 `Byte2` 判定，则应先修订协议字段定义，否则无法准确区分普通帧和需 ACK 帧。
-
-### 10.4 ACK 立即回复路径
-
-为满足立即回复要求，建议不要让 ACK 回复帧完全走普通排队路径，而是增加 `immediateAck` 槽：
-
-- 收到需 ACK 的帧后，先把原始帧复制到 `immediateAckBuf`。
-- `frmProcProcessTx()` 每轮优先检查 `immediateAckBuf`。
-- UART 空闲时直接发送。
-- UART 忙时降级写入 `urgentTxRb`。
-
-这样既能保证 ACK 优先级，又能兼容底层 DMA 忙的场景。
-
-## 11. 建议对外 API
-
-对外接口建议保持统一风格，例如：
-
-```c
-eFrmProcStatus frmProcGetDefCfg(eFrmProcMapType proc, stFrmProcCfg *cfg);
-eFrmProcStatus frmProcSetCfg(eFrmProcMapType proc, const stFrmProcCfg *cfg);
-eFrmProcStatus frmProcInit(eFrmProcMapType proc);
-bool frmProcIsReady(eFrmProcMapType proc);
-void frmProcProcess(eFrmProcMapType proc);
-
-eFrmProcStatus frmProcPostSelfCheck(eFrmProcMapType proc, const stFrmDataTxSelfCheck *data, bool isUrgent);
-eFrmProcStatus frmProcPostDisconnect(eFrmProcMapType proc, bool isUrgent);
-eFrmProcStatus frmProcPostCprData(eFrmProcMapType proc, const stFrmDataTxCprData *data, bool isUrgent);
-
-const stFrmDataRxStore *frmProcGetRxStore(eFrmProcMapType proc);
-void frmProcClearRxFlags(eFrmProcMapType proc, uint32_t flags);
-```
-
-接口约束建议如下：
-
-- `frmProcProcess()` 内部分别调用 `frmProcProcessRx()` 和 `frmProcProcessTx()`。
-- `Post` 类接口只负责写入发送数据，不直接驱动 UART。
-- 上层如果只关心某类接收结果，可以读取 `RxStore` 和 `RxFlags`。
-
-## 12. process 内部主流程
-
-建议 `frmProcProcess()` 按固定顺序组织：
-
-```text
-frmProcProcess()
-    -> frmProcProcessRx()
-    -> frmProcBuildPendingTx()
-    -> frmProcProcessAckTimeout()
-    -> frmProcProcessTx()
-```
-
-各步骤职责如下：
-
-- `frmProcProcessRx()`：从 `frameparser` 获取完整帧并写入 `rx store`。
-- `frmProcBuildPendingTx()`：把 `tx store` 中待发数据编码并入队。
-- `frmProcProcessAckTimeout()`：处理 ACK 超时和重发。
-- `frmProcProcessTx()`：按 `immediateAck`、`urgent`、`normal` 顺序发包。
-
-## 13. 与现有 system 的对接方式
-
-当前 `systask_port.c` 中已有独立的 `appCommTaskCallback()`。迁移到 `frameprocess` 后，建议按以下顺序对接：
-
-1. 初始化阶段将 `initializeAppComm()` 替换为 `initializeFrameProcess()`。
-2. 任务回调中调用 `frmProcProcess(FRAME_PROC0)`。
-3. 逐步将 `appCommSendCprData()` 的调用点替换为 `frmProcPostCprData()`。
-4. 验证通过后再删除 `appcomm` 模块。
-
-这样可以把改动范围限制在对接层，降低迁移风险。
-
-## 14. 实施顺序建议
-
-建议按以下顺序落地，避免一次性改动过大。
-
-### 第一阶段
-
-先建立 `frameprocess.h`、`frameprocess.c`、`frameprocess_port.h`、`frameprocess_port.c`、`frameprocess_data.h`、`frameprocess_data.c` 基本骨架，先保证接口可编译。
-
-### 第二阶段
-
-把 `appcomm` 已有命令迁移到 `frameprocess_data`，优先覆盖以下命令：
-
-- 握手
-- 心跳
-- 断开
-- 自检
-- 设备信息
-- BLE 信息
-- CPR 数据
-
-### 第三阶段
-
-实现双队列发送和 ACK 状态机，初期只接入一条链路 `FRAME_PROC0`，确认流程稳定后再扩展到多实例。
-
-### 第四阶段
-
-切换 `systask_port.c` 调用入口，从 `appCommProcess()` 改到 `frmProcProcess()`。
-
-### 第五阶段
-
-验证协议联调稳定后，再移除 `appcomm`。
-
-## 15. 风险点
-
-当前阶段最需要提前锁定的风险点如下：
-
-- ACK 判定字段到底是 `Byte2` 还是 `Byte3`，需要先统一。
-- ACK 回包是否“完全镜像原帧”，如果是，则收到的 CRC 也应原样带回，不应重新组包。
-- `urgent` 队列容量过小时，连续 ACK 或连续心跳回复可能顶满队列。
-- 如果底层 UART DMA 是异步发送，需要明确“发送完成”判定接口，否则调度器可能重复发送同一帧。
-- `frameparser_port` 当前默认协议命名和常量仍偏向 `appcomm`，第一阶段可以复用，第二阶段建议重命名为通用命名。
-
-## 16. 计划总结
-
-`frameprocess` 最适合按“core + data + port”的方式落地，而不是继续做成单文件协议模块。这样既满足当前目标：
-
-- 多实例
-- 结构体化收发
-- 基于 `frameparser` 的解析与组包
-- 联合体 bit 标志位拆分
-- `urgent` 和 `normal` 双环形缓冲区
-- ACK 立即回复与 100 ms 重发
-
-也符合当前仓库对模块分层、端口适配、数据结构定义位置和后续可扩展性的要求。
-
-如果下一步开始实现，建议先从 `frameprocess.h`、`frameprocess_data.h` 和 `frameprocess_port.h` 三个头文件定好契约，再进入 `frameprocess.c` 主流程。这样可以先把边界定死，减少中途返工。

@@ -1,97 +1,105 @@
+---
+doc_role: layer-guide
+layer: manager
+module: manager
+status: active
+portability: project-bound
+public_headers: []
+core_files:
+  - manager.md
+  - manager.c
+  - service_lifecycle.c
+port_files: []
+debug_files: []
+depends_on:
+  - ../rule/projectrule.md
+  - ../system/system.md
+forbidden_depends_on:
+  - 子模块依赖下层 _port.h
+required_hooks: []
+optional_hooks: []
+common_utils: []
+copy_minimal_set:
+  - manager/
+read_next:
+  - power/power.md
+  - selfcheck/selfcheck.md
+  - update/update.md
+---
+
 # Manager 层说明
 
-## 1. 模块定位
+这是 `manager/` 的权威入口文档。
 
-`manager/` 是服务编排层，不承担底层驱动适配，也不直接承载系统模式状态。
+## 1. 本层目标和边界
 
-它负责三类事情：
+`manager` 是服务编排层，负责把 `power`、`selfcheck`、`update` 这类 service 组织成稳定入口，供 `system` 调度。
 
-- 组织跨模块服务的初始化顺序。
-- 聚合启动期自检结果。
-- 为 `system` 提供明确的服务入口，避免把业务接线继续堆回 `systask_port.c`。
+本层负责：
 
-## 2. 当前目录结构
+- 服务生命周期统一化。
+- 启动期自检结果聚合。
+- 健康摘要与 last-error 可观测性。
 
-```text
-manager/
-    manager.h
-    manager.c
-    manager.md
-    power/
-        power.h
-        power.c
-        power.md
-    selfcheck/
-        selfcheck.h
-        selfcheck.c
-        selfcheck.md
-    update/
-        update.h
-        update.c
-        update.md
-```
+本层不负责：
 
-## 3. 当前职责划分
+- 底层驱动适配。
+- 直接管理系统模式状态。
+- 替代 `system` 承担任务创建。
 
-- `manager.h/.c`
-  提供统一入口，负责把 `power`、`selfcheck`、`update` 串起来。
-- `power/`
-  承接电源服务运行态，供 `PowerTask` 调度。
-- `selfcheck/`
-  承接启动期自检结果聚合与状态快照。
-- `update/`
-  承接升级服务运行态与请求状态。
+## 2. 允许依赖与禁止依赖
 
-## 4. 现阶段设计原则
+- 允许依赖：公共头文件、`service_lifecycle.*`、更底层稳定接口。
+- 禁止依赖：任何 `_port.h`、板级绑定细节和 BSP 结构。
+- `system` 只能通过 manager 暴露的公共入口调度服务，不能跨层操纵子模块内部状态。
 
-- 不引入 IOC、依赖图或动态注册框架。
-- 优先采用显式初始化函数和固定调用序列。
-- `system` 只决定何时进入自检、待机、升级模式，不直接维护具体服务内部状态。
-- manager 子模块只依赖公共头文件，不跨层引用 `_port.h`。
+## 3. 下级目录主文档必须包含的内容
 
-## 5. 生命周期 contract
+每个 service 文档必须明确：
 
-`manager/` 现在统一采用三类生命周期模型：
+- 自己属于 `active service` 还是 `recoverable service`。
+- `Init/Start/Process/Stop/Recover/GetStatus/GetLastError` 的语义。
+- 允许在哪个任务上下文调用。
+- 哪些接线点是 `project-bound`。
 
-- passive module: `Init + Query/API`
-- active service: `Init + Start + Process/Task + Stop`
-- recoverable service: `Init + Start + Process/Task + Stop + Fault/GetLastError/Recover`
+## 4. 本层通用命名模式
 
-公共基线放在 `manager/service_lifecycle.*`，当前首批接入模块如下：
+- `manager.h/.c`：聚合入口与健康摘要。
+- `service_lifecycle.h/.c`：统一生命周期状态机基线。
+- 子目录 `power/`、`selfcheck/`、`update/`：各自持有运行态、last error 和统计信息。
 
-- `power/` 作为 active service 落地 `Init/Start/Process/Stop`
-- `update/` 作为 recoverable service 落地 `Init/Start/Process/Stop/Fault/Recover`
-- `selfcheck/` 作为 recoverable one-shot service 落地 `Start/Commit/GetLastError/Recover`
+## 5. 生命周期模板
 
-统一约束：
+当前统一基线如下：
 
-- `Init` 允许重复调用，语义为幂等 ready。
-- `Start` 仅在 ready 且非 fault 状态下成功。
-- `Process` 只允许在 started 状态下执行。
-- `Stop` 负责退出运行态，不销毁模块实例。
-- `Recover` 只用于 recoverable service，从 fault 返回 ready。
+- `Init`：允许重复调用，语义为幂等 ready。
+- `Start`：只在 ready 且非 fault 状态下成功。
+- `Process`：只允许在 started 状态下执行。
+- `Stop`：退出运行态，不销毁实例。
+- `Recover`：只用于 recoverable service，从 fault 回到 ready。
 
-## 6. 当前落地范围
+已确认落地：
 
-这次只完成 P2 的最小可用骨架：
+- `power`：active service。
+- `update`：recoverable service。
+- `selfcheck`：recoverable one-shot service。
 
-- 启动期自检由 `managerRunStartupSelfCheck()` 聚合。
-- `PowerTask` 通过 `managerPowerProcess()` 调度电源服务。
-- `UPDATE_MODE` 通过 `managerUpdateProcess()` 调度升级服务。
-- manager 子模块统一携带 lifecycle state、last error 和计数快照。
+## 6. 常见错误写法和反例
 
-## 7. 可观测性 contract
+- 在 `system` 中直接维护 service 内部状态，而不是走 manager 入口。
+- 让 manager 子模块直接 include 下层 `_port.h`。
+- 把 `GetStatus` 做成临时调试接口，而不是稳定统计快照。
 
-当前仓库已经补齐 manager 层最小可用的 health/error contract：
+## 7. 复制到其他工程时如何处理
 
-- `power`、`update`、`selfcheck` 统一保留 `GetState()`、`GetLastError()` 和 `GetStatus()` 查询入口。
-- `GetStatus()` 作为最小统计快照，稳定暴露 lifecycle 计数、ready/started/fault 标志和服务私有状态。
-- `managerGetHealthSummary()` 负责聚合 `power/update/selfcheck` 的 lifecycle、错误、自检结果和总体健康等级。
-- `system_debug` 通过 `health` console 命令暴露 manager 级状态查询，不再只依赖 log 侧推断问题。
+`manager/` 默认属于 `project-bound`：
 
-后续可以继续往这里补：
+- `service_lifecycle.*` 和生命周期模式可参考或复用。
+- 具体服务接线、启动时序和模式切换逻辑通常要重写。
 
-- service health registry
-- 启动依赖声明
-- demo/场景服务编排
-- 更细粒度的模块级 health registry
+## 8. AI 推荐阅读顺序
+
+1. 先读本文件。
+2. 再读 `service_lifecycle.*`。
+3. 再读目标 service 文档。
+4. 最后回到 `system/system.md` 查看调度关系。

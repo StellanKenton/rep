@@ -1,244 +1,108 @@
-# DrvLayer 文档总规则
+---
+doc_role: layer-guide
+layer: drvlayer
+module: drvrule
+status: active
+portability: layer-dependent
+public_headers: []
+core_files:
+    - drvrule.md
+port_files: []
+debug_files: []
+depends_on:
+    - ../rule/projectrule.md
+forbidden_depends_on:
+    - core 直接依赖 BSP
+required_hooks: []
+optional_hooks: []
+common_utils: []
+copy_minimal_set:
+    - drvlayer/
+read_next:
+    - drvuart/drvuart.md
+    - drviic/drviic.md
+    - drvspi/drvspi.md
+---
 
-本文档只负责一件事: 指导如何在 `USER/Rep/drvlayer` 下生成新的 `drvxxx` 模块，以及每个文件应该承担什么职责。
+# DrvLayer 总文档
 
-如果需要为某个现有驱动补 BSP、补 port 绑定、或者调整逻辑资源映射，也先看本文档，再看该驱动目录里的模块说明文档。
+这是 `drvlayer/` 的权威入口文档。
 
-## 1. 分层目标
+## 1. 本层目标和边界
 
-`drvlayer` 的核心目标不是直接把 BSP 包一层，而是把“项目逻辑资源”和“具体 MCU 实现”彻底拆开。
+`drvlayer` 负责把项目逻辑资源与具体 MCU / BSP 彻底拆开，让上层只依赖稳定的 `drvXxx*` 公共接口。
 
-目标调用关系如下:
+本层负责：
 
-- 应用层、module 层只调用 `drvXxx*` 公共接口。
-- `drvxxx.c` 只处理公共逻辑、状态管理、参数校验和错误语义。
-- `drvxxx_port.c` 负责把当前项目的逻辑资源绑定到 BSP 实现。
-- BSP 文件只负责芯片、引脚、时钟、DMA、中断、寄存器和 SDK 调用。
+- 公共驱动语义、状态码、参数校验和互斥保护。
+- 对 BSP hook 的最小 contract 定义。
+- 逻辑资源编号、默认超时、默认缓冲和 debug 可选能力的约束。
 
-禁止出现下面这些反向依赖:
+本层不负责：
 
-- `drvxxx.c` 直接包含 MCU SDK 头文件。
-- `drvxxx.c` 直接写 GPIO 端口号、SPI/I2C/UART 实例号、DMA 通道号。
-- 应用层绕过 `drvxxx` 直接调用 `bspxxx`。
+- 业务状态机。
+- 板级寄存器细节泄漏到上层。
+- 让应用层绕过 `drvxxx` 直连 BSP。
 
-## 2. 新驱动目录的标准结构
+## 2. 允许依赖与禁止依赖
 
-新建一个 `drvxxx` 目录时，默认至少包含下面几类文件:
+- 允许依赖：`rep_config.h`、`tools/` 下的公共工具、同层共享的稳定头文件。
+- 禁止依赖：MCU SDK 头文件直接进入 `drvxxx.c`、板级引脚细节、业务层私有结构。
+- 应用层和 module 层只能依赖 `drvxxx.h`，不能直连 BSP。
 
-- `drvxxx.h`: 公共头文件，定义稳定 API、公开类型、状态码、传输结构体。
-- `drvxxx.c`: 公共实现，负责参数校验、初始化状态、并发保护、超时归一化和公共流程。
-- `drvxxx_port.h` 或 `drvxxx_portmap.h`: 逻辑资源枚举、默认宏、console 开关、容量宏。
-- `drvxxx_port.c`: 钩子绑定层，维护 `gDrvXxxBspInterface`、默认配置、默认逻辑资源映射。
-- `xxx.md`: 当前驱动的设计说明，重点描述 core 对 port/BSP 的要求，而不是只写功能介绍。
+## 3. 下级目录主文档必须包含的内容
 
-如果模块包含调试或 console 扩展，可以增加:
+每个 `drvxxx.md` 必须至少包含：
 
-- `drvxxx_debug.h`
-- `drvxxx_debug.c`
+1. 模块定位。
+2. 目录内文件职责。
+3. 对外公共接口。
+4. 配置、状态与生命周期。
+5. 依赖白名单与黑名单。
+6. 函数指针 / port / assembly 契约。
+7. 公共函数使用契约。
+8. 改动落点矩阵。
+9. 复制到其他工程的最小步骤。
+10. 验证清单。
 
-但这类文件默认不是必需项，而且必须用宏开关控制启用与否。
+## 4. 本层通用命名模式
 
-## 3. 各文件职责边界
+推荐模式：
 
-### 3.1 `drvxxx.h`
+- `drvxxx.h`：稳定公共接口。
+- `drvxxx.c`：公共语义与状态管理。
+- `drvxxx_debug.h/.c`：可选调试与 console 注册。
+- `bspxxx.*` 或平台 provider：具体外设实现。
+- `xxxGetPlatformBspInterfaces()`、`gDrvXxxBspInterface[]`：当前工程绑定入口。
 
-只放对上层稳定的公共声明:
+说明：
 
-- 公共 API。
-- 面向上层的状态码或复用的 `eDrvStatus`。
-- 传输描述结构体、配置结构体、BSP 钩子类型。
-- 上层必须知道的枚举和结构体。
+- 当前仓库里部分驱动没有独立 `_port.*` 文件，这种情况下也必须在主文档中把平台 hook 契约写清楚，不能假装存在 `_port.*`。
 
-不要放:
+## 5. 常见错误写法和反例
 
-- 板级引脚细节。
-- BSP 私有上下文结构体。
-- 仅 port 层使用的内部映射表。
+- 在 `drvxxx.c` 里直接写 GPIO 端口号、DMA 通道号或具体实例名。
+- 把可选 debug 注册做成核心初始化的硬依赖。
+- 可选 hook 缺失时伪装成功，而不是返回 `DRV_STATUS_UNSUPPORTED`。
+- 在主文档里只写“依赖某驱动”，却不写到函数级调用表。
 
-### 3.2 `drvxxx.c`
+## 6. 复制到其他工程时如何处理
 
-只处理与硬件无关、但与驱动语义强相关的公共逻辑:
+`drvlayer` 子目录通常属于 `layer-dependent`：
 
-- 参数合法性检查。
-- 初始化状态检查。
-- 互斥锁、忙状态、临界区保护。
-- 默认超时或默认填充值的统一处理。
-- 公共读写流程、组合事务封装、软件回退逻辑。
-- 对可选 BSP 钩子的 `NULL` 检查与 `DRV_STATUS_UNSUPPORTED` 返回。
+- 可以复用 core 语义。
+- 需要重写或重新绑定 BSP hook。
+- debug/console 文件通常可裁剪。
 
-不要放:
+子目录主文档必须明确：
 
-- GPIO 端口初始化。
-- 串口 DMA 细节。
-- I2C 起止条件的硬件寄存器流程以外的板级资源编码。
+- 哪些 hook 是必需的。
+- 哪些默认值属于当前工程，可在外部项目替换。
+- 哪些 debug 文件可不带走。
 
-### 3.3 `drvxxx_port.h`
+## 7. AI 推荐阅读顺序
 
-用于定义项目级逻辑资源，而不是物理资源:
-
-- 逻辑总线枚举，如 `DRVSPI_BUS0`。
-- 逻辑设备枚举，如 `DRVUART_DEBUG`。
-- 默认超时宏、默认缓存长度宏、模块开关宏。
-- 与当前项目有关但与具体 BSP 实现无关的编译期配置。
-
-规则:
-
-- 逻辑资源命名从项目语义出发，不从芯片实例名出发。
-- 枚举保留 `MAX` 结束项。
-- console 和 log 宏放在这里，不放在公共层 `.c` 文件里硬编码。
-
-### 3.4 `drvxxx_port.c`
-
-这是 `drvlayer` 最关键的适配层。它负责把“当前工程里的逻辑资源”绑定到“当前 BSP 已实现的函数”。
-
-这里应该做的事:
-
-- 定义 `gDrvXxxBspInterface`。
-- 绑定必需和可选钩子。
-- 提供默认超时、默认 CS、默认缓冲区等项目级默认值。
-- 放置 console 注册入口或 debug 绑定入口。
-- 放置少量与当前项目绑定强相关、但不适合进入公共层的配置数据。
-
-这里不应该做的事:
-
-- 实现具体寄存器操作。
-- 写复杂业务流程。
-- 重新实现一遍公共逻辑。
-
-### 3.5 BSP 文件
-
-`bspxxx.h/.c` 只服务于 port 层绑定，不直接服务应用层。
-
-BSP 的职责是:
-
-- 时钟开关。
-- GPIO 复用。
-- 外设实例选择。
-- DMA 与 IRQ 配置。
-- 轮询、中断、DMA 的具体收发实现。
-- 物理资源与逻辑资源的最终落地。
-
-BSP 的接口必须围绕 `drvxxx.c` 的需求设计，而不是只按芯片手册堆函数。
-
-## 4. 新驱动的设计步骤
-
-新增一个驱动时，按下面顺序处理:
-
-1. 阅读 `rule.md` 和本文档，确认命名、缩进、注释和层次规则。
-2. 在 `drvlayer` 找最接近的现有模块，优先复用局部主流设计。
-3. 先定义公共语义，再决定 BSP 需要提供哪些钩子。
-4. 设计 `drvxxx_port.h`，先把逻辑资源抽象出来。
-5. 设计 `stDrvXxxBspInterface`，明确哪些钩子必需、哪些可选。
-6. 实现 `drvxxx.c`，把参数校验、状态管理、互斥和错误码统一放在公共层。
-7. 实现 `drvxxx_port.c`，绑定当前工程默认资源和 BSP 钩子。
-8. 最后实现或补全 `bspxxx.c/.h`。
-9. 补对应的 md 文档，写清楚 core 需要什么、port 如何绑定、BSP 应满足什么契约。
-
-## 5. 公共接口设计规则
-
-新驱动对外 API 需要满足下面这些要求:
-
-- 接口名统一使用 `drvXxx*` 前缀。
-- 公共层优先暴露稳定、最小可用接口，再考虑扩展能力。
-- 需要扩展时，优先增加显式 helper，而不是塞进含糊的 `control` 接口。
-- 传入缓冲区和长度时，必须在公共层边界检查空指针和长度。
-- 初始化前调用应返回明确错误，通常是 `DRV_STATUS_NOT_READY`。
-- 不支持的能力应返回 `DRV_STATUS_UNSUPPORTED`，不能伪成功。
-- 如果驱动需要多实例，优先使用逻辑枚举，不直接暴露物理端口编号。
-
-## 6. BSP 钩子表设计规则
-
-建议所有新驱动都使用一个模块专属钩子表，由 port 层统一持有，例如:
-
-```c
-typedef struct stDrvXxxBspInterface {
-    drvXxxBspInitFunc init;
-    drvXxxBspTransferFunc transfer;
-    drvXxxBspRecoverFunc recover;
-    uint32_t defaultTimeoutMs;
-} stDrvXxxBspInterface;
-```
-
-规则如下:
-
-- `init` 通常是必需钩子。
-- 任何被公共层直接调用的钩子，都要在 `drvxxx.c` 中明确检查是否为 `NULL`。
-- 可选钩子缺失时，公共层必须返回明确状态。
-- 钩子名称按公共语义命名，例如 `transfer`、`receive`、`setScl`，不要使用板级资源名。
-- 如果一个默认值是“当前工程配置”而不是“通用驱动语义”，就放在 port 层结构体字段里，不写死在公共层。
-
-## 7. port 层与 BSP 层的协作规则
-
-写模块文档时，要明确回答下面三个问题:
-
-1. core 代码调用 BSP 时依赖哪些函数和字段。
-2. 每个 BSP 函数的输入、输出和失败语义是什么。
-3. port 层里哪些默认值可以修改，修改后会影响什么。
-
-判断标准:
-
-- 如果内容与“当前工程逻辑资源绑定”有关，写在 port 文档里。
-- 如果内容与“某个 BSP 函数需要怎么实现才能不破坏 core 行为”有关，写在模块内部 md 文档里。
-- 如果内容只是“这个芯片怎么开时钟”，那是 BSP 源码实现细节，不应反向污染公共层文档。
-
-## 8. console 与 debug 规则
-
-`drvlayer` 下凡是带 console 或 debug 功能的驱动，都要遵守下面规则:
-
-- 功能必须受宏开关控制。
-- 宏默认建议关闭，是否打开由项目决定。
-- console 注册逻辑优先放在 port 层或 debug 文件中，不要散落在公共层主流程里。
-- debug 子模块只暴露最小必要接口，内部命令表和帮助信息尽量私有化。
-
-## 9. 新增驱动时必须产出的文档
-
-每个新驱动至少要有一份 md，内容最少覆盖:
-
-- 模块定位。
-- 目录内各文件职责。
-- 公共 API 与逻辑资源定义。
-- core 对 port/BSP 的依赖契约。
-- 必需钩子与可选钩子。
-- 默认映射和默认参数。
-- 硬件联调检查项。
-
-如果该驱动需要专门指导 BSP 生成，可以把文档写成“模块设计说明”而不是“泛化提示词”。重点是让后续实现者知道 BSP 该满足什么，而不是只给一句笼统要求。
-
-## 10. 生成新驱动时可直接复用的约束模板
-
-```md
-任务目标:
-在 `drvlayer` 下新增一个 `drvxxx` 模块，保持与现有驱动一致的 core / port / BSP 分层。
-
-必须遵守:
-1. 先阅读 `rule.md` 和 `drvrule.md`。
-2. 应用层只能调用 `drvXxx*` 接口，不能直接依赖 BSP。
-3. `drvxxx.c` 只放公共逻辑、参数校验、初始化状态、并发保护和错误语义。
-4. `drvxxx_port.h` 只放逻辑资源、默认宏和开关宏。
-5. `drvxxx_port.c` 负责绑定 `gDrvXxxBspInterface`、默认配置和当前工程资源映射。
-6. 所有 MCU、引脚、时钟、DMA、中断和寄存器细节必须留在 BSP 层。
-7. 必需钩子缺失时，初始化或调用必须失败，不能静默成功。
-8. 可选钩子缺失时，公共层必须返回明确状态。
-9. console/debug 功能必须用宏开关控制，并尽量收敛到 port/debug 子模块。
-10. 最终补一份 md，说明 core 对 BSP 的契约和默认映射。
-
-需要产出:
-1. `drvxxx.h`
-2. `drvxxx.c`
-3. `drvxxx_port.h` 或 `drvxxx_portmap.h`
-4. `drvxxx_port.c`
-5. 需要时新增或补全 `bspxxx.h/.c`
-6. 一份模块说明 md
-```
-
-## 11. 结果检查清单
-
-完成一个新驱动后，至少检查下面几点:
-
-- 上层是否只依赖 `drvxxx.h`。
-- 公共层是否完全没有板级资源编码。
-- port 层是否能一眼看出默认总线、默认缓冲或默认 CS 绑定。
-- BSP 是否完整实现 core 依赖的所有必需钩子。
-- 可选钩子缺失时，公共层是否返回了正确状态。
-- console/debug 是否由宏控制。
-- 文档是否写清楚“BSP 需要怎样实现才满足 core 需求”。
+1. 先读本文件。
+2. 再读目标驱动主文档。
+3. 再看对应 `.h/.c` 和 `*_debug.*`。
+4. 最后再看 BSP 或外部平台实现。

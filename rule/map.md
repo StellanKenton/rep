@@ -1,221 +1,122 @@
+---
+doc_role: repo-rule
+layer: rule
+module: map
+status: active
+portability: project-bound
+public_headers: []
+core_files:
+  - map.md
+port_files: []
+debug_files: []
+depends_on:
+  - rule.md
+forbidden_depends_on:
+  - 过时目录名
+required_hooks: []
+optional_hooks: []
+common_utils: []
+copy_minimal_set:
+  - rule/map.md
+read_next:
+  - ../drvlayer/drvrule.md
+  - ../module/module.md
+  - ../comm/comm.md
+---
+
 # Rep 目录地图
 
-本文档用于快速说明 `USER/Rep` 下有哪些目录、各自负责什么，以及在不同任务场景下应该优先查看哪些文件。
+这是仓库级目录导航文档，不是实现细节文档。
 
-目标不是替代各子目录里的详细文档，而是让 AI 或维护者先建立目录级上下文，再去阅读最相关的文件，避免无差别通读整个 `Rep`。
+## 1. 顶层结构与入口
 
-## 1. 顶层结构
+当前顶层目录及其权威入口如下：
 
-`USER/Rep` 当前主要包含以下内容：
-
-- `rule/`
-    全局规则、代码风格、项目规则、目录地图等入口文档。
-- `console/`
-    命令控制台与日志相关设计文档及参考实现。
-- `drvlayer/`
-    驱动公共层设计规则，以及各个 `drvxxx` 模块的结构说明。
-- `module/`
-    面向具体功能模块的通用生成规则，以及已有模块说明。
-- `protocolparser/`
-    协议包解析器与流式数据解析相关文档和实现。
-- `ringbuffer/`
-    环形缓冲区实现与架构说明。
-- `system/`
-    系统启动编排、任务组织、system 调试命令相关内容。
-- `scripts/`
-    可迁移脚本包与 VS Code 工具链说明。
-- `example/`
-    新建模块或文件时可参考的最小示例。
-- `rep_config.h`
-    `Rep` 相关的公共配置入口头文件。
-
-## 2. rule 目录
-
-当任务刚开始、还没有明确要改哪个模块时，先看这里：
-
-- `rule/rule.md`
-    总入口规则，规定每次开始工作时应先读哪些文档。
-- `rule/coderule.md`
-    C 代码风格、命名、分层、接口和错误处理规则。
-- `rule/projectrule.md`
-    本工程特有的架构约束和设计偏好。
-- `rule/map.md`
-    也就是当前文件，用于决定下一步该读哪个目录、哪个文档。
-- `rule/memory.md`
-    memory 使用规则；当前文件为空，后续如补充应按其约束执行。
-
-## 3. 各目录作用与入口文件
-
-### 3.1 console
-
-适用场景：
-
-- 修改命令行控制台。
-- 修改日志输入输出通道。
-- 新增 console 命令注册。
-
-优先查看：
-
-- `console/console.md`
-- `console/console.h`
-- `console/log.md`
-- `console/log.h`
-
-### 3.2 drvlayer
-
-适用场景：
-
-- 新增 `drvxxx` 驱动。
-- 修改 GPIO、UART、SPI、IIC、模拟量等公共驱动层。
-- 处理 core / port / BSP 分层问题。
-
-优先查看：
-
-- `drvlayer/drvrule.md`
-- `drvlayer/drvgpio/drvgpio.md`
-- `drvlayer/drvuart/drvuart.md`
-- `drvlayer/drvspi/drvspi.md`
-- `drvlayer/drviic/drviic.md`
-- `drvlayer/drvanlogiic/drvanlogiic.md`
+| 目录 | 作用 | 权威入口 |
+| --- | --- | --- |
+| `rule/` | 仓库规则、地图、命名和文档约束 | `rule/rule.md` |
+| `drvlayer/` | 公共驱动层与 BSP hook 契约 | `drvlayer/drvrule.md` |
+| `module/` | passive module 与 assembly 契约 | `module/module.md` |
+| `manager/` | 服务编排与生命周期 contract | `manager/manager.md` |
+| `console/` | console 与 log 公共 contract | `console/console.md`、`console/log.md` |
+| `comm/` | 流解析、帧解析、帧流程编排 | `comm/comm.md` |
+| `system/` | 系统模式与任务编排边界 | `system/system.md` |
+| `tools/` | 算法与基础容器工具 | `tools/tools.md` |
+| `example/` | 标准主文档示例 | `example/example.md` |
+| `scripts/` | 脚本与工具链迁移说明 | `scripts/readme.md` |
 
 说明：
 
-- 如果任务明确落在某个 `drvxxx` 模块，先看 `drvrule.md`，再看对应子目录下的 `.md`、`.h`、`.c`。
+- 旧文档中的 `protocolparser/`、顶层 `ringbuffer/` 等路径已不再代表当前结构，相关内容现在归属 `comm/` 和 `tools/`。
+- `rep_config.h` 是公共配置头，不是文档入口。
 
-### 3.3 module
+## 2. 按任务类型找文档
 
-适用场景：
+| 任务类型 | 先读 | 再读 |
+| --- | --- | --- |
+| 新增或修改驱动 | `rule/rule.md`、`drvlayer/drvrule.md` | 对应 `drvxxx/drvxxx.md`、`.h/.c` |
+| 新增或修改功能模块 | `rule/rule.md`、`module/module.md` | 对应模块主文档、assembly 头、`.h/.c` |
+| 修改服务生命周期或系统编排 | `manager/manager.md` 或 `system/system.md` | 对应 service 文档、`service_lifecycle.*`、`.h/.c` |
+| 修改 console / log | `console/console.md`、`console/log.md` | 对应头文件和实现 |
+| 修改协议解析或链路流程 | `comm/comm.md` | `flowparser.md`、`frameparser.md`、`frameprocess.md` |
+| 修改基础算法或容器 | `tools/tools.md` | 对应工具目录主文档与 `.h/.c` |
+| 新建文档或套模板 | `example/example.md` | 对应父目录总文档 |
 
-- 新增功能模块。
-- 修改 `module` 层对 `drvlayer` 的适配方式。
-- 梳理 core / port 拆分。
+## 3. 按复制目标找依赖
 
-优先查看：
+| 复制目标 | 至少先读 | 额外关注 |
+| --- | --- | --- |
+| `drvxxx` 目录 | `drvlayer/drvrule.md` + 对应 `drvxxx.md` | BSP hook、默认资源映射、debug 可裁剪项 |
+| `module/xxx` 目录 | `module/module.md` + 对应模块主文档 | assembly hook、下层 drv 调用表、默认绑定 |
+| `comm/frameparser` | `comm/comm.md` + `frameparser.md` | ringbuffer 依赖、协议格式回调、输出缓冲 ownership |
+| `comm/frameprocess` | `comm/comm.md` + `frameprocess.md` | frameparser 依赖、tx/rx 钩子、ACK 策略 |
+| `tools/ringbuffer` | `tools/tools.md` + `tools/ringbuffer/ringbuffer.md` | 并发模型、调用方 ownership |
+| `system/` | `system/system.md` | 仅可参考，默认视为 `project-bound` |
 
-- `module/module.md`
-- `module/mpu6050/mpu6050.md`
-- `module/w25qxxx/w25qxxx.md`
+## 4. 目录入口关系
 
-说明：
+### 4.1 `drvlayer/`
 
-- `module.md` 讲通用模块生成规则。
-- 具体模块细节看对应子目录中的 `<module>.md`。
+- 入口：`drvlayer/drvrule.md`
+- 高复用叶子目录：`drvuart/`、`drviic/`、`drvspi/`、`drvgpio/`、`drvanlogiic/`、`drvadc/`、`drvmcuflash/`
 
-### 3.4 protocolparser
+### 4.2 `module/`
 
-适用场景：
+- 入口：`module/module.md`
+- 高复用叶子目录：`mpu6050/`、`pca9535/`、`tm1651/`、`w25qxxx/`、`gd25qxxx/`
 
-- 修改协议包解析流程。
-- 处理帧头、长度、CRC、超时等待等逻辑。
-- 新增流式协议格式。
+### 4.3 `comm/`
 
-优先查看：
+- 入口：`comm/comm.md`
+- 叶子目录：`flowparser/`、`frameparser/`、`frameprocess/`
+- 协议说明补充文档：`cprsensorprotol.md`
 
-- `protocolparser/protocol_parser.md`
-- `protocolparser/streamdata_parser.md`
-- `protocolparser/framepareser.h`
+### 4.4 `tools/`
 
-### 3.5 ringbuffer
+- 入口：`tools/tools.md`
+- 基础容器：`ringbuffer/`
+- 算法工具：`numfilter/`、`butterworthfilter/`、`filter1st/`、`filter2nd/`
 
-适用场景：
+## 5. 推荐阅读顺序
 
-- 修改环形缓冲区结构。
-- 排查上层输入输出缓存问题。
-
-优先查看：
-
-- `ringbuffer/ringbuffer_architecture.md`
-- `ringbuffer/ringbuffer.h`
-
-### 3.6 system
-
-适用场景：
-
-- 修改系统启动流程。
-- 修改 system mode、任务创建、console 接线。
-- 修改 system 调试命令。
-
-优先查看：
-
-- `system/system.md`
-- `system/system.h`
-- `system/systask_port.h`
-- `system/system_debug.h`
-
-### 3.7 scripts
-
-适用场景：
-
-- 迁移 VS Code + Keil + J-Link 工具链。
-- 调整脚本包文档。
-
-优先查看：
-
-- `scripts/readme.md`
-- `scripts/vscode_portable/readme.md`
-- `scripts/vscode_portable/migration.md`
-- `scripts/vscode_portable/manifest.md`
-
-### 3.8 example
-
-适用场景：
-
-- 新建文件前寻找最小参考模板。
-- 不确定局部写法时先看示例。
-
-优先查看：
-
-- `example/example.h`
-- `example/example.c`
-
-## 4. 常见任务的推荐阅读顺序
-
-### 4.1 刚接手任务但还不知道该看哪些文件
-
-推荐顺序：
+### 5.1 不知道改哪里
 
 1. `rule/rule.md`
-2. `rule/map.md`
-3. 根据任务类型进入对应目录的入口 `.md`
-4. 再阅读该目录对应的 `.h` / `.c`
+2. 当前文件
+3. 对应父目录总文档
+4. 对应叶子目录主文档
+5. 目标头文件与源文件
 
-### 4.2 新增或修改驱动
-
-推荐顺序：
-
-1. `rule/rule.md`
-2. `rule/map.md`
-3. `drvlayer/drvrule.md`
-4. 对应 `drvxxx` 目录下的 `.md`
-5. 对应 `drvxxx` 的 `.h`、`.c`、`_port.h`、`_port.c`
-
-### 4.3 新增或修改 module
-
-推荐顺序：
+### 5.2 文档改造任务
 
 1. `rule/rule.md`
-2. `rule/map.md`
-3. `module/module.md`
-4. 对应模块目录下的 `.md`
-5. 对应模块的 `.h`、`.c`、`_port.h`、`_port.c`
+2. 当前文件
+3. 目标父目录总文档
+4. 目标叶子目录主文档
+5. 用源码核对公共 API、hook、调用顺序
 
-### 4.4 修改 system / console / protocolparser
+## 6. 使用原则
 
-推荐顺序：
-
-1. `rule/rule.md`
-2. `rule/map.md`
-3. 进入对应目录的说明文档
-4. 再阅读实际头文件和源文件
-
-## 5. 使用原则
-
-- 先把 `map.md` 当作目录导航，而不是实现细节文档。
-- 先按任务类型缩小范围，再进入对应目录阅读详细文档。
-- 除非任务本身就是梳理文档结构，否则不要一开始就遍历 `USER/Rep` 下所有文件。
-- 如果任务涉及多个层次，先读更上层的规则文档，再读具体模块文档。
-- 当某个目录已有专门 `.md` 说明时，优先先读该 `.md`，再看代码实现。
-
-## 6. 一句话说明
-
-`map.md` 是 `USER/Rep` 的导航页：先用它判断应该进入哪个目录，再定向阅读对应规则、说明文档和源码文件。
+- 先缩小目录范围，再读代码。
+- 父目录总文档解决“本层共性”，叶子目录主文档解决“当前目录 contract”。
+- 如果目录里既有主文档又有架构草稿，默认先信主文档，再按需读补充文档。

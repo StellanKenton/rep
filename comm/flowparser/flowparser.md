@@ -1,6 +1,89 @@
 # WiFi 命令流解析设计
 
-## 1. 问题背景
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- 控制用简化滤波器与标准一阶滤波器边界清晰。- 连续调用时历史输入输出推进正确。- 初始化后状态量正确清零或设为指定初值。## 10. 验证清单最小依赖集：`filtterfisrt.h/.c`。## 9. 复制到其他工程的最小步骤| 改示例或历史说明 | `filtterfisrt.md` | `filter1st.md` 主 contract || 改一阶滤波差分方程 | `filtterfisrt.c/.h` | 上层控制流程 || --- | --- | --- || 需求 | 应改文件 | 不该改的文件 |## 8. 改动落点矩阵当前目录不调用其他公共模块函数。## 7. 公共函数使用契约当前目录无平台 hook。## 6. 函数指针 / port / assembly 契约- 禁止在不同采样周期下复用同一组系数却不重新标注语义。- 不依赖 RTOS、BSP 或业务模块。## 5. 依赖白名单与黑名单- 状态重置只能通过显式 reset 接口完成。- 初始化后按固定采样周期重复调用更新接口。- 过滤器对象由调用方持有。## 4. 配置、状态与生命周期稳定能力：初始化、参数设置、状态复位、单步更新。稳定公共头文件：`filtterfisrt.h`## 3. 对外公共接口| `filtterfisrt.md` | 历史补充说明 || `filter1st.md` | 权威主文档 || `filtterfisrt.c` | 差分方程更新和状态推进 || `filtterfisrt.h` | 一阶滤波对象、参数和公共 API || --- | --- || 文件 | 职责 |## 2. 目录内文件职责`filter1st` 提供一阶离散滤波器和控制用一阶滤波器对象，用于固定周期采样的平滑和低通处理。## 1. 模块定位补充阅读文档：`filtterfisrt.md` 保留为历史说明；最终 contract 以本文件为准。这是当前目录的权威入口文档。# Filter1st 模块说明---  - filtterfisrt.mdread_next:  - filtterfisrt.c  - filtterfisrt.hcopy_minimal_set:common_utils: []optional_hooks: []required_hooks: []forbidden_depends_on: []depends_on: []debug_files: []port_files: []  - filtterfisrt.ccore_files:  - filtterfisrt.hpublic_headers:portability: standalonestatus: activemodule: filter1stlayer: tools## 1. 问题背景
 
 WiFi 模块，尤其是常见的 AT 命令流。
 
@@ -9,689 +92,124 @@ WiFi 模块，尤其是常见的 AT 命令流。
 - 有些响应是按行返回的，比如 `\r\nOK\r\n`、`\r\nERROR\r\n`。
 - 有些响应不是完整一行，而是一个单独提示符，比如 `>`。
 - 有些命令很快返回，有些命令要几百毫秒甚至几秒。
-- 同一个命令可能分多个阶段返回结果。
-- 在等待命令响应期间，还可能夹杂模块主动上报的异步消息。
+---
+doc_role: module-spec
+layer: comm
+module: flowparser
+status: active
+portability: layer-dependent
+public_headers:
+    - flowparser_stream.h
+    - flowparser_tokenizer.h
+core_files:
+    - flowparser_stream.c
+    - flowparser_tokenizer.c
+port_files: []
+debug_files: []
+depends_on:
+    - ../../tools/ringbuffer/ringbuffer.md
+forbidden_depends_on:
+    - tokenizer 或 stream core 直连 UART 私有实现
+required_hooks:
+    - flowparserStreamSendFunc
+    - flowparserStreamGetTickFunc
+optional_hooks:
+    - flowparserStreamMatchFunc
+    - flowparserStreamLineFunc
+    - flowparserStreamDoneFunc
+common_utils:
+    - tools/ringbuffer
+copy_minimal_set:
+    - flowparser_stream.h
+    - flowparser_stream.c
+    - flowparser_tokenizer.h
+    - flowparser_tokenizer.c
+    - tools/ringbuffer/
+read_next:
+    - ../comm.md
+    - ../../tools/ringbuffer/ringbuffer.md
+---
 
-所以，这类数据不适合继续强行套进“固定包头 + 固定长度 + CRC”的通用包解析模型里。
+# FlowParser 模块说明
 
-更合适的方式是：
+这是当前目录的权威入口文档。
 
-把它当成“命令事务状态机”来解析，而不是当成“普通连续帧流”来解析。
+## 1. 模块定位
 
-## 2. 为什么普通包解析器不适合
+`flowparser` 面向 AT / 命令事务流，而不是固定帧协议。它由 tokenizer 和 stream 两部分组成：tokenizer 把字节流切成 `LINE` / `PROMPT` / `OVERFLOW` 词元，stream 用阶段状态机驱动单命令事务。
 
-如果继续沿用普通包解析器，会遇到几个根本问题。
+## 2. 目录内文件职责
 
-### 2.1 结束条件不唯一
+| 文件 | 职责 |
+| --- | --- |
+| `flowparser_tokenizer.h/.c` | 从 ring buffer 产出 `LINE` / `PROMPT` / `OVERFLOW` 词元 |
+| `flowparser_stream.h/.c` | 单命令事务状态机、请求提交、超时、URC 分流 |
+| `flowparser.md` | 当前目录 contract |
 
-普通包解析器一般依赖以下一种或几种条件：
+## 3. 对外公共接口
 
-- 固定长度。
-- 长度字段。
-- 固定尾标记。
-- CRC 校验通过。
+稳定公共头文件：`flowparser_stream.h`、`flowparser_tokenizer.h`
 
-而 WiFi 命令流的结束条件往往是“语义结束”，例如：
+稳定 API：
 
-- 收到 `OK` 代表本次命令成功结束。
-- 收到 `ERROR` 代表本次命令失败结束。
-- 收到 `>` 代表进入下一阶段，需要发送负载，而不是代表事务结束。
+- `flowparserTokInit()` / `flowparserTokGet()` / `flowparserTokReset()`
+- `flowparserStreamInit()` / `flowparserStreamSubmit()` / `flowparserStreamProc()` / `flowparserStreamReset()`
+- `flowparserStreamIsBusy()` / `flowparserStreamGetStage()`
 
-这里的关键不是“一个包收完了没有”，而是“当前命令事务走到哪一步了”。
+调用顺序：
 
-### 2.2 响应形态不统一
+1. 先准备 ring buffer、line buffer、send hook、tick hook。
+2. 初始化 tokenizer 和 stream。
+3. 业务层通过 `flowparserStreamSubmit()` 提交一个请求。
+4. 周期调用 `flowparserStreamProc()` 驱动事务。
 
-例如下面几种返回风格本质不同：
+## 4. 配置、状态与生命周期
 
-```text
-AT+CWMODE?\r\n\r\n+CWMODE:1\r\n\r\nOK\r\n
-AT+CIPSEND=4\r\n\r\nOK\r\n>
-hello\r\nSEND OK\r\n
-AT+RST\r\n\r\nOK\r\n
-ready\r\n>
-AT+CWJAP="ssid","pwd"\r\n\r\nWIFI CONNECTED\r\nWIFI GOT IP\r\n\r\nOK\r\n
-```
+- tokenizer 只负责切词元，不负责判断命令是否成功。
+- stream 保持单事务串行模型，任意时刻只允许一个活动命令。
+- `eFlowParserStage` 决定当前等待的是普通响应、提示符还是最终结果。
+- `eFlowParserResult` 只描述当前事务结果，不代表底层发送动作一定完成。
 
-这些流里同时存在：
+## 5. 依赖白名单与黑名单
 
-- 行结束消息。
-- 单字符提示符。
-- 分阶段确认。
-- 异步状态上报。
+- 允许依赖：`ringbuffer`。
+- 禁止依赖：在 tokenizer 或 stream core 中直连 UART 私有实现、MCU SDK 或业务协议解析。
+- 禁止做法：让多个任务直接并发发送 AT 命令而绕过 stream 状态机。
 
-这说明它并不是一个单一规则就能统一切分的“包流”。
+## 6. 函数指针 / port / assembly 契约
 
-### 2.3 超时不是一个值就够了
+| 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `flowparserStreamSendFunc` | 必需 | 当前工程链路 provider | `flowparserStreamSubmit/Proc` | `eDrvStatus (*)(const uint8_t *, uint16_t, void *)` | 命令或 payload 已交给底层链路 | 返回错误或忙 | stream 已初始化 | 只表示底层接受发送请求，不代表事务完成 |
+| `flowparserStreamGetTickFunc` | 必需 | 当前工程平台 | stream 超时判定 | `uint32_t (*)(void)` | 返回单调 tick | 缺失则无法初始化 | stream 运行 | 用于 total / response / prompt / final 超时 |
+| `flowparserStreamMatchFunc` | 可选 | 当前工程 URC provider | URC 判断 | `bool (*)(lineBuf, lineLen, userCtx)` | 当前行匹配 URC | `false` 表示不是 URC | tokenizer 已产出 `LINE` | 可替代简单前缀表 |
+| `flowparserStreamLineFunc` | 可选 | 业务层 | 行级回调 | `void (*)(userData, lineBuf, lineLen)` | 上层收到中间行或 URC | 无返回值 | 对应 handler 已注册 | 不得阻塞太久 |
+| `flowparserStreamDoneFunc` | 可选 | 业务层 | 事务结束通知 | `void (*)(userData, result)` | 上层收到最终结果 | 无返回值 | 提交请求时传入 | 可用于异步结果归档 |
 
-普通帧解析里，一个“整包超时”通常已经够用。
+## 7. 公共函数使用契约
 
-但 WiFi 命令交互里常常需要多种超时：
+| 来源模块 | 公共函数 | 允许在哪些文件调用 | 用途 | 调用前提 | 典型调用顺序 | 返回值处理 | 禁止做法 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ringbuffer` | `ringBufferRead/Peek/GetUsed` | `flowparser_tokenizer.c` | 组装行、识别 prompt | ring buffer 已初始化 | `Peek/Read -> Tokenize` | 空缓冲返回 `EMPTY` | 在 ISR 中做复杂字符串匹配 |
 
-- 命令总超时。
-- 行间超时。
-- 等待提示符超时。
-- 发送数据后的确认超时。
-- 某些慢命令的专属超时。
+## 8. 改动落点矩阵
 
-例如 `AT` 可能 100 ms 内就应完成，`AT+CWJAP` 却可能需要 10 s 甚至更久。
+| 需求 | 应改文件 | 不该改的文件 |
+| --- | --- | --- |
+| 改行切分或 prompt 识别 | `flowparser_tokenizer.*` | stream 事务状态机 |
+| 改事务阶段、超时、URC 分流 | `flowparser_stream.*` | tokenizer 基础切分 |
+| 改具体命令词、超时策略 | 请求 spec / provider | tokenizer core |
 
-### 2.4 会夹杂异步上报
+## 9. 复制到其他工程的最小步骤
 
-很多模块会在任何时刻插入 URC（Unsolicited Result Code，非请求上报），例如：
+最小依赖集：`flowparser_stream.*`、`flowparser_tokenizer.*`、`ringbuffer`。
 
-- `WIFI CONNECTED`
-- `WIFI GOT IP`
-- `0,CLOSED`
-- `+IPD,...`
+外部项目必须补齐：发送 hook、tick hook；若需要 URC 分流或异步回调，再补 line/done/URC matcher。
 
-这些消息不一定属于当前命令的直接响应，但又真实存在于同一条串口流里。
+## 10. 验证清单
 
-普通包解析器通常假设“当前解析出的东西就是上层想要的东西”，而命令流并不满足这个前提。
-
-## 3. 更合适的思路：命令事务解析器
-
-更合适的做法是分三层处理。
-
-### 3.1 第一层：原始接收缓冲层
-
-职责：
-
-- 串口 ISR 或 DMA 只负责把字节放入 ringbuffer。
-- 不在中断里做复杂解析。
-- 由任务上下文轮询消费数据。
-
-这一层和现有通用流解析器的底座是一样的，可以继续复用 ringbuffer。
-
-### 3.2 第二层：词元切分层
-
-这一层不负责理解命令含义，只负责把字节流切成更适合上层处理的“词元”。
-
-建议至少切分出这几类词元：
-
-- `LINE`：以 `\r\n` 结束的一行文本。
-- `PROMPT`：单独出现的 `>` 提示符。
-- `RAW`：需要保留原始字节时使用。
-- `TIMEOUT`：当前阶段超时。
-- `OVERFLOW`：行缓冲区或接收缓冲区溢出。
-
-这里最关键的是：
-
-不要试图在这一层就判断“命令成功还是失败”，只做稳定切分。
-
-### 3.3 第三层：命令事务状态机
-
-这一层负责理解“当前正在处理哪个命令，接下来应该等什么”。
-
-它的核心不是“找包头”，而是：
-
-- 我当前有没有正在执行的命令。
-- 当前命令处于哪个阶段。
-- 当前阶段接受哪些词元。
-- 收到某个词元后，是继续等待、切换阶段，还是判定成功或失败。
-
+- `LINE`、`PROMPT`、`OVERFLOW` 三类词元识别稳定。
+- 单事务串行语义成立，新请求不会打断活动命令。
+- `>` 提示后才发送 payload。
+- URC 不会污染当前命令结果。
 ## 4. 推荐状态机模型
-
-对于 WiFi AT 命令流，建议使用“单命令串行事务”模型。
-
-也就是：
-
-- 任意时刻只允许一个命令处于等待响应状态。
-- 新命令必须等前一个事务完成后再发送。
-- 异步上报单独分流，不直接塞进当前命令结果里，除非该命令明确允许接收这类上报。
-
-推荐状态如下：
-
-- `IDLE`：空闲，没有正在执行的命令。
-- `SEND_COMMAND`：发送命令字符串。
-- `WAIT_RESPONSE`：等待普通响应行。
-- `WAIT_PROMPT`：等待 `>` 提示符。
-- `SEND_PAYLOAD`：收到 `>` 后发送负载数据。
-- `WAIT_FINAL`：等待最终结果，比如 `SEND OK`、`OK`、`ERROR`。
-- `COMPLETE`：本次事务成功完成。
-- `FAILED`：本次事务失败。
-- `TIMEOUT`：本次事务超时结束。
-
-很多命令并不需要经过所有状态。
-
-例如：
-
-- 普通查询命令：`SEND_COMMAND -> WAIT_RESPONSE -> COMPLETE`
-- 发数据命令：`SEND_COMMAND -> WAIT_PROMPT -> SEND_PAYLOAD -> WAIT_FINAL -> COMPLETE`
-- 慢连接命令：`SEND_COMMAND -> WAIT_RESPONSE -> WAIT_RESPONSE -> COMPLETE`
-
-## 5. 词元切分规则更适合怎么写
-
-### 5.1 以“行 + 特殊提示符”双规则并存
-
-推荐规则不是只盯着 `\r\n`，而是并存两套切分规则：
-
-1. 优先识别独立提示符，比如 `>`。
-2. 同时维护按 `\r\n` 收敛的一行文本。
-
-也就是说，解析器应该能同时识别：
-
-- 一整行：`OK`
-- 一整行：`ERROR`
-- 一整行：`+CWMODE:1`
-- 一个提示符：`>`
-
-而不是要求所有有效消息都必须凑成一行。
-
-### 5.2 空行通常可以忽略
-
-AT 类模块经常出现很多空行，例如：
-
-```text
-\r\nOK\r\n
-```
-
-因此建议词元层把空行正常输出，但事务层默认忽略空行。
-
-这样词元层保持简单，事务层保留策略灵活性。
-
-### 5.3 `>` 不要硬等 `\r\n`
-
-这是最重要的一点之一。
-
-如果模块返回的是：
-
-```text
->
-```
-
-那就应该立即产出一个 `PROMPT` 词元，而不是继续等它后面有没有 `\r\n`。
-
-否则发送数据阶段会平白增加延迟，甚至误判超时。
-
-## 6. 推荐的数据结构
-
-建议把“命令定义”和“运行中事务”分开。
-
-### 6.1 命令定义
-
-命令定义描述这个命令理论上应该怎么走。
-
-可以包含这些信息：
-
-```c
-typedef enum eFlowParserStage {
-    FLOWPARSER_STAGE_WAIT_RESPONSE = 0,
-    FLOWPARSER_STAGE_WAIT_PROMPT,
-    FLOWPARSER_STAGE_SEND_PAYLOAD,
-    FLOWPARSER_STAGE_WAIT_FINAL
-} eFlowParserStage;
-
-typedef struct stFlowParserSpec {
-    const char *commandText;
-    const char *successTokens[4];
-    const char *errorTokens[4];
-    uint32_t overallTimeoutMs;
-    uint32_t promptTimeoutMs;
-    uint32_t finalTimeoutMs;
-    bool needPrompt;
-    bool allowUrcDuringWait;
-} stFlowParserSpec;
-```
-
-这里的重点不是字段必须一模一样，而是：
-
-- 结束条件要配置化。
-- 是否需要 `>` 要配置化。
-- 超时要按命令配置。
-
-### 6.2 运行中事务
-
-运行中事务描述“这一次实际执行到了哪里”。
-
-可以包含这些状态：
-
-```c
-typedef enum eFlowParserResult {
-    FLOWPARSER_RESULT_NONE = 0,
-    FLOWPARSER_RESULT_OK,
-    FLOWPARSER_RESULT_ERROR,
-    FLOWPARSER_RESULT_TIMEOUT,
-    FLOWPARSER_RESULT_OVERFLOW
-} eFlowParserResult;
-
-typedef struct stFlowParserTransaction {
-    const stFlowParserSpec *spec;
-    eFlowParserStage stage;
-    eFlowParserResult result;
-    uint32_t stageStartTick;
-    uint32_t lastByteTick;
-    bool isActive;
-} stFlowParserTransaction;
-```
-
-### 6.3 发送请求
-
-建议再单独定义“发送请求”，不要把“上层想发什么”和“当前事务执行到哪里”混成一个对象。
-
-可以包含这些信息：
-
-```c
-typedef void (*fnFlowParserComplete)(void *pUserData, eFlowParserResult result);
-
-typedef struct stFlowParserRequest {
-    const stFlowParserSpec *spec;
-    const uint8_t *pPayload;
-    uint16_t payloadLen;
-    uint32_t requestTimeoutMs;
-    bool isBlocking;
-    void *pUserData;
-    fnFlowParserComplete fnComplete;
-} stFlowParserRequest;
-```
-
-这里建议明确区分三件事：
-
-- `stFlowParserRequest`：上层提交的一次请求。
-- `stFlowParserTransaction`：执行器当前正在跑的事务。
-- `stFlowParserSpec`：某类命令的固定规则。
-
-这样做的好处是：
-
-- 上层接口更清晰，不需要知道内部状态机细节。
-- 当前事务可以安全地复制请求中的关键字段，避免上层缓冲区提前失效。
-- 后面如果要加队列、取消、重试、优先级，也更容易扩展。
-
-## 7. 事务层怎么判断一条命令结束
-
-建议按“阶段”而不是按“总包”来判断。
-
-### 7.1 普通命令
-
-例如：
-
-```text
-AT+CWMODE?\r\n\r\n+CWMODE:1\r\n\r\nOK\r\n
-```
-
-处理方式：
-
-1. 发送命令后进入 `WAIT_RESPONSE`。
-2. 收到 `+CWMODE:1`，记入当前事务输出。
-3. 收到 `OK`，事务成功结束。
-
-这里 `+CWMODE:1` 不是结束标志，只是中间数据。
-
-### 7.2 需要 `>` 的命令
-
-例如：
-
-```text
-AT+CIPSEND=5\r\n\r\nOK\r\n>
-hello\r\nSEND OK\r\n
-```
-
-处理方式：
-
-1. 发送 `AT+CIPSEND=5`。
-2. 状态进入 `WAIT_PROMPT`。
-3. 收到 `OK` 可以记录，但不算完成。
-4. 收到 `>` 后切换到 `SEND_PAYLOAD`。
-5. 发送负载 `hello`。
-6. 切换到 `WAIT_FINAL`。
-7. 收到 `SEND OK`，事务成功结束。
-
-这个过程明显不是一个“包”的概念，而是一个多阶段事务。
-
-### 7.3 耗时较长的命令
-
-例如连路由器：
-
-```text
-AT+CWJAP="ssid","pwd"\r\n\r\nWIFI CONNECTED\r\nWIFI GOT IP\r\n\r\nOK\r\n
-```
-
-处理方式：
-
-1. 给这个命令单独配置较长超时，比如 10 s 或 15 s。
-2. `WIFI CONNECTED`、`WIFI GOT IP` 可以作为过程事件记录。
-3. 最终收到 `OK` 才真正完成。
-
-所以这里不能再使用统一的小超时。
-
-## 8. URC 应该单独分流
-
-这是设计里非常重要的一点。
-
-很多 WiFi 模块会主动插入异步消息，如果不分流，事务状态机会很容易变脆弱。
-
-建议做法：
-
-- 先维护一个 URC 前缀表。
-- 词元层产出 `LINE` 后，事务层先判断它是不是 URC。
-- 如果是 URC，就交给 `urcHandler`。
-- 如果不是 URC，再判断它是不是当前命令的成功词、失败词或数据行。
-
-例如可以维护这样的前缀：
-
-- `WIFI `
-- `+IPD`
-- `,CONNECT`
-- `,CLOSED`
-- `busy`
-
-这样做的好处是：
-
-- 当前命令结果不会被异步消息污染。
-- 系统事件处理更清晰。
-- 命令层和上报层解耦。
-
-## 9. 超时建议不要只保留一个
-
-对于这类命令流，建议至少有三类超时。
-
-### 9.1 命令总超时
-
-从命令发出开始，到事务必须结束为止。
-
-用途：
-
-- 避免整个事务无限挂住。
-
-### 9.2 阶段超时
-
-针对当前阶段单独计时。
-
-例如：
-
-- 等 `>` 最多 500 ms。
-- 发完数据后等 `SEND OK` 最多 3 s。
-
-### 9.3 字节间超时或行间超时
-
-如果你担心对方输出到一半卡住，可以增加字节间超时。
-
-用途：
-
-- 一行文字收了一半却长期没有后续。
-- 模块异常导致输出中断。
-
-不是所有项目都必须做这一层，但如果模块稳定性一般，这个机制很有价值。
-
-## 10. 发送逻辑应该怎么设计
-
-发送侧如果只是“上层直接往 UART 写字符串”，通常很快会失控。
-
-因为对于 AT 类模块来说，发送并不是一个独立动作，而是命令事务的一部分：
-
-- 什么时候允许发送下一条命令，要由当前事务状态决定。
-- 什么时候发送负载，要由 `>` 提示符决定。
-- 什么时候算发送成功，要看最终响应，而不是看串口发送函数有没有返回。
-
-所以更合理的做法是：
-
-不要把“发送函数”和“接收解析函数”设计成两个互不知情的平级模块。
-
-更稳妥的是设计一个统一的“命令执行器”，由它独占命令事务状态，并同时驱动发送和接收判定。
-
-### 10.1 推荐模型：单执行器拥有事务
-
-推荐职责划分如下：
-
-- UART ISR 或 DMA：只负责接收字节，写入 ringbuffer。
-- tokenizer：只负责把 ringbuffer 切成 `LINE`、`PROMPT` 等词元。
-- command executor：唯一拥有当前事务状态，负责发送命令、等待词元、切换阶段、判定完成。
-- application：只负责提交请求和接收结果，不直接碰底层事务状态。
-
-这里最关键的一条是：
-
-当前活动事务只能有一个所有者，这个所有者最好就是 command executor。
-
-### 10.2 发送路径的职责
-
-一个完整的发送路径，建议至少负责这些步骤：
-
-1. 检查当前是否空闲，是否允许接收新请求。
-2. 校验请求参数，例如命令指针、负载指针、长度、超时配置。
-3. 生成实际要发送的命令文本，例如 `AT+RST\r\n`。
-4. 调用底层串口发送接口，把命令字符串发出去。
-5. 创建并激活当前事务，记录阶段起始 tick 和总超时起点。
-6. 如果命令需要 `>`，则进入 `WAIT_PROMPT`。
-7. 如果命令不需要 `>`，则进入 `WAIT_RESPONSE` 或 `WAIT_FINAL`。
-8. 收到 `PROMPT` 后，再发送负载并切换到 `WAIT_FINAL`。
-9. 收到成功词或失败词后，结束事务并通知上层。
-
-这里要注意一个常见误区：
-
-“串口发送成功”只代表字节已经交给 UART 或 DMA，并不代表命令事务成功。
-
-真正的成功条件，仍然要由接收侧状态机来确认。
-
-### 10.3 不要让任意任务直接发送 AT 命令
-
-最差的一种方式，是任何业务任务都可以直接调用 `uartSend("AT+...")`。
-
-这样会马上遇到几个问题：
-
-- 命令顺序无法保证。
-- 当前响应属于哪条命令无法关联。
-- 一个任务刚发完，另一个任务又插入发送，状态机会立即失真。
-- 超时、取消、重试会散落在各业务模块里，后期很难维护。
-
-更好的方式是所有业务都通过统一接口提交请求，例如：
-
-```c
-eFlowParserSubmitResult flowparserStreamSubmit(const stFlowParserRequest *pRequest);
-void flowparserStreamProcess(void);
-```
-
-也就是说：
-
-- 业务模块只提交请求。
-- 真正的发送动作只在执行器内部发生。
-- 响应匹配、超时判断、结果归档也只在执行器内部发生。
-
-### 10.4 负载发送也应由事务状态机驱动
-
-对于 `AT+CIPSEND` 这类命令，推荐流程不是“先发命令，再立刻把 payload 发出去”。
-
-更稳妥的方式是：
-
-1. 先发送命令头。
-2. 等待 `>` 提示符。
-3. 收到 `PROMPT` 词元后，才调用底层发送函数发 payload。
-4. 发完 payload 后进入 `WAIT_FINAL`。
-5. 等 `SEND OK` 或错误词作为最终判定。
-
-这样可以避免：
-
-- 模块还没准备好接收负载时就提前灌数据。
-- 不同模块提示符时序略有差异时出现兼容性问题。
-- 发送成功但事务失败时，调用方误以为已经完成。
-
-## 11. 发送和接收程序如何设计与交互才更合理
-
-如果你问“发送程序和接收程序怎么交互最好”，我的建议是：
-
-不要把它理解成两个对等程序互相通知。
-
-更好的抽象是：
-
-一个执行器统一拥有事务，发送和接收只是它使用的两个方向。
-
-### 11.1 推荐任务模型
-
-推荐采用下面这种模型：
-
-- `ISR/DMA RX`：负责收字节入 ringbuffer。
-- `flowparserExecutorTask` 或周期轮询函数：负责处理请求队列、发送命令、消费词元、检查超时、完成通知。
-- `application task`：负责发起请求，等待同步结果或者接收异步回调。
-
-其中最稳妥的组织方式通常是：
-
-- 接收中断不做解析。
-- 不单独再做一个“只负责接收判定的任务”和一个“只负责发送的任务”去共同维护状态。
-- 而是让一个 executor 在任务上下文里统一处理发送和接收事件。
-
-### 11.2 推荐交互流程
-
-建议的完整交互可以写成下面这样：
-
-1. 业务层构造 `stFlowParserRequest` 并调用 `flowparserStreamSubmit()`。
-2. 执行器把请求放入待处理队列，或者在空闲时直接接管为当前事务。
-3. 执行器调用 port 层发送函数发出命令文本。
-4. 接收 ISR 持续把模块返回字节写入 ringbuffer。
-5. 执行器周期调用 tokenizer，持续取出 `LINE`、`PROMPT`、`OVERFLOW` 等词元。
-6. 执行器先判断词元是不是 URC，如果是就分流给 `urcHandler`。
-7. 如果不是 URC，就用它驱动当前事务状态机。
-8. 如果当前阶段因 `PROMPT` 转入 `SEND_PAYLOAD`，则执行器立即发送 payload。
-9. 如果当前阶段收到成功词、失败词或发生超时，则执行器结束事务。
-10. 执行器通过回调、事件标志、信号量或结果队列通知业务层。
-
-这个模型的核心是：
-
-发送和接收不是靠“互相猜测状态”来协作，而是靠“共享同一个执行器状态机”来协作。
-
-### 11.3 同步接口和异步接口怎么选
-
-比较推荐的做法是：
-
-- 内部实现统一按异步事务模型来写。
-- 对外同时提供同步等待包装和异步提交接口。
-
-例如：
-
-- `flowparserStreamSubmit()`：异步提交。
-- `flowparserStreamExecuteBlocking()`：内部提交后等待结果。
-
-这样做的好处是：
-
-- 内核模型只有一套，不会出现同步和异步两套状态机。
-- 上层简单场景可以直接阻塞等待。
-- 复杂业务可以走回调、事件组或消息队列。
-
-### 11.4 如果一定要拆成发送模块和接收模块
-
-如果工程上必须拆开，也建议遵守一个原则：
-
-事务状态只能由一侧拥有，另一侧只能做从属动作。
-
-例如更可接受的拆法是：
-
-- 接收执行器拥有当前事务状态和阶段切换权。
-- 发送模块只是一个 `sendBytes()` 工具，不保存命令上下文。
-
-而不推荐这样拆：
-
-- 发送任务负责“我发了什么”。
-- 接收任务负责“我猜现在应该等什么”。
-
-这种拆法的问题是：
-
-- 状态被拆成两半。
-- 锁和通知会越来越多。
-- 一旦出现超时、重试、取消、复位，状态一致性很难保证。
-
-### 11.5 一个更实用的接口边界
-
-如果后面真的要落地成模块，我更建议接口边界如下：
-
-- `flowparser_stream_port`：提供 `sendBytes()`、`getTickMs()`、`notifyWorker()` 等底层能力。
-- `flowparser_tokenizer`：提供词元切分能力。
-- `flowparser_stream`：提供请求提交、事务执行、结果查询、URC 分发。
-
-也就是说：
-
-- port 层不知道什么是 `OK`、`ERROR`、`>`。
-- tokenizer 不知道什么是 `AT+CIPSEND`。
-- stream 层不直接依赖具体 BSP，只依赖 port 提供的公共接口。
-
-这种分层更符合后续复用和维护。
-
-## 12. 推荐实现原则
-
-### 12.1 保持单命令串行
-
-不要设计成多个命令并发等待同一串口响应。
-
-对于大多数 AT 类 WiFi 模块，这样只会让状态关联变得非常复杂。
-
-更稳妥的方式是：
-
-- 一个发送接口。
-- 一个当前活动事务。
-- 一个统一的轮询处理函数。
-
-### 12.2 不要在 ISR 中做字符串匹配
-
-ISR 只做收字节入缓冲。
-
-字符串查找、行拼接、状态切换都放到任务上下文里做。
-
-这样更符合嵌入式项目里“中断短小、有界、非阻塞”的原则。
-
-### 12.3 不要把所有返回都拼成一个大字符串再分析
-
-更稳妥的做法是边收到词元边驱动状态机。
-
-原因是：
-
-- 内存占用更可控。
-- 不容易被超长返回拖垮。
-- 更适合实时处理 `>` 这种单字符提示。
-
-### 12.4 不要让底层切分规则依赖具体命令名
-
-词元层只负责切分，不负责理解业务。
-
-这样后续换模块、增命令、改命令超时都更容易维护。
-
-## 13. 一个更合适的模块分层建议
-
-如果后面你要把它真正写成模块，我更建议这样拆分：
-
-- `flowparser_stream.h/.c`
-- `flowparser_stream_port.h/.c`
-- `flowparser_tokenizer.h/.c`
-- `flowparser_stream.md`
-
-其中：
-
-- tokenizer 负责把 ringbuffer 字节流切成 `LINE`、`PROMPT` 等词元。
-- command stream 负责事务状态机、命令调度、结果判定。
-- port 层负责 tick、串口发送函数、底层适配。
-
-其中 tokenizer 可以复用当前 ringbuffer 思路，但 command stream 不建议直接复用当前通用 packet parser 的状态模型。
-
-因为两者解决的问题已经不一样了。
-
-## 14. 一个实用的处理流程
-
-建议整体流程如下：
-
-1. 业务层提交命令请求到执行器。
-2. 执行器在空闲时发送命令文本，并建立当前事务。
-3. 串口接收中断把字节写入 ringbuffer。
-4. 执行器周期调用 tokenizer，从 ringbuffer 中取出词元。
-5. 如果词元是 URC，直接交给异步事件处理器。
-6. 如果当前没有活动事务，则丢弃无关普通响应，或者记录日志。
-7. 如果当前有活动事务，则用词元驱动事务状态机。
-8. 如果当前阶段等到 `PROMPT`，则由执行器发送 payload。
-9. 当事务进入 `COMPLETE`、`FAILED` 或 `TIMEOUT` 时，通知上层。
-
-这个流程和普通包解析最大的区别在于：
-
-这里的中心对象不是“一个包”，而是“一个命令事务”。
-
-## 15. 结论
-
-像 WiFi AT 命令这种数据流，更合适的解析方式不是继续强化“通用包解析器”，而是单独建立一套：
-
-- 基于 ringbuffer 的接收缓冲。
-- 基于请求队列或单请求入口的发送调度。
-- 基于行和提示符的词元切分。
-- 基于命令阶段的事务状态机。
-- 基于 URC 分流的异步事件处理。
-- 基于命令类型的分级超时策略。
-
-一句话概括：
-
-普通数据流解析器解决的是“怎么从连续字节里找出一帧”。
-
-而 WiFi 命令流解析器解决的是“当前这条命令交互走到了哪一步，接下来该等什么”。
-
-这两类问题看起来都在处理串口流，但抽象层级其实不同，最好分开设计。

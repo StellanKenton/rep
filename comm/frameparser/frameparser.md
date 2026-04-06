@@ -1,195 +1,116 @@
-# 数据流协议包解析器
+---
+doc_role: module-spec
+layer: comm
+module: frameparser
+status: active
+portability: layer-dependent
+public_headers:
+    - framepareser.h
+core_files:
+    - framepareser.c
+port_files: []
+debug_files: []
+depends_on:
+    - ../../tools/ringbuffer/ringbuffer.md
+forbidden_depends_on:
+    - parser core 直连 UART 或协议私有实现
+required_hooks:
+    - frmPsrPktLenFunc
+    - frmPsrCrcCalcFunc
+optional_hooks:
+    - frmPsrHeadLenFunc
+    - frmPsrGetTickFunc
+    - frmPsrTxHeadBuildFunc
+    - frmPsrTxPktFinFunc
+common_utils:
+    - tools/ringbuffer
+copy_minimal_set:
+    - framepareser.h
+    - framepareser.c
+    - tools/ringbuffer/
+read_next:
+    - ../comm.md
+    - ../../tools/ringbuffer/ringbuffer.md
+---
 
-## 1. 概述
+# FrameParser 模块说明
 
-本文档定义一个可复用的 `comm` 层数据流协议包解析器。
+这是当前目录的权威入口文档。
 
-该解析器从环形缓冲区中读取字节流，并在每次调用时尝试重组出一个完整数据包。它不负责解析业务字段，也不负责解释命令语义。它的职责仅限于识别包边界、校验数据包有效性，并输出一个完整的数据包给上层协议继续处理。
+## 1. 模块定位
 
-该设计适用于 UART、RS485 或其他基于字节流的通信链路。在这类链路中，数据连续到达，必须通过流式扫描来恢复出完整的包边界。
+`frameparser` 负责从字节流 ring buffer 中重组一帧完整协议包，并在发送侧按格式对象生成完整数据包。它不解释业务命令，也不直接管理链路驱动。
 
-## 2. 职责范围
+## 2. 目录内文件职责
 
-解析器负责：
+| 文件 | 职责 |
+| --- | --- |
+| `framepareser.h` | 解析状态、格式对象、运行配置和公共 API |
+| `framepareser.c` | 包头搜索、长度判断、CRC 校验、组包 |
+| `frameparser.md` | 当前目录 contract |
 
-- 从环形缓冲区读取字节流，而不假设输入天然按包对齐。
-- 定位并校验数据包包头。
-- 根据包头或包头相关字段计算完整数据包长度。
-- 等待环形缓冲区中具备完整数据包所需的全部字节，如果60ms无法等到就去除包头。
-- 在指定 CRC 范围上调用 CRC 计算函数。
-- 将一个通过校验的数据包拷贝到输出缓冲区。
-- 将完整有效的数据包返回给上层协议层。
-- 在上层协议层没有使用这包完整数据包时，不要解析其他数据。
+## 3. 对外公共接口
 
-解析器不负责：
+稳定公共头文件：`framepareser.h`
 
-- 动态内存分配。
-- 解释命令号、负载含义或业务语义。
-- 以阻塞方式等待更多字节到达。
-- 管理底层传输驱动或硬件状态。
+稳定 API：
 
-## 3. 输入与输出
+- `frmPsrInit()` / `frmPsrInitByProtoCfg()` / `frmPsrInitFmt()`
+- `frmPsrReset()` / `frmPsrProc()`
+- `frmPsrSelFmt()` / `frmPsrGetFmt()`
+- `frmPsrMkPkt()` / `frmPsrMkPktByFmt()`
+- `frmPsrHasPkt()` / `frmPsrGetPkt()` / `frmPsrFreePkt()`
 
-### 3.1 输入
+调用顺序：
 
-解析器需要以下输入：
+1. 先准备 ring buffer、格式对象和运行配置。
+2. `Init` 后周期调用 `frmPsrProc()`。
+3. 成功取到包后，业务层消费完成再 `frmPsrFreePkt()`。
 
-- 一个保存接收字节流的环形缓冲区实例。
-- 一个 `receiveFormat`，用于描述接收方向的包头、长度规则和 CRC 规则。
-- 一个 `sendFormat`，用于描述发送方向的包头、总包长规则和 CRC 回填规则。
-- 一个 `runtimeConfig`，用于描述接收输出缓冲区、等待超时和 tick 获取函数。
-- 一个用于计算接收总包长的函数。
-- 一个用于构造发送包头或回填发送辅助字段的函数。
+## 4. 配置、状态与生命周期
 
+- 运行态包含 ring buffer、当前格式、pending 包状态和 ready 状态。
+- `frmPsrProc()` 在没有完整包时返回 `EMPTY` 或 `NEED_MORE_DATA`，不应破坏上层流程状态。
+- 上层在未释放当前 ready 包前，不应继续消费下一包。
 
-### 3.2 输出
+## 5. 依赖白名单与黑名单
 
-解析器每次成功解析时，输出一个完整且通过校验的数据包。
-上层可以修改标志位，表示自己已经使用完解析后的数据，随后解析器才可以开始解析下一包数据。
-如果解析器当前无法产出一个完整有效的数据包，则返回对应状态码，并且不影响上层协议层的处理状态。
+- 允许依赖：`ringbuffer`。
+- 禁止依赖：在 parser core 中直连 UART、tick 私有实现或业务协议逻辑。
+- 禁止做法：把发送和接收格式硬编码到核心流程中。
 
-发送侧在上层提供负载后，按当前选中的 `sendFormat` 生成完整发送数据包，并将结果写入调用方提供的发送缓冲区。
+## 6. 函数指针 / port / assembly 契约
 
-## 4. 核心解析流程
+| 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `frmPsrPktLenFunc` | 必需 | 协议 format provider | 接收解析流程 | `uint32_t (*)(buf, headLen, availLen, userCtx)` | 返回合法总包长 | 返回 `0` 视为不可判定或非法 | 包头已基本命中 | 长度必须包含头、负载、CRC |
+| `frmPsrCrcCalcFunc` | 必需 | 协议 format provider | CRC 校验与发包 | `uint32_t (*)(buf, len, userCtx)` | 返回 CRC 值 | 错误时由上层格式判定失败 | CRC 范围合法 | 接收与发送可共用 |
+| `frmPsrHeadLenFunc` | 可选 | 协议 format provider | 变长包头判断 | `uint32_t (*)(buf, availLen, userCtx)` | 返回合法包头长度 | 返回 `0` 视为仍需更多字节 | 协议存在变长头 | 固定头协议可省略 |
+| `frmPsrGetTickFunc` | 可选 | 运行配置 provider | 等待完整包超时控制 | `uint32_t (*)(void)` | 返回单调 tick | 缺失则不支持等待超时 | 配置需要等待超时 | 与 `waitPktToutMs` 联动 |
 
-解析器建议遵循以下处理顺序：
+## 7. 公共函数使用契约
 
-1. 从环形缓冲区中窥视足够字节，用于判断包头是否合法。
-2. 在当前可用数据流中搜索第一个合法的包头位置。
-3. 如果包头之前的字节已确认是无效数据，则将其丢弃。
-4. 计算当前候选包的有效包头长度。
-5. 根据包头计算完整数据包总长度。
-6. 检查环形缓冲区中是否已经具备完整数据包的全部字节。
-7. 如果数据不足，则返回“需要更多数据”状态，并且不修改当前包状态。
-8. 将整个候选数据包拷贝到输出缓冲区。
-9. 按配置的校验输入范围执行校验计算。
-10. 将计算结果与数据包中的校验字段进行比较。
-11. 如果校验通过，则从环形缓冲区消费对应字节，并返回该完整数据包视图。
-12. 如果校验失败，则丢弃当前候选起点的一个字节，并重新开始搜索包头。
+| 来源模块 | 公共函数 | 允许在哪些文件调用 | 用途 | 调用前提 | 典型调用顺序 | 返回值处理 | 禁止做法 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ringbuffer` | `ringBufferPeek/Read/Discard/GetUsed` | `framepareser.c` | 搜索包头、读取完整包、丢弃无效字节 | ring buffer 已初始化 | `Peek -> Validate -> Read/Discard` | 不足数据时返回等待态 | 绕过 API 直接改 head/tail |
 
-## 5. 状态模型
+## 8. 改动落点矩阵
 
-解析器既可以实现成无状态轮询辅助函数，也可以实现成一个小型状态机。对当前项目来说，无状态轮询函数更简单，也更符合现有环形缓冲区架构。
+| 需求 | 应改文件 | 不该改的文件 |
+| --- | --- | --- |
+| 改包头搜索、CRC、长度处理 | `framepareser.c/.h` | 上层链路流程 |
+| 改具体协议格式 | format / protoCfg provider | parser core 通用流程 |
+| 改发送字段回填 | Tx format 回调 | 接收解析主流程 |
 
-建议的逻辑状态如下：
+## 9. 复制到其他工程的最小步骤
 
-- `SEARCH_HEADER`：搜索合法包头。
-- `READ_HEADER`：确保已有足够字节用于判断包头相关字段。
-- `WAIT_PACKET`：等待完整数据包全部到齐。
-- `CHECK_STATE`：执行数据包完整性校验。
-- `OUTPUT_PACKET`：输出一个完整数据包。
+最小依赖集：`framepareser.h/.c`、`ringbuffer`、外部协议格式回调实现。
 
-即使最终实现采用无状态方式，这些状态也有助于梳理设计和调试问题。
+外部项目必须补齐：包长函数、CRC 计算函数；若协议是变长头或有超时，再补头长函数和 tick hook。
 
-## 6. 长度与包头规则
+## 10. 验证清单
 
-解析器不应把某一种协议格式写死在内部，而应该通过回调函数把格式相关规则解耦出来。
-
-### 6.1 包头长度函数
-
-`headerLengthFunc` 用于判断当前候选数据至少需要多少字节，才能确认包头已经完整。
-
-典型用途：
-
-- 固定长度包头协议。
-- 带版本位或扩展字段的可变包头协议。
-- 包头中已经包含足够字段，可据此进一步计算总包长的协议。
-
-规则如下：
-
-- 如果当前可用字节不足以判断包头长度，则返回 `0`。
-- 如果包头结构合法，则返回经过校验的包头长度。
-- 如果结果大于 `maxPacketLength`，或者小于配置允许的最小预期值，则应判定为非法。
-
-### 6.2 总包长计算函数
-
-`packetLengthFunc` 根据已经验证过的包头字节计算完整数据包长度。
-
-规则如下：
-
-- 如果当前包头字节不足以推导总包长，则返回 `0`。
-- 如果包头本身非法，则返回 `0`。
-- 对于合法候选包，返回值必须处于 `[minPacketLength, maxPacketLength]` 范围内。
-- 返回长度必须包含包头、负载和 CRC 字段。
-
-## 7. 帧格式拆分
-
-为了同时支持接收和发送，并允许两者包头不一致，协议定义应拆分为三个对象：
-
-- `receiveFormat`：只描述接收包头、接收长度判断、接收 CRC 提取与校验规则。
-- `sendFormat`：只描述发送包头、发送总长度计算、发送字段回填与 CRC 写回规则。
-- `runtimeConfig`：只描述实例级输出缓冲区、等待超时和 tick 钩子。
-
-这样拆分后：
-
-- port 层可以维护“协议格式数组”，统一管理不同帧类型。
-- parser 实例可以在运行时切换当前使用的帧格式。
-- 发送逻辑不会再错误复用接收包头配置。
-- 输出缓冲区等实例资源不会被硬编码到静态协议表中。
-
-## 8. port 层建议
-
-建议在 `parser_port` 中准备一个按逻辑协议编号组织的固定槽位数组，用于保存当前项目支持的全部 `frameFormat`。
-
-推荐职责如下：
-
-- 提供 `SetFrameFormat(index, frameFormat)` 之类的注册接口。
-- 提供 `GetFrameFormat(index)` 查询接口。
-- 提供 `InitWithFrameFormat(index, runtimeConfig)` 初始化接口。
-- 提供 `SelectFrameFormat(index)` 运行时切换接口。
-- 提供 `CreatePacket(index, payload...)` 发送包构建接口。
-- 提供 `LinkRingBuf(...)`、`SetProtoCfg(...)` 之类的链接函数，把环形缓冲区、输出缓冲区和协议参数在 port 层完成组装，再交给 core 初始化。
-
-推荐像 `module` 层一样先定义逻辑协议编号，例如 `eFrameParMapType`，再由平台钩子围绕该编号提供 `frmPsrSetPlatformFmt()`、`frmPsrGetPlatformFmt()` 等通用注册接口，`framepareser_port.*` 只保留兼容包装。这样上层协议只需要知道自己使用哪个逻辑协议，而不需要直接管理底层解析器细节。
-
-进一步对齐 `module` 风格后，平台层还应提供按逻辑协议编号组织的默认协议配置表，例如 `gFrmPsrPortDefProtoCfg[FRAME_PROTOCOL_MAX]`，并通过 `frmPsrLoadPlatformDefaultProtoCfg(protocol, &cfg)` 这类通用入口暴露，让上层或其他模块 port 先取默认协议参数，再按需覆写局部字段。
-
-## 9. 发送流程
-
-建议发送公共函数遵循以下顺序：
-
-1. 读取当前选中的 `sendFormat`。
-2. 生成或拷贝发送包头。
-3. 根据包头长度和负载长度计算总包长。
-4. 将负载拷贝到发送缓冲区。
-5. 回填长度字段或其他发送辅助字段。
-6. 计算 CRC 并写回 CRC 字段。
-7. 将完整数据包长度返回给上层发送驱动。
-
-这样做可以保证：
-
-- 发送头和接收头解耦。
-- 长度字段和 CRC 字段不会散落在业务层重复实现。
-- 上层只需要准备 payload 和发送缓冲区。
-
-## 10. 错误处理
-
-建议的状态码如下：
-
-```c
-typedef enum eFrmPsrSta {
-    FRM_PSR_OK = 0,
-    FRM_PSR_EMPTY,
-    FRM_PSR_NEED_MORE_DATA,
-    FRM_PSR_INVALID_ARG,
-    FRM_PSR_HEAD_NOT_FOUND,
-    FRM_PSR_HEAD_INVALID,
-    FRM_PSR_LEN_INVALID,
-    FRM_PSR_CRC_FAIL,
-    FRM_PSR_OUT_BUF_SMALL,
-    FRM_PSR_FMT_NOT_SEL,
-    FRM_PSR_FMT_INVALID,
-    FRM_PSR_BUILD_FAIL
-} eFrmPsrSta;
-```
-
-建议处理规则如下：
-
-- 指针非法、回调非法或尺寸为 0 时，返回 `FRM_PSR_INVALID_ARG`。
-- 如果环形缓冲区为空，则返回 `FRM_PSR_EMPTY`。
-- 如果已经找到候选包起点，但完整数据包尚未到齐，则返回 `FRM_PSR_NEED_MORE_DATA`。
-- 如果输出缓冲区不足以容纳完整数据包，则返回 `FRM_PSR_OUT_BUF_SMALL`。
-- 如果实例当前没有选中任何帧格式，则返回 `FRM_PSR_FMT_NOT_SEL`。
-- 如果 port 槽位为空或帧格式定义本身不合法，则返回 `FRM_PSR_FMT_INVALID`。
-- 如果发送构包过程中的字段回填失败，则返回 `FRM_PSR_BUILD_FAIL`。
-- 如果候选数据包 CRC 校验失败，只应丢弃继续重同步所需的最小字节数。
+- 包头错位时能稳定重同步。
+- `NEED_MORE_DATA` 不会破坏已缓存字节流。
+- CRC 失败只丢弃最小必要字节。
+- ready 包在 `frmPsrFreePkt()` 前不会被下一包覆盖。

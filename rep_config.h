@@ -2,7 +2,6 @@
 * @file     : rep_config.h
 * @brief    : Global repository configuration.
 * @details  : Stores the current MCU platform, RTOS type, and compiled log level.
-* @note     : Demo project pack variant used to validate script-based extra file switching.
 * @author   : GitHub Copilot
 * @date     : 2026-03-31
 * @version  : V1.0.0
