@@ -1,10 +1,10 @@
- /************************************************************************************
+/************************************************************************************
 * @file     : flowparser_stream_port.h
-* @brief    : ESP-AT flow parser port helpers.
-* @details  : Provides default specs, timeout values and URC classification.
+* @brief    : Flow parser generic platform helpers.
+* @details  : Provides platform tick access and generic stream defaults.
 * @author   : GitHub Copilot
-* @date     : 2026-04-02
-* @version  : V1.0.0
+* @date     : 2026-04-08
+* @version  : V1.1.0
 ***********************************************************************************/
 #ifndef FLOWPARSER_STREAM_PORT_H
 #define FLOWPARSER_STREAM_PORT_H
@@ -40,12 +40,6 @@ extern "C" {
 
 uint32_t flowparserPortGetTickMs(void);
 void flowparserPortApplyDftCfg(stFlowParserStreamCfg *cfg);
-void flowparserPortGetEspAtBaseSpec(stFlowParserSpec *spec);
-void flowparserPortGetEspAtSendSpec(stFlowParserSpec *spec);
-bool flowparserPortIsEspAtUrc(const uint8_t *lineBuf, uint16_t lineLen, void *userCtx);
-eFlowParserStrmSta flowparserPortInitEspAt(stFlowParserStream *stream, stRingBuffer *ringBuf, uint8_t *lineBuf, uint16_t lineBufSize,
-                                           uint8_t *cmdBuf, uint16_t cmdBufSize, uint8_t *payloadBuf, uint16_t payloadBufSize,
-                                           flowparserStreamSendFunc sendFunc, void *portUserCtx, flowparserStreamLineFunc urcHandler, void *urcUserCtx);
 
 #ifdef __cplusplus
 }

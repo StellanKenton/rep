@@ -10,6 +10,8 @@
 ***********************************************************************************/
 #include "service_lifecycle.h"
 
+#include <stddef.h>
+
 static eManagerLifecycleError managerLifecycleNormalizeFaultError(eManagerLifecycleError error)
 {
     return (error == eMANAGER_LIFECYCLE_ERROR_NONE) ? eMANAGER_LIFECYCLE_ERROR_INTERNAL : error;

@@ -53,6 +53,7 @@ read_next:
 
 1. 先读 `rule/rule.md`。
 2. 再读 `rule/map.md`，按任务类型缩小到目标目录。
+3. 再读 `rule/coderule.md`，理解代码规则。
 3. 进入目标父目录总文档，例如 `drvlayer/drvrule.md`、`module/module.md`、`comm/comm.md`。
 4. 再读目标叶子目录主文档。
 5. 最后再看对应 `.h/.c`。

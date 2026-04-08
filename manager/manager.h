@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "blemgr/blemgr.h"
 #include "power/power.h"
 #include "selfcheck/selfcheck.h"
 #include "update/update.h"
@@ -49,6 +50,13 @@ typedef struct stManagerHealthSummary {
 	uint32_t runningServiceCount;
 	uint32_t faultServiceCount;
 	bool isManagerInitialized;
+	stManagerServiceHealthSummary ble;
+	eBleMgrState bleState;
+	bool isBleConfigured;
+	bool isBleHandshakeDone;
+	uint32_t bleRxPacketCount;
+	uint32_t bleRxInvalidPacketCount;
+	uint8_t bleLastCmd;
 	stManagerServiceHealthSummary power;
 	ePowerState powerState;
 	bool isLowPowerRequested;
@@ -61,6 +69,10 @@ typedef struct stManagerHealthSummary {
 
 bool managerInit(void);
 bool managerRunStartupSelfCheck(bool isConsoleReady, bool isAppCommReady);
+bool managerBleStart(void);
+void managerBleStop(void);
+void managerBleProcess(void);
+const stBleMgrStatus *managerGetBleStatus(void);
 bool managerPowerStart(void);
 void managerPowerStop(void);
 void managerPowerProcess(void);

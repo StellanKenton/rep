@@ -9,12 +9,14 @@
 ***********************************************************************************/
 #include "manager.h"
 
+#include <stddef.h>
+
 #include "log.h"
 
 static bool gManagerIsInitialized = false;
 static stManagerHealthSummary gManagerHealthSummary = {
     .level = eMANAGER_HEALTH_LEVEL_WARN,
-    .totalServiceCount = 3U,
+    .totalServiceCount = 4U,
     .readyServiceCount = 0U,
     .runningServiceCount = 0U,
     .faultServiceCount = 0U,
@@ -63,17 +65,33 @@ static void managerRefreshHealthSummary(void)
     const stPowerStatus *lPowerStatus;
     const stUpdateStatus *lUpdateStatus;
     const stSelfCheckStatus *lSelfCheckStatus;
+    const stBleMgrStatus *lBleStatus;
 
+    lBleStatus = blemgrGetStatus();
     lPowerStatus = powerGetStatus();
     lUpdateStatus = updateGetStatus();
     lSelfCheckStatus = selfCheckGetStatus();
 
     gManagerHealthSummary.level = eMANAGER_HEALTH_LEVEL_WARN;
-    gManagerHealthSummary.totalServiceCount = 3U;
+    gManagerHealthSummary.totalServiceCount = 4U;
     gManagerHealthSummary.readyServiceCount = 0U;
     gManagerHealthSummary.runningServiceCount = 0U;
     gManagerHealthSummary.faultServiceCount = 0U;
     gManagerHealthSummary.isManagerInitialized = gManagerIsInitialized;
+
+    if (lBleStatus != NULL) {
+        managerCopyLifecycleHealth(&gManagerHealthSummary.ble, &lBleStatus->lifecycle);
+        gManagerHealthSummary.bleState = lBleStatus->state;
+        gManagerHealthSummary.isBleConfigured = lBleStatus->isConfigured;
+        gManagerHealthSummary.isBleHandshakeDone = lBleStatus->isHandshakeDone;
+        gManagerHealthSummary.bleRxPacketCount = lBleStatus->rxPacketCount;
+        gManagerHealthSummary.bleRxInvalidPacketCount = lBleStatus->rxInvalidPacketCount;
+        gManagerHealthSummary.bleLastCmd = lBleStatus->lastCmd;
+        managerSummarizeServiceCounts(&gManagerHealthSummary.ble,
+                                      &gManagerHealthSummary.readyServiceCount,
+                                      &gManagerHealthSummary.runningServiceCount,
+                                      &gManagerHealthSummary.faultServiceCount);
+    }
 
     if (lPowerStatus != NULL) {
         managerCopyLifecycleHealth(&gManagerHealthSummary.power, &lPowerStatus->lifecycle);
@@ -132,6 +150,11 @@ bool managerInit(void)
         return false;
     }
 
+    if (!blemgrInit()) {
+        LOG_E(MANAGER_TAG, "BLE manager init failed");
+        return false;
+    }
+
     if (!powerInit()) {
         LOG_E(MANAGER_TAG, "Power manager init failed");
         return false;
@@ -175,6 +198,40 @@ bool managerRunStartupSelfCheck(bool isConsoleReady, bool isAppCommReady)
     lUpdateReady = selfCheckCommit();
     managerRefreshHealthSummary();
     return lUpdateReady;
+}
+
+bool managerBleStart(void)
+{
+    bool lResult;
+
+    lResult = managerInit() && blemgrStart();
+    managerRefreshHealthSummary();
+    return lResult;
+}
+
+void managerBleStop(void)
+{
+    if (!gManagerIsInitialized) {
+        return;
+    }
+
+    blemgrStop();
+    managerRefreshHealthSummary();
+}
+
+void managerBleProcess(void)
+{
+    if (!managerBleStart()) {
+        return;
+    }
+
+    blemgrProcess();
+    managerRefreshHealthSummary();
+}
+
+const stBleMgrStatus *managerGetBleStatus(void)
+{
+    return blemgrGetStatus();
 }
 
 bool managerPowerStart(void)
