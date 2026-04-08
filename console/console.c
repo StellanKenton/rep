@@ -32,9 +32,15 @@ static uint32_t consoleGetTick(void);
 static bool consoleIsSpace(char value);
 static bool consoleIsSameString(const char *left, const char *right);
 static bool consoleIsSameCommand(const stConsoleCommand *left, const stConsoleCommand *right);
+static bool consoleIsHelpCommand(const char *commandName);
+static bool consoleIsReservedCommandName(const char *commandName);
+static const char *consoleGetCommandGroupName(const stConsoleCommand *command);
+static bool consoleIsSameCommandGroup(const stConsoleCommand *left, const stConsoleCommand *right);
+static bool consoleIsFirstCommandInGroup(uint32_t commandIndex);
 static const stConsoleCommand *consoleFindCommand(const char *commandName);
 static void consoleResetSession(stConsoleSession *session);
 static int consoleTokenize(char *lineBuffer, char *argv[], int maxArgs);
+static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport);
 static void consoleHandleLine(stConsoleSession *session);
 static void consoleProcessByte(stConsoleSession *session, uint8_t data);
 static void consoleProcessSession(stConsoleSession *session);
@@ -76,6 +82,51 @@ static bool consoleIsSameCommand(const stConsoleCommand *left, const stConsoleCo
         consoleIsSameString(left->helpText, right->helpText) &&
         consoleIsSameString(left->ownerTag, right->ownerTag) &&
         (left->handler == right->handler);
+}
+
+static bool consoleIsHelpCommand(const char *commandName)
+{
+    return consoleIsSameString(commandName, "help");
+}
+
+static bool consoleIsReservedCommandName(const char *commandName)
+{
+    return consoleIsHelpCommand(commandName);
+}
+
+static const char *consoleGetCommandGroupName(const stConsoleCommand *command)
+{
+    if (command == NULL) {
+        return NULL;
+    }
+
+    if ((command->ownerTag != NULL) && (command->ownerTag[0] != '\0')) {
+        return command->ownerTag;
+    }
+
+    return command->commandName;
+}
+
+static bool consoleIsSameCommandGroup(const stConsoleCommand *left, const stConsoleCommand *right)
+{
+    return consoleIsSameString(consoleGetCommandGroupName(left), consoleGetCommandGroupName(right));
+}
+
+static bool consoleIsFirstCommandInGroup(uint32_t commandIndex)
+{
+    uint32_t lIndex = 0U;
+
+    if (commandIndex >= gConsoleCommandCount) {
+        return false;
+    }
+
+    for (lIndex = 0U; lIndex < commandIndex; lIndex++) {
+        if (consoleIsSameCommandGroup(&gConsoleCommands[lIndex], &gConsoleCommands[commandIndex])) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static const stConsoleCommand *consoleFindCommand(const char *commandName)
@@ -146,6 +197,89 @@ static int consoleTokenize(char *lineBuffer, char *argv[], int maxArgs)
     return lArgc;
 }
 
+static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport)
+{
+    uint32_t lIndex = 0U;
+
+    if (consoleReply(transport, "Available command groups:") <= 0) {
+        return CONSOLE_COMMAND_RESULT_ERROR;
+    }
+
+    if (gConsoleCommandCount == 0U) {
+        if (consoleReply(transport, "(none)") <= 0) {
+            return CONSOLE_COMMAND_RESULT_ERROR;
+        }
+
+        if (consoleReply(transport, "OK") <= 0) {
+            return CONSOLE_COMMAND_RESULT_ERROR;
+        }
+
+        return CONSOLE_COMMAND_RESULT_OK;
+    }
+
+    for (lIndex = 0U; lIndex < gConsoleCommandCount; lIndex++) {
+        char lLineBuffer[CONSOLE_REPLY_BUFFER_SIZE];
+        int lLength = 0;
+        uint32_t lGroupIndex = 0U;
+        const char *lGroupName = NULL;
+
+        if (!consoleIsFirstCommandInGroup(lIndex)) {
+            continue;
+        }
+
+        lGroupName = consoleGetCommandGroupName(&gConsoleCommands[lIndex]);
+        if ((lGroupName == NULL) || (lGroupName[0] == '\0')) {
+            continue;
+        }
+
+        lLength = snprintf(lLineBuffer, sizeof(lLineBuffer), "%s: %s",
+                           lGroupName,
+                           gConsoleCommands[lIndex].commandName);
+        if (lLength < 0) {
+            return CONSOLE_COMMAND_RESULT_ERROR;
+        }
+
+        if (lLength >= (int)sizeof(lLineBuffer)) {
+            lLength = (int)sizeof(lLineBuffer) - 1;
+            lLineBuffer[lLength] = '\0';
+        }
+
+        for (lGroupIndex = lIndex + 1U; lGroupIndex < gConsoleCommandCount; lGroupIndex++) {
+            int lWritten = 0;
+
+            if (!consoleIsSameCommandGroup(&gConsoleCommands[lIndex], &gConsoleCommands[lGroupIndex])) {
+                continue;
+            }
+
+            lWritten = snprintf(&lLineBuffer[lLength],
+                                sizeof(lLineBuffer) - (size_t)lLength,
+                                ", %s",
+                                gConsoleCommands[lGroupIndex].commandName);
+            if (lWritten < 0) {
+                return CONSOLE_COMMAND_RESULT_ERROR;
+            }
+
+            if (lWritten >= (int)(sizeof(lLineBuffer) - (size_t)lLength)) {
+                lLength = (int)sizeof(lLineBuffer) - 1;
+                lLineBuffer[lLength] = '\0';
+                break;
+            }
+
+            lLength += lWritten;
+        }
+
+        if (consoleReply(transport, "%s", lLineBuffer) <= 0) {
+            return CONSOLE_COMMAND_RESULT_ERROR;
+        }
+    }
+
+    if (consoleReply(transport, "OK") <= 0) {
+        return CONSOLE_COMMAND_RESULT_ERROR;
+    }
+
+    return CONSOLE_COMMAND_RESULT_OK;
+}
+
 static void consoleHandleLine(stConsoleSession *session)
 {
     char *lArgv[CONSOLE_MAX_ARGS];
@@ -172,6 +306,17 @@ static void consoleHandleLine(stConsoleSession *session)
     lArgc = consoleTokenize(session->lineBuffer, lArgv, CONSOLE_MAX_ARGS);
     if (lArgc <= 0) {
         (void)consoleReply(session->transport, "ERROR: invalid argument");
+        consoleResetSession(session);
+        return;
+    }
+
+    if (consoleIsHelpCommand(lArgv[0])) {
+        if (lArgc != 1) {
+            (void)consoleReply(session->transport, "ERROR: invalid argument\nUsage: help");
+        } else if (consoleReplyCommandGroups(session->transport) != CONSOLE_COMMAND_RESULT_OK) {
+            (void)consoleReply(session->transport, "ERROR: command failed");
+        }
+
         consoleResetSession(session);
         return;
     }
@@ -294,6 +439,7 @@ bool consoleRegisterCommand(const stConsoleCommand *command)
     if ((command == NULL) ||
         (command->commandName == NULL) ||
         (command->commandName[0] == '\0') ||
+        consoleIsReservedCommandName(command->commandName) ||
         (command->handler == NULL)) {
         return false;
     }
@@ -335,6 +481,10 @@ int32_t consoleReply(uint32_t transport, const char *format, ...)
 {
     char lBuffer[CONSOLE_REPLY_BUFFER_SIZE];
     int lLength = 0;
+    int32_t lTotalWritten = 0;
+    int32_t lWritten = 0;
+    uint16_t lChunkLength = 0U;
+    uint16_t lOffset = 0U;
     va_list lArgs;
 
     if (format == NULL) {
@@ -363,6 +513,21 @@ int32_t consoleReply(uint32_t transport, const char *format, ...)
         lBuffer[lLength] = '\0';
     }
 
-    return logWriteToTransport(transport, (const uint8_t *)lBuffer, (uint16_t)lLength);
+    while (lOffset < (uint16_t)lLength) {
+        lChunkLength = (uint16_t)lLength - lOffset;
+        if (lChunkLength > LOG_OUTPUT_MAX_FRAME_SIZE) {
+            lChunkLength = LOG_OUTPUT_MAX_FRAME_SIZE;
+        }
+
+        lWritten = logWriteToTransport(transport, (const uint8_t *)&lBuffer[lOffset], lChunkLength);
+        if (lWritten <= 0) {
+            return 0;
+        }
+
+        lTotalWritten += lWritten;
+        lOffset = (uint16_t)(lOffset + lChunkLength);
+    }
+
+    return lTotalWritten;
 }
 /**************************End of file********************************/

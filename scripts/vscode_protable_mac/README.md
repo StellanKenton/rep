@@ -10,6 +10,8 @@
 - RTT 单终端交互
 - VS Code 底部按钮显示和功能
 
+其中 `Firmware: Configure` 现在会先检查已有 `CMakeCache.txt` 里的工具链和编译器；如果发现缓存里的编译器不是当前配置要求的 Arm GNU Toolchain，会自动清掉旧缓存再重新配置，避免项目迁移或工具链切换后继续误用旧编译器。
+
 ## 目录内容
 
 - `deploy.sh`: 固定入口脚本，优先读取同目录下的 `project.json`
@@ -44,6 +46,7 @@
 - `.vscode/settings.json`
 - `.vscode/tasks.json`
 - `.vscode/launch.json`
+- `.vscode/scripts/cmake_configure.sh`
 - `.vscode/scripts/jlink_flash.sh`
 - `.vscode/scripts/jlink_reset.sh`
 - `.vscode/scripts/jlink_rtt_console.sh`

@@ -61,6 +61,7 @@ DEFAULT_SPEC: Dict[str, Any] = {
 }
 
 SCRIPT_CONTENTS: Dict[str, str] = {
+    ".vscode/scripts/cmake_configure.sh": "#!/bin/zsh\n\nset -euo pipefail\n\nsource_dir=\"$1\"\nbuild_dir=\"$2\"\ngenerator=\"$3\"\ntoolchain_file=\"$4\"\narm_toolchain_bin_dir=\"$5\"\nbuild_type=\"$6\"\nexport_compile_commands=\"$7\"\nshift 7\n\ncache_file=\"$build_dir/CMakeCache.txt\"\nexpected_compiler=\"$arm_toolchain_bin_dir/arm-none-eabi-gcc\"\n\ncache_value() {\n  local key=\"$1\"\n\n  if [[ ! -f \"$cache_file\" ]]; then\n    return 0\n  fi\n\n  sed -n \"s|^${key}:[^=]*=||p\" \"$cache_file\" | head -n 1\n}\n\nreset_build_dir() {\n  print -r -- \"[cmake-configure] Removing stale CMake cache from $build_dir\"\n  rm -f \"$build_dir/CMakeCache.txt\"\n  rm -rf \"$build_dir/CMakeFiles\" \"$build_dir/.cmake\"\n  rm -f \"$build_dir/build.ninja\" \"$build_dir/cmake_install.cmake\" \"$build_dir/compile_commands.json\"\n}\n\nmkdir -p \"$build_dir\"\n\nif [[ -f \"$cache_file\" ]]; then\n  cached_toolchain_file=\"$(cache_value CMAKE_TOOLCHAIN_FILE)\"\n  cached_arm_toolchain_bin_dir=\"$(cache_value ARM_GNU_TOOLCHAIN_BIN_DIR)\"\n  cached_c_compiler=\"$(cache_value CMAKE_C_COMPILER)\"\n  cached_asm_compiler=\"$(cache_value CMAKE_ASM_COMPILER)\"\n\n  if [[ \"$cached_toolchain_file\" != \"$toolchain_file\" ]] \\\n    || [[ \"$cached_arm_toolchain_bin_dir\" != \"$arm_toolchain_bin_dir\" ]] \\\n    || [[ \"$cached_c_compiler\" != \"$expected_compiler\" ]] \\\n    || [[ \"$cached_asm_compiler\" != \"$expected_compiler\" ]]; then\n    reset_build_dir\n  fi\nfi\n\nexec cmake \\\n  -S \"$source_dir\" \\\n  -B \"$build_dir\" \\\n  -G \"$generator\" \\\n  -DCMAKE_TOOLCHAIN_FILE=$toolchain_file \\\n  -DARM_GNU_TOOLCHAIN_BIN_DIR=$arm_toolchain_bin_dir \\\n  -DCMAKE_BUILD_TYPE=$build_type \\\n  -DCMAKE_EXPORT_COMPILE_COMMANDS=$export_compile_commands \\\n  \"$@\"\n",
     ".vscode/scripts/jlink_flash.sh": "#!/bin/zsh\n\nset -euo pipefail\n\ndevice=\"$1\"\ninterface=\"$2\"\nspeed=\"$3\"\nimage=\"$4\"\njlink_exe=\"${5:-JLinkExe}\"\n\nif [[ ! -f \"$image\" ]]; then\n  echo \"Firmware image not found: $image\" >&2\n  exit 1\nfi\n\n{\n  print -r -- \"r\"\n  print -r -- \"h\"\n  print -r -- \"loadfile $image\"\n  print -r -- \"r\"\n  print -r -- \"g\"\n  print -r -- \"qc\"\n} | \"$jlink_exe\" -device \"$device\" -if \"$interface\" -speed \"$speed\"\n",
     ".vscode/scripts/jlink_reset.sh": "#!/bin/zsh\n\nset -euo pipefail\n\ndevice=\"$1\"\ninterface=\"$2\"\nspeed=\"$3\"\njlink_exe=\"${4:-JLinkExe}\"\n\n{\n  print -r -- \"r\"\n  print -r -- \"g\"\n  print -r -- \"qc\"\n} | \"$jlink_exe\" -device \"$device\" -if \"$interface\" -speed \"$speed\"\n",
     ".vscode/scripts/jlink_rtt_console.sh": "#!/bin/zsh\n\nset -euo pipefail\n\ndevice=\"$1\"\ninterface=\"$2\"\nspeed=\"$3\"\ngdb_port=\"$4\"\nswo_port=\"$5\"\ntelnet_port=\"$6\"\nrtt_port=\"$7\"\nserver_bin=\"${8:-JLinkGDBServer}\"\nhost=\"127.0.0.1\"\nserver_pid=\"\"\nserver_started=0\nserver_log=\"\"\n\ncleanup() {\n  if [[ \"$server_started\" -eq 1 && -n \"$server_pid\" ]]; then\n    kill \"$server_pid\" 2>/dev/null || true\n    wait \"$server_pid\" 2>/dev/null || true\n  fi\n\n  if [[ -n \"$server_log\" && -f \"$server_log\" ]]; then\n    rm -f \"$server_log\"\n  fi\n}\n\ntrap cleanup EXIT INT TERM\n\nport_listening() {\n  lsof -tiTCP:\"$1\" -sTCP:LISTEN >/dev/null 2>&1\n}\n\nfor port in \"$gdb_port\" \"$swo_port\" \"$telnet_port\" \"$rtt_port\"; do\n  pids=\"$(lsof -tiTCP:\"$port\" -sTCP:LISTEN 2>/dev/null || true)\"\n  if [[ -n \"$pids\" ]]; then\n    kill $pids 2>/dev/null || true\n  fi\ndone\n\nsleep 0.3\n\nserver_log=\"$(mktemp -t cpr-rtt.XXXXXX.log)\"\n\n\"$server_bin\" \\\n  -device \"$device\" \\\n  -if \"$interface\" \\\n  -speed \"$speed\" \\\n  -nohalt \\\n  -port \"$gdb_port\" \\\n  -swoport \"$swo_port\" \\\n  -telnetport \"$telnet_port\" \\\n  -RTTTelnetPort \"$rtt_port\" \\\n  >\"$server_log\" 2>&1 &\n\nserver_pid=\"$!\"\nserver_started=1\n\nfor _ in {1..50}; do\n  if port_listening \"$rtt_port\"; then\n    break\n  fi\n\n  if ! kill -0 \"$server_pid\" 2>/dev/null; then\n    cat \"$server_log\"\n    exit 1\n  fi\n\n  sleep 0.2\ndone\n\nif ! port_listening \"$rtt_port\"; then\n  cat \"$server_log\"\n  exit 1\nfi\n\nprint \"RTT console ready on ${host}:${rtt_port}\"\nprint \"Type directly in this terminal and press Enter to send data. Press Ctrl+C to close RTT.\"\n\nnc \"$host\" \"$rtt_port\"\n",
@@ -307,20 +308,6 @@ def build_tasks_json(runtime: Dict[str, Any]) -> Dict[str, Any]:
     toolchain_file = to_vscode_path(build["toolchainFile"])
     hex_path = to_vscode_path(build["hexPath"])
 
-    configure_args: List[str] = [
-        "-S",
-        source_directory,
-        "-B",
-        build_directory,
-        "-G",
-        build["generator"],
-        f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}",
-        "-DARM_GNU_TOOLCHAIN_BIN_DIR=${config:cpr.tools.armToolchainBinDir}",
-        f"-DCMAKE_BUILD_TYPE={build['buildType']}",
-        f"-DCMAKE_EXPORT_COMPILE_COMMANDS={'ON' if build['exportCompileCommands'] else 'OFF'}",
-    ]
-    configure_args.extend(build["extraConfigureArgs"])
-
     shared_presentation = {
         "reveal": "always",
         "panel": "shared",
@@ -333,8 +320,17 @@ def build_tasks_json(runtime: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "label": "Firmware: Configure",
                 "type": "shell",
-                "command": "cmake",
-                "args": configure_args,
+                "command": "${workspaceFolder}/.vscode/scripts/cmake_configure.sh",
+                "args": [
+                    source_directory,
+                    build_directory,
+                    build["generator"],
+                    toolchain_file,
+                    "${config:cpr.tools.armToolchainBinDir}",
+                    build["buildType"],
+                    "ON" if build["exportCompileCommands"] else "OFF",
+                    *build["extraConfigureArgs"],
+                ],
                 "problemMatcher": [],
                 "presentation": shared_presentation,
                 "options": {"cwd": "${workspaceFolder}"},
@@ -580,6 +576,7 @@ def build_settings_json(runtime: Dict[str, Any]) -> Dict[str, Any]:
         "cmake.preferredGenerators": [build["generator"]],
         "cmake.configureSettings": {
             "CMAKE_TOOLCHAIN_FILE": to_vscode_path(build["toolchainFile"]),
+            "ARM_GNU_TOOLCHAIN_BIN_DIR": build["armToolchainBinDir"],
             "CMAKE_BUILD_TYPE": build["buildType"],
             "CMAKE_EXPORT_COMPILE_COMMANDS": "ON" if build["exportCompileCommands"] else "OFF",
         },

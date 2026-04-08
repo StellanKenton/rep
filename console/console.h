@@ -40,7 +40,7 @@ extern "C" {
 #endif
 
 #ifndef CONSOLE_REPLY_BUFFER_SIZE
-#define CONSOLE_REPLY_BUFFER_SIZE           160U
+#define CONSOLE_REPLY_BUFFER_SIZE           512U
 #endif
 
 typedef struct stConsoleSession {

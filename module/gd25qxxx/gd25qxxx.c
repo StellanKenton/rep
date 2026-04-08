@@ -6,6 +6,8 @@
 ***********************************************************************************/
 #include "gd25qxxx.h"
 
+#include "gd25qxxx_port.h"
+
 #include <stddef.h>
 
 static stGd25qxxxDevice gGd25qxxxDevices[GD25QXXX_DEV_MAX];

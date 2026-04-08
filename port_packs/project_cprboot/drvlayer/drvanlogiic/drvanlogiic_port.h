@@ -18,7 +18,6 @@ extern "C" {
 typedef enum eDrvAnlogIicPortMap {
 	DRVANLOGIIC_PCA = 0,
 	DRVANLOGIIC_TM,
-	DRVANLOGIIC_MAX,
 } eDrvAnlogIicPortMap;
 
 #ifndef DRVANLOGIIC_LOG_SUPPORT

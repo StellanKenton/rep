@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 #ifndef DRVSPI_MAX
-#define DRVSPI_MAX                            2U
+#define DRVSPI_MAX                            1U
 #endif
 
 #ifndef DRVSPI_LOCK_WAIT_MS

@@ -62,6 +62,10 @@ read_next:
 - `consoleProcess()`
 - `consoleReply()`
 
+内置保留命令：
+
+- `help`：由 `console` 核心直接处理，打印当前已注册命令的分组和入口命令。
+
 调用顺序建议：
 
 1. 先完成 `logInit()`。
@@ -87,6 +91,10 @@ read_next:
 ## 5. 命令注册 contract
 
 命令必须由所属模块注册，而不是由 `console` 核心硬编码。
+
+保留字约束：
+
+- 业务模块不得注册 `help`，该命令名保留给 `console` 核心。
 
 推荐模式：
 
