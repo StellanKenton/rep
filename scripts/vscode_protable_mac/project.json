@@ -1,0 +1,51 @@
+{
+  "targetWorkspace": "/Users/rumi/Space/code/CprSensorBoot",
+  "projectName": "CprSensorBoot",
+  "build": {
+    "sourceDirectory": ".",
+    "buildDirectory": "build/Debug",
+    "buildType": "Debug",
+    "generator": "Ninja",
+    "artifactName": "CprSensorBoot",
+    "toolchainFile": "cmake/toolchains/arm-none-eabi.cmake",
+    "armToolchainBinDir": "/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin",
+    "extraConfigureArgs": []
+  },
+  "jlink": {
+    "device": "STM32F103RE",
+    "interface": "swd",
+    "speed": 4000,
+    "jlinkExe": "JLinkExe",
+    "jlinkGdbServer": "JLinkGDBServer"
+  },
+  "ports": {
+    "debug": {
+      "gdb": 2331,
+      "swo": 2332,
+      "telnet": 2333,
+      "rtt": 19021
+    },
+    "rttServer": {
+      "gdb": 2341,
+      "swo": 2342,
+      "telnet": 2343,
+      "rtt": 19031
+    }
+  },
+  "debug": {
+    "runToEntryPoint": "main",
+    "postLaunchCommands": [
+      "monitor reset",
+      "monitor halt"
+    ],
+    "rttEnabled": true
+  },
+  "extensions": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "llvm-vs-code-extensions.vscode-clangd",
+    "marus25.cortex-debug",
+    "seunlanlege.action-buttons",
+    "usernamehw.commands"
+  ]
+}

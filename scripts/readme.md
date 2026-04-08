@@ -5,6 +5,7 @@ This directory stores reusable script bundles for copying into other projects.
 ## Available Bundle
 
 - `vscode_portable`: Keil build, J-Link flash, RTT read, and RTT write workflow for VS Code on Windows.
+- `vscode_protable_mac`: one-click deploy bundle for CMake build, J-Link flash/debug, RTT, and bottom action buttons on macOS.
 
 ## Local Tool
 
@@ -43,8 +44,10 @@ Rules:
 If you want to migrate the current VS Code tooling to another project or another computer, start from:
 
 - `USER/Rep/scripts/vscode_portable/migration.md`
+- `USER/Rep/scripts/vscode_protable_mac/README.md`
 
 The actual files to copy are already prepared inside:
 
 - `USER/Rep/scripts/vscode_portable/.vscode`
 - `USER/Rep/scripts/vscode_portable/scripts`
+- `USER/Rep/scripts/vscode_protable_mac/`
