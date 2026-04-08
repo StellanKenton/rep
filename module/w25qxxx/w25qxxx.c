@@ -9,7 +9,6 @@
 #include <stddef.h>
 
 
-
 static stW25qxxxDevice gW25qxxxDevices[W25QXXX_DEV_MAX];
 static bool gW25qxxxDefCfgDone[W25QXXX_DEV_MAX] = {false};
 

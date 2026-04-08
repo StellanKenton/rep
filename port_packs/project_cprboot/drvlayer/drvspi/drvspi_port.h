@@ -14,7 +14,6 @@ extern "C" {
 typedef enum eDrvSpiPortMap {
 	DRVSPI_BUS0 = 0,
 	DRVSPI_BUS1,
-	DRVSPI_MAX,
 } eDrvSpiPortMap;
 
 #ifndef DRVSPI_LOG_SUPPORT
@@ -23,6 +22,10 @@ typedef enum eDrvSpiPortMap {
 
 #ifndef DRVSPI_CONSOLE_SUPPORT
 #define DRVSPI_CONSOLE_SUPPORT                1
+#endif
+
+#ifndef DRVSPI_MAX
+#define DRVSPI_MAX                            2U
 #endif
 
 #define DRVSPI_LOCK_WAIT_MS                   5U

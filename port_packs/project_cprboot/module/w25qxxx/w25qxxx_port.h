@@ -20,9 +20,7 @@ extern "C" {
 #define W25QXXX_CONSOLE_SUPPORT              1
 #endif
 
-#ifndef W25QXXX_PORT_READ_FILL_DATA
-#define W25QXXX_PORT_READ_FILL_DATA           0xFFU
-#endif
+
 
 typedef stW25qxxxSpiInterface stW25qxxxPortSpiInterface;
 

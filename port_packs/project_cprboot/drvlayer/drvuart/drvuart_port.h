@@ -17,7 +17,6 @@ extern "C" {
 
 typedef enum eDrvUartPortMapTable {
 	DRVUART_WIRELESS = 0,
-	DRVUART_MAX,
 } eDrvUartPortMap;
 
 #ifndef DRVUART_LOG_SUPPORT
@@ -26,6 +25,14 @@ typedef enum eDrvUartPortMapTable {
 
 #ifndef DRVUART_CONSOLE_SUPPORT
 #define DRVUART_CONSOLE_SUPPORT         1
+#endif
+
+#ifndef DRVUART_MAX
+#define DRVUART_MAX                     1U
+#endif
+
+#ifndef DRVUART_DEBUG
+#define DRVUART_DEBUG                   DRVUART_WIRELESS
 #endif
 
 /* Keep legacy macro names as compatibility aliases for existing code. */

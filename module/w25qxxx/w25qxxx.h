@@ -23,6 +23,10 @@ typedef enum eW25qxxxDevMap {
     W25QXXX_DEV_MAX,
 } eW25qxxxMapType;
 
+#ifndef W25QXXX_PORT_READ_FILL_DATA
+#define W25QXXX_PORT_READ_FILL_DATA           0xFFU
+#endif
+
 #define W25QXXX_MANUFACTURER_ID              0xEFU
 #define W25QXXX_PAGE_SIZE                    256U
 #define W25QXXX_SECTOR_SIZE                  4096UL

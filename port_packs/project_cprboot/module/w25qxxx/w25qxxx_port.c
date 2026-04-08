@@ -7,9 +7,10 @@
 #include "w25qxxx_port.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
-#include "Rep/rep_config.h"
-#include "Rep/drvlayer/drvspi/drvspi_port.h"
+#include "rep_config.h"
+#include "drvspi_port.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_FREERTOS)
 #include "FreeRTOS.h"
