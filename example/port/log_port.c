@@ -7,7 +7,7 @@
 
 #include <stddef.h>
 
-#include "../../../SEGGER/bsp_rtt.h"
+#include "../../SEGGER/bsp_rtt.h"
 
 static const stLogInterface gLogPortInterfaces[LOG_PORT_INTERFACE_COUNT] = {
     {

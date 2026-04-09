@@ -35,6 +35,7 @@ read_next:
 - 若某模块依赖其他驱动或工具，只能依赖其公共层接口，不能跨层直连 BSP 或私有结构。
 - `drvlayer` 的核心目标是让 BSP 适配 `drvxxx` 的公共契约。
 - `module` 的核心目标是让 assembly / hook 契约适配下层 drv 公共接口。
+- 当前工程特有的 `manager`、`system`、服务编排和任务接线文档统一收敛到 `example/`，仓库顶层只保留可复用层、规则层和示例入口。
 
 ## 2. Core-Port 强约束
 
@@ -42,7 +43,7 @@ read_next:
 - 非 port、非 debug 文件禁止 include `_port.h`，也禁止直接调用 `XxxPort*`、`XxxPlatform*` 私有绑定接口。
 - 公共头文件禁止暴露板级绑定字段、port 私有类型和 BSP 句柄。
 - 默认资源、tick、总线、缓冲区、延时等项目绑定项必须通过 platform hook、assembly 配置或默认 cfg 注入给 core。
-- `system` 和业务层如果需要项目绑定信息，必须经由模块公共 API 获取，不能跨层读取下层绑定细节。
+- `example/system`、`example/manager` 或其他项目层如果需要项目绑定信息，必须经由模块公共 API 获取，不能跨层读取下层绑定细节。
 
 ## 3. 文档层硬约束
 
@@ -83,6 +84,8 @@ read_next:
 - 默认映射和默认资源需要在哪一层重写。
 
 当目录被标记为 `project-bound` 时，主文档必须明确哪些内容只能参考，不能直接搬运。
+
+如果该目录只是为后续新项目提供参考结构，而不是仓库顶层的可复用层，则应放在 `example/` 下维护，并在正文里明确说明“这是项目示例，不是顶层公共层入口”。
 
 ## 6. 模块改造模板
 

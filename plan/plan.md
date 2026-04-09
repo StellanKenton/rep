@@ -11,6 +11,8 @@
 - AI 能从目录主文档中直接看出当前目录允许使用哪些公共函数、这些公共函数的调用顺序、前置条件和错误处理规则。
 - 当把某个目录单独复制到其他没有当前架构的项目时，维护者可以只根据该目录下的主文档补齐外部依赖和装配层，而不需要先理解整个仓库。
 
+当前结构已经进一步收敛：项目绑定内容统一沉到 `example/`，后续新项目若需要参考 `manager`、`system`、任务接线或服务编排，默认都从 `example/example.md` 进入。
+
 ## 2. 当前主要问题
 
 结合现有文档，当前最影响 AI 稳定写代码的不是“文档数量不够”，而是“文档槽位不统一”。主要问题如下：
@@ -75,7 +77,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `doc_role` | `repo-rule`、`layer-guide`、`module-spec`、`service-spec`、`tool-spec` |
-| `layer` | `rule`、`console`、`drvlayer`、`module`、`manager`、`comm`、`system`、`tools` |
+| `layer` | `rule`、`console`、`drvlayer`、`module`、`comm`、`tools`、`manager`、`system` |
 | `module` | 当前目录名或模块名 |
 | `status` | `draft`、`active`、`needs-refresh` |
 | `portability` | `standalone`、`layer-dependent`、`project-bound` |
@@ -242,20 +244,22 @@
 - `GetDefCfg/GetCfg/SetCfg/Init` 与 `PortAssemble*` 的固定说明方式。
 - module 对下层 drv 公共函数的使用表模板。
 
-#### `manager/manager.md`
+#### `example/manager/manager.md`
 
 重点补充：
 
 - service 生命周期模板。
 - `Init/Start/Process/Stop/Recover/GetStatus/GetLastError` 的文档槽位。
+- 说明它是 `example/` 下的项目示例入口，而不是仓库顶层公共层。
 - manager 子模块复制到其他工程时，哪些是 project-bound，哪些可以保留。
 
-#### `system/system.md`
+#### `example/system/system.md`
 
 重点补充：
 
 - 标明 `system` 目录的可复制等级大概率是 `project-bound`。
 - 明确 system 与 manager、console、task 创建、模式切换的接口边界。
+- 说明它是 `example/` 下的项目示例入口，而不是仓库顶层公共层。
 - 增加“如果复制到外部项目，哪些内容只能参考，不能直接搬”的说明。
 
 #### `console/console.md` 与 `console/log.md`
@@ -360,7 +364,7 @@
 #### `manager/update/update.md`
 #### `console/console.md`
 #### `console/log.md`
-#### `system/system.md`
+#### `example/system/system.md`
 
 这批文档重点补齐：
 
@@ -427,7 +431,7 @@ read_next:
 
 1. 先改 `rule/rule.md`、`rule/map.md`、`rule/projectrule.md`。
 2. 再补 `comm/comm.md`、`tools/tools.md`、`example/example.md`。
-3. 再统一 `drvlayer/drvrule.md`、`module/module.md`、`manager/manager.md`。
+3. 再统一 `drvlayer/drvrule.md`、`module/module.md`、`example/manager/manager.md`、`example/system/system.md`。
 4. 先改高复用目录：UART、IIC、SPI、ringbuffer、frameparser、frameprocess、mpu6050、w25qxxx。
 5. 再改其余叶子目录。
 6. 最后回头检查所有主文档的章节顺序、文档头字段名和表格列名是否完全统一。

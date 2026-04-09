@@ -29,11 +29,13 @@ read_next:
 
 # Manager 层说明
 
-这是 `manager/` 的权威入口文档。
+这是 `example/manager/` 的权威入口文档。
+
+它描述的是“当前工程或后续新项目可参考的 manager 层组织方式”，不是 `rep/` 顶层独立公共层入口。
 
 ## 1. 本层目标和边界
 
-`manager` 是服务编排层，负责把 `power`、`selfcheck`、`update` 这类 service 组织成稳定入口，供 `system` 调度。
+`manager` 是项目示例中的服务编排层，负责把 `power`、`selfcheck`、`update` 这类 service 组织成稳定入口，供示例 `system` 调度。
 
 本层负责：
 
@@ -92,7 +94,7 @@ read_next:
 
 ## 7. 复制到其他工程时如何处理
 
-`manager/` 默认属于 `project-bound`：
+`example/manager/` 默认属于 `project-bound`：
 
 - `service_lifecycle.*` 和生命周期模式可参考或复用。
 - 具体服务接线、启动时序和模式切换逻辑通常要重写。
@@ -102,4 +104,4 @@ read_next:
 1. 先读本文件。
 2. 再读 `service_lifecycle.*`。
 3. 再读目标 service 文档。
-4. 最后回到 `system/system.md` 查看调度关系。
+4. 最后回到 `../system/system.md` 查看调度关系。

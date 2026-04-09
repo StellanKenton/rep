@@ -37,17 +37,16 @@ read_next:
 | `rule/` | 仓库规则、地图、命名和文档约束 | `rule/rule.md` |
 | `drvlayer/` | 公共驱动层与 BSP hook 契约 | `drvlayer/drvrule.md` |
 | `module/` | passive module 与 assembly 契约 | `module/module.md` |
-| `manager/` | 服务编排与生命周期 contract | `manager/manager.md` |
 | `console/` | console 与 log 公共 contract | `console/console.md`、`console/log.md` |
 | `comm/` | 流解析、帧解析、帧流程编排 | `comm/comm.md` |
-| `system/` | 系统模式与任务编排边界 | `system/system.md` |
 | `tools/` | 算法与基础容器工具 | `tools/tools.md` |
-| `example/` | 标准主文档示例 | `example/example.md` |
+| `example/` | 项目绑定示例入口，承载 `manager/`、`system/` 等项目相关参考结构 | `example/example.md` |
 | `scripts/` | 脚本与工具链迁移说明 | `scripts/readme.md` |
 
 说明：
 
 - 旧文档中的 `protocolparser/`、顶层 `ringbuffer/` 等路径已不再代表当前结构，相关内容现在归属 `comm/` 和 `tools/`。
+- 旧文档中的顶层 `manager/`、`system/` 入口已收敛到 `example/manager/` 与 `example/system/`。
 - `rep_config.h` 是公共配置头，不是文档入口。
 
 ## 2. 按任务类型找文档
@@ -56,7 +55,7 @@ read_next:
 | --- | --- | --- |
 | 新增或修改驱动 | `rule/rule.md`、`drvlayer/drvrule.md` | 对应 `drvxxx/drvxxx.md`、`.h/.c` |
 | 新增或修改功能模块 | `rule/rule.md`、`module/module.md` | 对应模块主文档、assembly 头、`.h/.c` |
-| 修改服务生命周期或系统编排 | `manager/manager.md` 或 `system/system.md` | 对应 service 文档、`service_lifecycle.*`、`.h/.c` |
+| 修改服务生命周期或系统编排 | `example/example.md` | `example/manager/manager.md`、`example/system/system.md`、对应 service 文档 |
 | 修改 console / log | `console/console.md`、`console/log.md` | 对应头文件和实现 |
 | 修改协议解析或链路流程 | `comm/comm.md` | `flowparser.md`、`frameparser.md`、`frameprocess.md` |
 | 修改基础算法或容器 | `tools/tools.md` | 对应工具目录主文档与 `.h/.c` |
@@ -71,7 +70,8 @@ read_next:
 | `comm/frameparser` | `comm/comm.md` + `frameparser.md` | ringbuffer 依赖、协议格式回调、输出缓冲 ownership |
 | `comm/frameprocess` | `comm/comm.md` + `frameprocess.md` | frameparser 依赖、tx/rx 钩子、ACK 策略 |
 | `tools/ringbuffer` | `tools/tools.md` + `tools/ringbuffer/ringbuffer.md` | 并发模型、调用方 ownership |
-| `system/` | `system/system.md` | 仅可参考，默认视为 `project-bound` |
+| `example/manager` | `example/example.md` + `example/manager/manager.md` | 生命周期模板、项目服务接线、仅作示例参考 |
+| `example/system` | `example/example.md` + `example/system/system.md` | 模式状态机、任务编排、仅作示例参考 |
 
 ## 4. 目录入口关系
 
@@ -96,6 +96,12 @@ read_next:
 - 入口：`tools/tools.md`
 - 基础容器：`ringbuffer/`
 - 算法工具：`numfilter/`、`butterworthfilter/`、`filter1st/`、`filter2nd/`
+
+### 4.5 `example/`
+
+- 入口：`example/example.md`
+- 项目示例目录：`manager/`、`system/`
+- 用途：承载当前工程相关的编排、生命周期、模式与接线样例，供后续新项目参考，不作为仓库顶层公共层使用
 
 ## 5. 推荐阅读顺序
 

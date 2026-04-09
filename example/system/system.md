@@ -30,11 +30,13 @@ read_next:
 
 # System 模块说明
 
-这是 `system/` 的权威入口文档。
+这是 `example/system/` 的权威入口文档。
+
+它描述的是“当前工程或后续新项目可参考的 system 层组织方式”，不是 `rep/` 顶层独立公共层入口。
 
 ## 1. 本层目标和边界
 
-`system` 目录默认视为 `project-bound`。它负责系统模式、任务编排、启动接线和 system 调试命令，不适合作为可直接迁移的通用模块。
+`example/system` 默认视为 `project-bound`。它负责系统模式、任务编排、启动接线和 system 调试命令，不适合作为仓库顶层可直接迁移的通用模块。
 
 本层负责：
 
@@ -76,7 +78,7 @@ read_next:
 
 ## 6. 复制到其他工程时如何处理
 
-`system/` 的模式状态机、任务布局和 console 接线大多依赖当前工程启动流程。复制到外部项目时：
+`example/system/` 的模式状态机、任务布局和 console 接线大多依赖当前工程启动流程。复制到外部项目时：
 
 - `system.h/.c` 的 mode 语义可参考。
 - `systask_port.*` 和具体任务接线通常必须重写。
@@ -88,4 +90,4 @@ read_next:
 2. 再读 `system.h/.c`。
 3. 再读 `systask_port.h/.c`。
 4. 再读 `system_debug.h/.c`。
-5. 若涉及服务调度，再回读 `manager/manager.md`。
+5. 若涉及服务调度，再回读 `../manager/manager.md`。

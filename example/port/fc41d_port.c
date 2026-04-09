@@ -6,9 +6,9 @@
 #include "fc41d_assembly.h"
 #include "fc41d_priv.h"
 #include "main.h"
-#include "../../comm/flowparser/flowparser_stream_port.h"
-#include "../../drvlayer/drvuart/drvuart.h"
-#include "../../drvlayer/drvuart/drvuart_port.h"
+#include "flowparser_stream_port.h"
+#include "Rep/drvlayer/drvuart/drvuart.h"
+#include "drvuart_port.h"
 
 #include "stm32f1xx_hal.h"
 
