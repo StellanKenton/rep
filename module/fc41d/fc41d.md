@@ -20,7 +20,7 @@ debug_files: []
 depends_on:
   - ../module.md
   - ../../comm/flowparser/flowparser.md
-  - ../../drvlayer/drvuart/drvuart.md
+  - ../../driver/drvuart/drvuart.md
 forbidden_depends_on:
   - core 直连 BSP 或 UART 私有实现
 required_hooks:

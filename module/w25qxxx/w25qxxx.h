@@ -11,7 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "Rep/drvlayer/drvspi/drvspi.h"
+#include "Rep/driver/drvspi/drvspi.h"
 
 #ifdef __cplusplus
 extern "C" {

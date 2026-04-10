@@ -36,7 +36,7 @@
    作用：定义阅读顺序、分层规则、命名规则、文档模板规则。
 
 2. 目录级总文档
-   位置：每个父目录的主 md，例如 `drvlayer/drvrule.md`、`module/module.md`。
+   位置：每个父目录的主 md，例如 `driver/drvrule.md`、`module/module.md`。
    作用：定义这一层的共性、允许依赖关系、下级目录应该如何写自己的主 md。
 
 3. 叶子目录主文档
@@ -77,7 +77,7 @@
 | 字段 | 含义 |
 | --- | --- |
 | `doc_role` | `repo-rule`、`layer-guide`、`module-spec`、`service-spec`、`tool-spec` |
-| `layer` | `rule`、`console`、`drvlayer`、`module`、`comm`、`tools`、`manager`、`system` |
+| `layer` | `rule`、`console`、`driver`、`module`、`comm`、`tools`、`manager`、`system` |
 | `module` | 当前目录名或模块名 |
 | `status` | `draft`、`active`、`needs-refresh` |
 | `portability` | `standalone`、`layer-dependent`、`project-bound` |
@@ -226,7 +226,7 @@
 
 这一步负责把各层的“共性规则”固定下来。
 
-#### `drvlayer/drvrule.md`
+#### `driver/drvrule.md`
 
 重点补充：
 
@@ -296,13 +296,13 @@
 
 #### 驱动层高优先级
 
-- `drvlayer/drvuart/drvuart.md`
-- `drvlayer/drviic/drviic.md`
-- `drvlayer/drvspi/drvspi.md`
-- `drvlayer/drvgpio/drvgpio.md`
-- `drvlayer/drvanlogiic/drvanlogiic.md`
-- `drvlayer/drvadc/drvadc.md`
-- `drvlayer/drvmcuflash/drvmcuflash.md`
+- `driver/drvuart/drvuart.md`
+- `driver/drviic/drviic.md`
+- `driver/drvspi/drvspi.md`
+- `driver/drvgpio/drvgpio.md`
+- `driver/drvanlogiic/drvanlogiic.md`
+- `driver/drvadc/drvadc.md`
+- `driver/drvmcuflash/drvmcuflash.md`
 
 这些文档要重点补齐：
 
@@ -392,7 +392,7 @@ port_files:
   - xxx_port.h
   - xxx_port.c
 depends_on:
-  - drvlayer/yyy
+   - driver/yyy
 forbidden_depends_on:
   - bsp_*.h
 required_hooks:
@@ -408,7 +408,7 @@ copy_minimal_set:
   - xxx_port.c
 read_next:
   - module/module.md
-  - drvlayer/yyy/yyy.md
+   - driver/yyy/yyy.md
 ---
 
 # xxx 模块说明
@@ -431,7 +431,7 @@ read_next:
 
 1. 先改 `rule/rule.md`、`rule/map.md`、`rule/projectrule.md`。
 2. 再补 `comm/comm.md`、`tools/tools.md`、`example/example.md`。
-3. 再统一 `drvlayer/drvrule.md`、`module/module.md`、`example/manager/manager.md`、`example/system/system.md`。
+3. 再统一 `driver/drvrule.md`、`module/module.md`、`example/manager/manager.md`、`example/system/system.md`。
 4. 先改高复用目录：UART、IIC、SPI、ringbuffer、frameparser、frameprocess、mpu6050、w25qxxx。
 5. 再改其余叶子目录。
 6. 最后回头检查所有主文档的章节顺序、文档头字段名和表格列名是否完全统一。

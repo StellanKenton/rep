@@ -19,7 +19,7 @@ common_utils: []
 copy_minimal_set:
   - rule/map.md
 read_next:
-  - ../drvlayer/drvrule.md
+  - ../driver/drvrule.md
   - ../module/module.md
   - ../comm/comm.md
 ---
@@ -35,7 +35,7 @@ read_next:
 | 目录 | 作用 | 权威入口 |
 | --- | --- | --- |
 | `rule/` | 仓库规则、地图、命名和文档约束 | `rule/rule.md` |
-| `drvlayer/` | 公共驱动层与 BSP hook 契约 | `drvlayer/drvrule.md` |
+| `driver/` | 公共驱动层与 BSP hook 契约 | `driver/drvrule.md` |
 | `module/` | passive module 与 assembly 契约 | `module/module.md` |
 | `console/` | console 与 log 公共 contract | `console/console.md`、`console/log.md` |
 | `comm/` | 流解析、帧解析、帧流程编排 | `comm/comm.md` |
@@ -53,7 +53,7 @@ read_next:
 
 | 任务类型 | 先读 | 再读 |
 | --- | --- | --- |
-| 新增或修改驱动 | `rule/rule.md`、`drvlayer/drvrule.md` | 对应 `drvxxx/drvxxx.md`、`.h/.c` |
+| 新增或修改驱动 | `rule/rule.md`、`driver/drvrule.md` | 对应 `drvxxx/drvxxx.md`、`.h/.c` |
 | 新增或修改功能模块 | `rule/rule.md`、`module/module.md` | 对应模块主文档、assembly 头、`.h/.c` |
 | 修改服务生命周期或系统编排 | `example/example.md` | `example/manager/manager.md`、`example/system/system.md`、对应 service 文档 |
 | 修改 console / log | `console/console.md`、`console/log.md` | 对应头文件和实现 |
@@ -65,7 +65,7 @@ read_next:
 
 | 复制目标 | 至少先读 | 额外关注 |
 | --- | --- | --- |
-| `drvxxx` 目录 | `drvlayer/drvrule.md` + 对应 `drvxxx.md` | BSP hook、默认资源映射、debug 可裁剪项 |
+| `drvxxx` 目录 | `driver/drvrule.md` + 对应 `drvxxx.md` | BSP hook、默认资源映射、debug 可裁剪项 |
 | `module/xxx` 目录 | `module/module.md` + 对应模块主文档 | assembly hook、下层 drv 调用表、默认绑定 |
 | `comm/frameparser` | `comm/comm.md` + `frameparser.md` | ringbuffer 依赖、协议格式回调、输出缓冲 ownership |
 | `comm/frameprocess` | `comm/comm.md` + `frameprocess.md` | frameparser 依赖、tx/rx 钩子、ACK 策略 |
@@ -75,9 +75,9 @@ read_next:
 
 ## 4. 目录入口关系
 
-### 4.1 `drvlayer/`
+### 4.1 `driver/`
 
-- 入口：`drvlayer/drvrule.md`
+- 入口：`driver/drvrule.md`
 - 高复用叶子目录：`drvuart/`、`drviic/`、`drvspi/`、`drvgpio/`、`drvanlogiic/`、`drvadc/`、`drvmcuflash/`
 
 ### 4.2 `module/`

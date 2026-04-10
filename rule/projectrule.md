@@ -20,7 +20,7 @@ common_utils: []
 copy_minimal_set:
 	- rule/projectrule.md
 read_next:
-	- ../drvlayer/drvrule.md
+	- ../driver/drvrule.md
 	- ../module/module.md
 ---
 
@@ -33,7 +33,7 @@ read_next:
 - 涉及 console 的能力必须由宏开关显式控制。
 - 新驱动优先参考 `drvgpio`、`drvuart` 等现有主流结构，不自行发明新的分层模式。
 - 若某模块依赖其他驱动或工具，只能依赖其公共层接口，不能跨层直连 BSP 或私有结构。
-- `drvlayer` 的核心目标是让 BSP 适配 `drvxxx` 的公共契约。
+- `driver` 的核心目标是让 BSP 适配 `drvxxx` 的公共契约。
 - `module` 的核心目标是让 assembly / hook 契约适配下层 drv 公共接口。
 - 当前工程特有的 `manager`、`system`、服务编排和任务接线文档统一收敛到 `example/`，仓库顶层只保留可复用层、规则层和示例入口。
 

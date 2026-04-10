@@ -54,7 +54,7 @@ read_next:
 1. 先读 `rule/rule.md`。
 2. 再读 `rule/map.md`，按任务类型缩小到目标目录。
 3. 再读 `rule/coderule.md`，理解代码规则。
-3. 进入目标父目录总文档，例如 `drvlayer/drvrule.md`、`module/module.md`、`comm/comm.md`；若任务涉及项目绑定组织或新项目搭建，先转到 `example/example.md`。
+3. 进入目标父目录总文档，例如 `driver/drvrule.md`、`module/module.md`、`comm/comm.md`；若任务涉及项目绑定组织或新项目搭建，先转到 `example/example.md`。
 4. 再读目标叶子目录主文档。
 5. 最后再看对应 `.h/.c`。
 
@@ -65,7 +65,7 @@ read_next:
 仓库内 md 统一按三层组织：
 
 1. 仓库级入口：`rule/` 下的规则与地图文档。
-2. 父目录总文档：例如 `drvlayer/drvrule.md`、`module/module.md`、`comm/comm.md`。
+2. 父目录总文档：例如 `driver/drvrule.md`、`module/module.md`、`comm/comm.md`。
 3. 叶子目录主文档：尽量与目录同名，例如 `drvuart/drvuart.md`、`frameprocess/frameprocess.md`。
 
 项目绑定内容不再作为 `rep/` 顶层常驻层存在。凡是 `manager`、`system`、服务编排、任务接线这类当前工程相关内容，统一放在 `example/` 下作为参考示例，由 `example/example.md` 作为入口。

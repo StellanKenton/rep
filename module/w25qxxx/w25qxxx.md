@@ -13,7 +13,7 @@ debug_files:
 	- w25qxxx_debug.h
 	- w25qxxx_debug.c
 depends_on:
-	- ../../drvlayer/drvspi/drvspi.md
+	- ../../driver/drvspi/drvspi.md
 forbidden_depends_on:
 	- 在 core 中直连具体 SPI 绑定或 CS 细节
 required_hooks:
@@ -26,7 +26,7 @@ copy_minimal_set:
 	- w25qxxx.c
 read_next:
 	- ../module.md
-	- ../../drvlayer/drvspi/drvspi.md
+	- ../../driver/drvspi/drvspi.md
 ---
 
 # W25QXXX 模块说明
