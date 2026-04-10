@@ -3,6 +3,7 @@
 * @brief    : Reusable hardware SPI driver abstraction.
 * @details  : This module exposes a stable master-mode SPI interface for upper
 *             modules while hiding controller and chip-select details behind hooks.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef DRVSPI_H
 #define DRVSPI_H
@@ -90,4 +91,3 @@ const stDrvSpiBspInterface *drvSpiGetPlatformBspInterfaces(void);
 
 #endif  // DRVSPI_H
 /**************************End of file********************************/
-

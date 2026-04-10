@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : tm1651_assembly.h
 * @brief    : TM1651 assembly-time contract shared by core and port.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef TM1651_ASSEMBLY_H
 #define TM1651_ASSEMBLY_H

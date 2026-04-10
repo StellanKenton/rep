@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : butterworthfilter.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef UNIT_ALGO_BUTTERWORTH_FILTER_H
 #define UNIT_ALGO_BUTTERWORTH_FILTER_H
 
@@ -38,4 +47,4 @@ void UnitAlgoButterworthFilterReset(ButterworthFilterObj *pxHand);
 float UnitAlgoButterworthFilterUpdate(float NewData, ButterworthFilterObj *pxHand);
 
 #endif
-
+/**************************End of file********************************/

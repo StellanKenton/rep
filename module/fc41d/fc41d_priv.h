@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : fc41d_priv.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef FC41D_PRIV_H
 #define FC41D_PRIV_H
 
@@ -34,3 +43,4 @@ bool fc41dAtIsUrc(const uint8_t *lineBuf, uint16_t lineLen);
 #endif
 
 #endif  // FC41D_PRIV_H
+/**************************End of file********************************/

@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : numfilter.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 /**
  * @file numfilter.h
  * @brief 数值处理与通用滤波算法接口。
@@ -327,3 +336,4 @@ float UnitAlgoDiffCalcUpdate(DiffCalcObj *pxHand, float NewData);
 #endif // extern "C"
 
 #endif
+/**************************End of file********************************/

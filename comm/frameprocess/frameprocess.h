@@ -2,6 +2,7 @@
 * @file     : frameprocess.h
 * @brief    : Framed protocol process service.
 * @details  : Manages RX parsing, TX scheduling, and ACK retry for framed packets.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FRAMEPROCESS_H
 #define FRAMEPROCESS_H

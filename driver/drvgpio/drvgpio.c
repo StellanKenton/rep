@@ -164,5 +164,4 @@ void drvGpioToggle(uint8_t pin)
     lBspInterface->toggle(pin);
 }
 
-
 /**************************End of file********************************/

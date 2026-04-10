@@ -1,10 +1,11 @@
- /***********************************************************************************
+/***********************************************************************************
 * @file     : flowparser_stream.c
 * @brief    : AT command transaction parser implementation.
 * @details  : Executes single-command flows with prompt wait and URC splitting.
 * @author   : GitHub Copilot
 * @date     : 2026-04-02
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "flowparser_stream.h"
 
@@ -382,4 +383,5 @@ eFlowParserStage flowparserStreamGetStage(const stFlowParserStream *stream)
 
     return stream->txn.stage;
 }
+
 /**************************End of file********************************/

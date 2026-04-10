@@ -2,6 +2,7 @@
 * @file     : w25qxxx_debug.h
 * @brief    : W25Qxxx debug helpers.
 * @details  : Exposes optional console registration for W25Qxxx debug commands.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef W25QXXX_DEBUG_H
 #define W25QXXX_DEBUG_H

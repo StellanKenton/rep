@@ -3,6 +3,7 @@
 * @brief    : FC41D combo wireless module public interface.
 * @details  : Provides blocking AT configuration helpers and separated BLE/WiFi RX
 *             ring buffers for upper modules.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FC41D_H
 #define FC41D_H

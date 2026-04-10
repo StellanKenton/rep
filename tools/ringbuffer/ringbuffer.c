@@ -564,4 +564,5 @@ uint32_t ringBufferWriteOverwrite(stRingBuffer *rb, const uint8_t *src, uint32_t
 
     return lInputLength;
 }
+
 /**************************End of file********************************/

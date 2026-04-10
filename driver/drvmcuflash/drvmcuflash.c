@@ -7,6 +7,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-02
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvmcuflash.h"
 
@@ -352,4 +353,5 @@ eDrvStatus drvMcuFlashErase(uint8_t area, uint32_t offset, uint32_t length)
 
     return lLockStatus;
 }
+
 /**************************End of file********************************/

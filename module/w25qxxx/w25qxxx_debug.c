@@ -2,6 +2,7 @@
 * @file     : w25qxxx_debug.c
 * @brief    : W25Qxxx debug and console command implementation.
 * @details  : This file hosts optional console bindings for W25Qxxx operations.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "w25qxxx_debug.h"
 

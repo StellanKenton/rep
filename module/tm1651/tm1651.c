@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : tm1651.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "tm1651.h"
 
 #include "tm1651_assembly.h"
@@ -438,4 +447,5 @@ static eTm1651Status tm1651RefreshDisplay(stTm1651Device *device)
 
     return tm1651ApplyDisplayCtrl(device);
 }
+
 /**************************End of file********************************/

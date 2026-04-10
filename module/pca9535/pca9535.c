@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : pca9535.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "pca9535.h"
 
 #include "pca9535_assembly.h"
@@ -529,3 +538,5 @@ static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAd
     *value = (uint16_t)((uint16_t)lBuffer[0] | ((uint16_t)lBuffer[1] << 8U));
     return PCA9535_STATUS_OK;
 }
+
+/**************************End of file********************************/

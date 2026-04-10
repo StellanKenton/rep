@@ -4,6 +4,7 @@
 * @details  : This module keeps TM1651 command sequencing in the core layer and
 *             relies on the port layer to bind the device to the project
 *             software IIC driver.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef TM1651_H
 #define TM1651_H

@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : filtersecd.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 /**
  * @file filtersecd.h
  * @brief 二阶滤波算法对外接口。
@@ -126,3 +135,4 @@ void Filter2ndOrdSetNumCoeffs(Filter2ndOrdHandle handle, const float b0, const f
 #endif
 
 #endif
+/**************************End of file********************************/

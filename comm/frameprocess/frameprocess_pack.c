@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : frameprocess_pack.c
 * @brief    : Frame process business response handlers.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "frameprocess_pack.h"
 
@@ -102,4 +103,5 @@ bool frmProcPackOnRx(stFrmProcCtx *ctx, uint8_t cmd)
             return true;
     }
 }
+
 /**************************End of file********************************/

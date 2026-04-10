@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : rtos.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef REP_SERVICE_RTOS_H
 #define REP_SERVICE_RTOS_H
 
@@ -96,3 +105,4 @@ uint32_t repRtosGetSystem(void);
 #endif
 
 #endif
+/**************************End of file********************************/

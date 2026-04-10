@@ -2,6 +2,7 @@
 * @file     : tm1651_debug.h
 * @brief    : TM1651 debug helpers.
 * @details  : Exposes optional console registration for TM1651 debug commands.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef TM1651_DEBUG_H
 #define TM1651_DEBUG_H

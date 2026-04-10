@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : frameprocess.c
 * @brief    : Framed protocol process service implementation.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "frameprocess.h"
 
@@ -580,4 +581,5 @@ void frmProcClearRxFlags(eFrmProcMapType proc, uint32_t flags)
 
     lCtx->rxStore.flags.value &= ~flags;
 }
+
 /**************************End of file********************************/

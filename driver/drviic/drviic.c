@@ -372,4 +372,3 @@ eDrvStatus drvIicReadRegister(uint8_t iic, uint8_t address, const uint8_t *regis
 }
 
 /**************************End of file********************************/
-

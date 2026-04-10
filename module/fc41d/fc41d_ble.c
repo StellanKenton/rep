@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : fc41d_ble.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "fc41d.h"
 
 #include <stddef.h>
@@ -37,4 +46,5 @@ eFc41dStatus fc41dBleClearRx(eFc41dMapType device)
 
 	return (ringBufferReset(rb) == RINGBUFFER_OK) ? FC41D_STATUS_OK : FC41D_STATUS_ERROR;
 }
+
 /**************************End of file********************************/

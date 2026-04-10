@@ -6,6 +6,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-03
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvadc.h"
 

@@ -64,4 +64,3 @@ stRingBuffer* drvUartGetRingBuffer(uint8_t uart);
 
 #endif  // DRVUART_H
 /**************************End of file********************************/
-

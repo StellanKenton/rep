@@ -4,6 +4,7 @@
 * @details  : The module provides a passive bring-up and raw sample read flow
 *             for LSM6DS3/LSM6DSL/LSM6DSO class devices that share the common
 *             control and data register layout.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "lsm6.h"
 
@@ -533,4 +534,5 @@ static int16_t lsm6ParseLe16(const uint8_t *buffer)
 {
     return (int16_t)((int16_t)((uint16_t)buffer[1] << 8U) | buffer[0]);
 }
+
 /**************************End of file********************************/

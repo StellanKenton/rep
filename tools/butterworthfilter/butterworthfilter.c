@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : butterworthfilter.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 /**
  * @file butterworthfilter.c
  * @brief 二阶 Butterworth 低通滤波器实现。
@@ -64,3 +73,5 @@ float UnitAlgoButterworthFilterUpdate(float NewData, ButterworthFilterObj *pxHan
 
     return output;
 }
+
+/**************************End of file********************************/

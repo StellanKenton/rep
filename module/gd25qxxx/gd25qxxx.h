@@ -4,6 +4,7 @@
 * @details  : This module keeps reusable flash logic in the core layer and
 *             relies on the port layer to bind logical device instances to the
 *             project drvspi implementation.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef GD25QXXX_H
 #define GD25QXXX_H

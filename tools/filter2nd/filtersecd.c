@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : filtersecd.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 /**
  * @file filtersecd.c
  * @brief 二阶滤波算法实现。
@@ -314,3 +323,5 @@ void Filter2ndOrdSetNumCoeffs(Filter2ndOrdHandle handle, const float b0, const f
     handle->b1 = b1;
     handle->b2 = b2;
 }
+
+/**************************End of file********************************/

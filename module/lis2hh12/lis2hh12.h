@@ -4,6 +4,7 @@
 * @details  : This module keeps LIS2HH12 register semantics in the core layer
 *             and relies on assembly hooks to bind the device to the shared IIC
 *             driver implementations.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef LIS2HH12_H
 #define LIS2HH12_H

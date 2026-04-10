@@ -2,6 +2,7 @@
 * @file     : frameprocess_pack.h
 * @brief    : Frame process business pack handlers.
 * @details  : Converts parsed RX commands into TX store updates and runtime changes.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FRAMEPROCESS_PACK_H
 #define FRAMEPROCESS_PACK_H

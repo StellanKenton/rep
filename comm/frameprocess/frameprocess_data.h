@@ -2,6 +2,7 @@
 * @file     : frameprocess_data.h
 * @brief    : Frame process protocol data definitions.
 * @details  : Declares RX/TX payload structures, flags, and encode/decode helpers.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FRAMEPROCESS_DATA_H
 #define FRAMEPROCESS_DATA_H

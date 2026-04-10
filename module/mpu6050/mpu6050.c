@@ -6,6 +6,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-01
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "mpu6050.h"
 
@@ -539,4 +540,3 @@ static int16_t mpu6050ParseBe16(const uint8_t *buffer)
 }
 
 /**************************End of file********************************/
-

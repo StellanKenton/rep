@@ -708,4 +708,5 @@ void logWrite(eLogLevel level, const char *tag, const char *format, ...)
     logVWrite(level, tag, format, lArgs);
     va_end(lArgs);
 }
+
 /**************************End of file********************************/

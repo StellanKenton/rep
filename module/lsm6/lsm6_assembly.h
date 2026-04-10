@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : lsm6_assembly.h
 * @brief    : LSM6 assembly-time contract shared by core and port.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef LSM6_ASSEMBLY_H
 #define LSM6_ASSEMBLY_H

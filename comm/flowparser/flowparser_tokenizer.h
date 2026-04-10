@@ -1,10 +1,11 @@
- /************************************************************************************
+/************************************************************************************
 * @file     : flowparser_tokenizer.h
 * @brief    : AT command stream tokenizer public API.
 * @details  : Splits a UART byte stream into LINE, PROMPT and OVERFLOW tokens.
 * @author   : GitHub Copilot
 * @date     : 2026-04-02
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FLOWPARSER_TOKENIZER_H
 #define FLOWPARSER_TOKENIZER_H

@@ -7,6 +7,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-01
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef MPU6050_H
 #define MPU6050_H

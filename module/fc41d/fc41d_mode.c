@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : fc41d_mode.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "fc41d.h"
 
 #include <stddef.h>
@@ -26,4 +35,5 @@ eFc41dMode fc41dGetModeState(eFc41dMapType device)
 	stFc41dCtx *ctx = fc41dGetCtx(device);
 	return (ctx != NULL) ? ctx->info.mode : FC41D_MODE_COMMAND;
 }
+
 /**************************End of file********************************/

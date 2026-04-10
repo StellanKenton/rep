@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : filtterfisrt.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 /**
  * @file filtterfisrt.c
  * @brief 一阶滤波算法实现。
@@ -248,3 +257,5 @@ float Filter1stOrdForCtrlUpdate(Filter1stOrdForCtrlObj *pxHand, float fNewValue)
 
     return output;
 }
+
+/**************************End of file********************************/

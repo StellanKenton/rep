@@ -81,4 +81,3 @@ const stDrvIicBspInterface *drvIicGetPlatformBspInterfaces(void);
 
 #endif  // DRVIIC_H
 /**************************End of file********************************/
-

@@ -3,6 +3,7 @@
 * @brief    : W25Qxxx SPI NOR flash module implementation.
 * @details  : This file manages logical device instances, JEDEC probing, busy
 *             polling, paged programming, and erase flows through port hooks.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "w25qxxx.h"
 
@@ -689,4 +690,5 @@ static uint8_t w25qxxxGetBlkEraseCmd(const stW25qxxxDevice *device)
 {
     return (device->info.addressWidth == 4U) ? W25QXXX_CMD_BLOCK_ERASE_64K_4B : W25QXXX_CMD_BLOCK_ERASE_64K;
 }
+
 /**************************End of file********************************/

@@ -5,6 +5,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-01
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "framepareser.h"
 
@@ -875,5 +876,5 @@ void frmPsrFreePkt(stFrmPsr *psr)
     psr->pkt.len = 0U;
     psr->hasReadyPkt = false;
 }
-/**************************End of file********************************/
 
+/**************************End of file********************************/

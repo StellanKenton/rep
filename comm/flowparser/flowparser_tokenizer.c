@@ -1,10 +1,11 @@
- /***********************************************************************************
+/***********************************************************************************
 * @file     : flowparser_tokenizer.c
 * @brief    : AT command stream tokenizer implementation.
 * @details  : Emits line tokens on CRLF or LF and emits '>' as a prompt token.
 * @author   : GitHub Copilot
 * @date     : 2026-04-02
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "flowparser_tokenizer.h"
 
@@ -170,4 +171,5 @@ eFlowParserTokSta flowparserTokGet(stFlowParserTokenizer *tokenizer, stFlowParse
 
     return FLOWPARSER_TOK_EMPTY;
 }
+
 /**************************End of file********************************/

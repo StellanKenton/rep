@@ -4,6 +4,7 @@
 * @details  : This module validates public parameters, serializes bus access,
 *             manages manual chip-select control, and forwards transfers to the
 *             project-specific BSP hook table.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvspi.h"
 
@@ -440,5 +441,5 @@ eDrvStatus drvSpiExchange(uint8_t spi, const uint8_t *txBuffer, uint8_t *rxBuffe
 {
     return drvSpiExchangeTimeout(spi, txBuffer, rxBuffer, length, 0U);
 }
-/**************************End of file********************************/
 
+/**************************End of file********************************/

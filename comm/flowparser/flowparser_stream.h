@@ -1,10 +1,11 @@
- /************************************************************************************
+/************************************************************************************
 * @file     : flowparser_stream.h
 * @brief    : AT command transaction parser public API.
 * @details  : Drives a single-command state machine on top of tokenizer tokens.
 * @author   : GitHub Copilot
 * @date     : 2026-04-02
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FLOWPARSER_STREAM_H
 #define FLOWPARSER_STREAM_H

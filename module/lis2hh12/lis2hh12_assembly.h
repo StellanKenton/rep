@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : lis2hh12_assembly.h
 * @brief    : LIS2HH12 assembly-time contract shared by core and project port.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef LIS2HH12_ASSEMBLY_H
 #define LIS2HH12_ASSEMBLY_H

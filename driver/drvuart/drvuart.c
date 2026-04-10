@@ -417,5 +417,4 @@ stRingBuffer* drvUartGetRingBuffer(uint8_t uart)
     return drvUartGetPlatformRingBuffer(uart);
 }
 
-
 /**************************End of file********************************/

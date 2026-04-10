@@ -4,6 +4,7 @@
 * @details  : This module provides a small blocking interface for common LSM6
 *             devices that share the register map used by LSM6DS3/LSM6DSL/
 *             LSM6DSO class sensors.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef LSM6_H
 #define LSM6_H

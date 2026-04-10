@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : mpu6050_assembly.h
 * @brief    : MPU6050 assembly-time contract shared by core and port.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef MPU6050_ASSEMBLY_H
 #define MPU6050_ASSEMBLY_H

@@ -2,6 +2,7 @@
 * @file     : drvspi_debug.c
 * @brief    : DrvSpi debug and console command implementation.
 * @details  : This file hosts optional console bindings for SPI debug operations.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvspi_debug.h"
 

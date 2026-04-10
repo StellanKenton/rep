@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : frameprocess_data.c
 * @brief    : Frame process protocol data encode and decode helpers.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "frameprocess_data.h"
 
@@ -152,4 +153,5 @@ bool frmProcDataBuildTx(uint8_t cmd, const stFrmDataTxStore *txStore, uint8_t *p
             return false;
     }
 }
+
 /**************************End of file********************************/

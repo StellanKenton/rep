@@ -2,6 +2,7 @@
 * @file     : pca9535_debug.c
 * @brief    : PCA9535 debug and console command implementation.
 * @details  : This file hosts optional console bindings for PCA9535 operations.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "pca9535_debug.h"
 
@@ -555,4 +556,5 @@ bool pca9535DebugConsoleRegister(void)
 }
 
 #endif
+
 /**************************End of file********************************/

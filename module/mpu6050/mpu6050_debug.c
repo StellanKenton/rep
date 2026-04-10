@@ -2,6 +2,7 @@
 * @file     : mpu6050_debug.c
 * @brief    : MPU6050 debug and console command implementation.
 * @details  : This file hosts optional console bindings for MPU6050 operations.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "mpu6050_debug.h"
 

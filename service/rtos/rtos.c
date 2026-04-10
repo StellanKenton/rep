@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : rtos.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "rtos.h"
 
 #include <stddef.h>
@@ -190,3 +199,5 @@ uint32_t repRtosGetSystem(void)
 {
     return rtosPortGetSystem();
 }
+
+/**************************End of file********************************/

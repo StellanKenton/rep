@@ -630,4 +630,5 @@ bool drvUartDebugConsoleRegister(void)
     return true;
 #endif
 }
+
 /**************************End of file********************************/

@@ -2,6 +2,7 @@
 * @file     : mpu6050_debug.h
 * @brief    : MPU6050 debug helpers.
 * @details  : Exposes optional console registration for MPU6050 debug commands.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef MPU6050_DEBUG_H
 #define MPU6050_DEBUG_H

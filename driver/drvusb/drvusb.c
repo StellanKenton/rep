@@ -7,6 +7,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-10
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "drvusb.h"
 
@@ -504,4 +505,5 @@ eDrvUsbRole drvUsbGetRole(uint8_t usb)
 
     return lBspInterface->role;
 }
+
 /**************************End of file********************************/

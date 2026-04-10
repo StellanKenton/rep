@@ -2,6 +2,7 @@
 * @file     : tm1651_debug.c
 * @brief    : TM1651 debug and console command implementation.
 * @details  : This file hosts optional console bindings for TM1651 operations.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "tm1651_debug.h"
 
@@ -555,4 +556,5 @@ bool tm1651DebugConsoleRegister(void)
 }
 
 #endif
+
 /**************************End of file********************************/

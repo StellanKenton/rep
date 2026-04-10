@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : filtterfisrt.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 /**
  * @file filtterfisrt.h
  * @brief 一阶滤波算法对外接口。
@@ -113,3 +122,4 @@ float Filter1stOrdForCtrlUpdate(Filter1stOrdForCtrlObj *pxHand, float fNewValue)
 #endif
 
 #endif
+/**************************End of file********************************/

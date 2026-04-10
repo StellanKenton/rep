@@ -95,4 +95,3 @@ const stDrvAnlogIicBspInterface *drvAnlogIicGetPlatformBspInterfaces(void);
 
 #endif  // DRVANLOGIIC_H
 /**************************End of file********************************/
-

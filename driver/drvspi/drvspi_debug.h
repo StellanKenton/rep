@@ -2,6 +2,7 @@
 * @file     : drvspi_debug.h
 * @brief    : DrvSpi debug helpers.
 * @details  : Exposes optional console registration for SPI debug commands.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef DRVSPI_DEBUG_H
 #define DRVSPI_DEBUG_H

@@ -2,6 +2,7 @@
 * @file     : gd25qxxx_debug.h
 * @brief    : GD25Qxxx debug helpers.
 * @details  : Exposes optional console registration for GD25Qxxx debug commands.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef GD25QXXX_DEBUG_H
 #define GD25QXXX_DEBUG_H

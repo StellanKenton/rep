@@ -700,4 +700,3 @@ eDrvStatus drvAnlogIicReadRegisterTimeout(uint8_t iic, uint8_t address, const ui
 }
 
 /**************************End of file********************************/
-

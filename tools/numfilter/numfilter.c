@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : numfilter.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 /**
  * @file numfilter.c
  * @brief 数值处理与通用滤波算法实现。
@@ -1051,3 +1060,5 @@ float UnitAlgoDiffCalcUpdate(DiffCalcObj *pxHand, float NewData)
 
     return pxHand->m_DiffOut;
 }
+
+/**************************End of file********************************/

@@ -2,6 +2,7 @@
 * @file     : gd25qxxx_debug.c
 * @brief    : GD25Qxxx debug and console command implementation.
 * @details  : This file hosts optional console bindings for GD25Qxxx operations.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "gd25qxxx_debug.h"
 
@@ -472,4 +473,5 @@ bool gd25qxxxDebugConsoleRegister(void)
 }
 
 #endif
+
 /**************************End of file********************************/

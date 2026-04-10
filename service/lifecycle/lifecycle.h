@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : lifecycle.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef REP_SERVICE_LIFECYCLE_H
 #define REP_SERVICE_LIFECYCLE_H
 
@@ -59,3 +68,4 @@ bool lifecycleRecover(stServiceLifecycle *lifecycle);
 #endif
 
 #endif
+/**************************End of file********************************/

@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : pca9535_assembly.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef PCA9535_ASSEMBLY_H
 #define PCA9535_ASSEMBLY_H
 
@@ -38,3 +47,4 @@ void pca9535PlatformDelayMs(uint32_t delayMs);
 #endif
 
 #endif  // PCA9535_ASSEMBLY_H
+/**************************End of file********************************/

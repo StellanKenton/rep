@@ -4,6 +4,7 @@
 * @details  : The module provides a passive bring-up and FIFO acquisition flow
 *             for a LIS2HH12 accelerometer instance selected through assembly
 *             hooks.
+* @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "lis2hh12.h"
 
@@ -710,4 +711,5 @@ static int16_t lis2hh12ParseLe16(const uint8_t *buffer)
 {
     return (int16_t)((((uint16_t)buffer[1]) << 8U) | (uint16_t)buffer[0]);
 }
+
 /**************************End of file********************************/

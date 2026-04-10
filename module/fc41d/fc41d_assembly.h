@@ -1,6 +1,7 @@
 /************************************************************************************
 * @file     : fc41d_assembly.h
 * @brief    : FC41D core to platform assembly contract.
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FC41D_ASSEMBLY_H
 #define FC41D_ASSEMBLY_H

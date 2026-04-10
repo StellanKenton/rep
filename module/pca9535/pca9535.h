@@ -1,3 +1,12 @@
+/************************************************************************************
+* @file     : pca9535.h
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+***********************************************************************************/
 #ifndef PCA9535_H
 #define PCA9535_H
 
@@ -80,3 +89,4 @@ eDrvStatus pca9535SetDirectionPort(ePca9535MapType device, uint16_t value);
 #endif
 
 #endif  // PCA9535_H
+/**************************End of file********************************/

@@ -5,6 +5,7 @@
 * @author   : GitHub Copilot
 * @date     : 2026-04-01
 * @version  : V1.0.0
+* @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FRM_PSR_H
 #define FRM_PSR_H
@@ -193,4 +194,3 @@ void frmPsrFreePkt(stFrmPsr *psr);
 
 #endif  // FRM_PSR_H
 /**************************End of file********************************/
-

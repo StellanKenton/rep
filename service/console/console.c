@@ -522,4 +522,5 @@ int32_t consoleReply(uint32_t transport, const char *format, ...)
 
     return lTotalWritten;
 }
+
 /**************************End of file********************************/

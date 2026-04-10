@@ -1,3 +1,12 @@
+/***********************************************************************************
+* @file     : lifecycle.c
+* @brief    : 
+* @details  : 
+* @author   : 
+* @date     : 
+* @version  : 
+* @copyright: Copyright (c) 2050
+**********************************************************************************/
 #include "lifecycle.h"
 
 #include <stddef.h>
@@ -154,3 +163,5 @@ bool lifecycleRecover(stServiceLifecycle *lifecycle)
     lifecycle->recoverCount++;
     return true;
 }
+
+/**************************End of file********************************/
