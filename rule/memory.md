@@ -27,7 +27,7 @@ read_next: []
 - 某个目录的权威入口文档路径已经固定。
 - 某层统一采用的生命周期模型、assembly 模式或 hook 模式已经稳定。
 - 某个高复用目录的可复制等级、最小依赖集和禁止依赖项已经确认。
-- 某个项目级边界已经被验证，例如 `system` 为 `project-bound`、`manager` 统一走 `service_lifecycle`。
+- 某个项目级边界已经被验证，例如 `system` 为 `project-bound`、`manager` 属于项目绑定层。
 - `example/` 已经固定为项目绑定内容和新项目参考结构的统一入口。
 
 不要把下面这些内容写入 memory：
