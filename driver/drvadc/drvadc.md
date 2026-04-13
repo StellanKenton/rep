@@ -25,6 +25,7 @@ BSP 层负责：
 
 - `drvadc.h`: 定义公共 API 与 BSP 钩子接口。
 - `drvadc.c`: 实现状态校验、互斥控制、超时选择与原始值到毫伏的回退换算。
+- `drvadc_debug.h/.c`: 提供可选 console 命令，输入 `adc` 后即时打印全部逻辑通道数据。
 - `drvadc_port.h`: 定义逻辑 ADC 通道枚举、默认超时、默认参考电压和默认分辨率。
 - `drvadc_port.c`: 绑定当前工程里的逻辑通道到 BSP 钩子。
 - `bspadc.h/.c`: 负责 MCU 相关的 ADC 外设、通道配置与采样实现。
