@@ -47,6 +47,14 @@ extern "C" {
 #define DRVADC_DEFAULT_REFERENCE_MV        3300U
 #endif
 
+#ifndef DRVADC_BACKGROUND_PERIOD_MS
+#define DRVADC_BACKGROUND_PERIOD_MS        20U
+#endif
+
+#ifndef DRVADC_FILTER_WINDOW_SIZE
+#define DRVADC_FILTER_WINDOW_SIZE          4U
+#endif
+
 typedef eDrvStatus (*drvAdcBspInitFunc)(uint8_t adc);
 typedef eDrvStatus (*drvAdcBspReadRawFunc)(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 
@@ -61,6 +69,8 @@ typedef struct stDrvAdcBspInterface {
 typedef struct stDrvAdcData {
     uint16_t raw;
     uint16_t mv;
+    uint16_t rawFiltered;
+    uint16_t mvFiltered;
 } stDrvAdcData;
 
 eDrvStatus drvAdcInit(uint8_t adc);
@@ -68,6 +78,7 @@ eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value);
 eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 eDrvStatus drvAdcReadMv(uint8_t adc, uint16_t *valueMv);
 eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutMs);
+void drvAdcBackground(void);
 
 const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void);
 stDrvAdcData *drvAdcGetPlatformData(void);

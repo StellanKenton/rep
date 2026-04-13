@@ -24,6 +24,15 @@
 
 static bool gDrvAdcInitialized[DRVADC_MAX];
 static stRepRtosMutex gDrvAdcMutex[DRVADC_MAX];
+static uint32_t gDrvAdcBackgroundTickMs;
+static bool gDrvAdcBackgroundTickValid;
+static uint16_t gDrvAdcFilterBuffer[DRVADC_MAX][DRVADC_FILTER_WINDOW_SIZE];
+static uint32_t gDrvAdcFilterSum[DRVADC_MAX];
+static uint8_t gDrvAdcFilterIndex[DRVADC_MAX];
+static uint8_t gDrvAdcFilterCount[DRVADC_MAX];
+
+static eDrvStatus drvAdcReadRawLocked(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
+static eDrvStatus drvAdcConvertRawToMv(uint8_t adc, uint16_t rawValue, uint16_t *valueMv);
 
 __attribute__((weak)) const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void)
 {
@@ -199,6 +208,125 @@ static void drvAdcUpdateDataMv(uint8_t adc, uint16_t valueMv)
     }
 }
 
+static void drvAdcUpdateDataRawFiltered(uint8_t adc, uint16_t rawFiltered)
+{
+    stDrvAdcData *lDataCache;
+
+    if (!drvAdcIsValid(adc)) {
+        return;
+    }
+
+    lDataCache = drvAdcGetDataCache();
+    if (lDataCache != NULL) {
+        lDataCache[adc].rawFiltered = rawFiltered;
+    }
+}
+
+static void drvAdcUpdateDataMvFiltered(uint8_t adc, uint16_t mvFiltered)
+{
+    stDrvAdcData *lDataCache;
+
+    if (!drvAdcIsValid(adc)) {
+        return;
+    }
+
+    lDataCache = drvAdcGetDataCache();
+    if (lDataCache != NULL) {
+        lDataCache[adc].mvFiltered = mvFiltered;
+    }
+}
+
+static void drvAdcUpdateFilteredData(uint8_t adc, uint16_t rawValue)
+{
+    uint8_t lIndex;
+    uint8_t lCount;
+    uint16_t lRawFiltered;
+    uint16_t lMvFiltered = 0U;
+
+    if (!drvAdcIsValid(adc) || (DRVADC_FILTER_WINDOW_SIZE == 0U)) {
+        return;
+    }
+
+    lIndex = gDrvAdcFilterIndex[adc];
+    lCount = gDrvAdcFilterCount[adc];
+
+    if (lCount >= DRVADC_FILTER_WINDOW_SIZE) {
+        gDrvAdcFilterSum[adc] -= gDrvAdcFilterBuffer[adc][lIndex];
+    } else {
+        gDrvAdcFilterCount[adc] = (uint8_t)(lCount + 1U);
+        lCount = gDrvAdcFilterCount[adc];
+    }
+
+    gDrvAdcFilterBuffer[adc][lIndex] = rawValue;
+    gDrvAdcFilterSum[adc] += rawValue;
+    gDrvAdcFilterIndex[adc] = (uint8_t)((lIndex + 1U) % DRVADC_FILTER_WINDOW_SIZE);
+
+    lRawFiltered = (uint16_t)(gDrvAdcFilterSum[adc] / lCount);
+    drvAdcUpdateDataRawFiltered(adc, lRawFiltered);
+    if (drvAdcConvertRawToMv(adc, lRawFiltered, &lMvFiltered) != DRV_STATUS_OK) {
+        lMvFiltered = 0U;
+    }
+    drvAdcUpdateDataMvFiltered(adc, lMvFiltered);
+}
+
+static void drvAdcUpdateSampleData(uint8_t adc, uint16_t rawValue)
+{
+    uint16_t lValueMv = 0U;
+
+    drvAdcUpdateDataRaw(adc, rawValue);
+    if (drvAdcConvertRawToMv(adc, rawValue, &lValueMv) != DRV_STATUS_OK) {
+        lValueMv = 0U;
+    }
+    drvAdcUpdateDataMv(adc, lValueMv);
+    drvAdcUpdateFilteredData(adc, rawValue);
+}
+
+static eDrvStatus drvAdcSampleChannel(uint8_t adc, uint32_t timeoutMs)
+{
+    eDrvStatus lStatus;
+    uint16_t lRawValue = 0U;
+
+    if (!drvAdcIsValid(adc)) {
+        return DRV_STATUS_INVALID_PARAM;
+    }
+
+    if (!drvAdcIsInitialized(adc)) {
+        lStatus = drvAdcInit(adc);
+        if (lStatus != DRV_STATUS_OK) {
+            return lStatus;
+        }
+    }
+
+    lStatus = drvAdcLock(adc);
+    if (lStatus != DRV_STATUS_OK) {
+        return lStatus;
+    }
+
+    lStatus = drvAdcReadRawLocked(adc, &lRawValue, timeoutMs);
+    if (lStatus == DRV_STATUS_OK) {
+        drvAdcUpdateSampleData(adc, lRawValue);
+    }
+
+    drvAdcUnlock(adc);
+    return lStatus;
+}
+
+static bool drvAdcBackgroundIsDue(uint32_t currentTickMs)
+{
+    if (!gDrvAdcBackgroundTickValid) {
+        gDrvAdcBackgroundTickMs = currentTickMs;
+        gDrvAdcBackgroundTickValid = true;
+        return true;
+    }
+
+    if ((uint32_t)(currentTickMs - gDrvAdcBackgroundTickMs) < DRVADC_BACKGROUND_PERIOD_MS) {
+        return false;
+    }
+
+    gDrvAdcBackgroundTickMs = currentTickMs;
+    return true;
+}
+
 static eDrvStatus drvAdcReadRawLocked(uint8_t adc, uint16_t *value, uint32_t timeoutMs)
 {
     stDrvAdcBspInterface *lBspInterface = drvAdcGetBspInterface();
@@ -281,7 +409,6 @@ eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value)
 eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs)
 {
     eDrvStatus lStatus;
-    uint16_t lValueMv = 0U;
 
     if (!drvAdcIsValid(adc) || !drvAdcIsValidValuePointer(value)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -298,11 +425,7 @@ eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs
 
     lStatus = drvAdcReadRawLocked(adc, value, timeoutMs);
     if (lStatus == DRV_STATUS_OK) {
-        drvAdcUpdateDataRaw(adc, *value);
-        if (drvAdcConvertRawToMv(adc, *value, &lValueMv) != DRV_STATUS_OK) {
-            lValueMv = 0U;
-        }
-        drvAdcUpdateDataMv(adc, lValueMv);
+        drvAdcUpdateSampleData(adc, *value);
     }
     drvAdcUnlock(adc);
     return lStatus;
@@ -317,6 +440,7 @@ eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutM
 {
     eDrvStatus lStatus;
     uint16_t lRawValue = 0U;
+    uint16_t lValueMv = 0U;
 
     if (!drvAdcIsValid(adc) || !drvAdcIsValidValuePointer(valueMv)) {
         return DRV_STATUS_INVALID_PARAM;
@@ -333,15 +457,30 @@ eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutM
 
     lStatus = drvAdcReadRawLocked(adc, &lRawValue, timeoutMs);
     if (lStatus == DRV_STATUS_OK) {
-        drvAdcUpdateDataRaw(adc, lRawValue);
-        lStatus = drvAdcConvertRawToMv(adc, lRawValue, valueMv);
+        lStatus = drvAdcConvertRawToMv(adc, lRawValue, &lValueMv);
         if (lStatus == DRV_STATUS_OK) {
-            drvAdcUpdateDataMv(adc, *valueMv);
+            *valueMv = lValueMv;
+            drvAdcUpdateSampleData(adc, lRawValue);
         }
     }
 
     drvAdcUnlock(adc);
     return lStatus;
+}
+
+void drvAdcBackground(void)
+{
+    uint8_t lAdc;
+    uint32_t lTickMs;
+
+    lTickMs = repRtosGetTickMs();
+    if (!drvAdcBackgroundIsDue(lTickMs)) {
+        return;
+    }
+
+    for (lAdc = 0U; lAdc < DRVADC_MAX; lAdc++) {
+        (void)drvAdcSampleChannel(lAdc, 0U);
+    }
 }
 
 /**************************End of file********************************/

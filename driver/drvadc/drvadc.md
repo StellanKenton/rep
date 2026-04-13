@@ -12,7 +12,9 @@
 - 初始化状态检查。
 - 通道级互斥与错误语义统一。
 - 原始采样值读取接口。
+- 后台轮询接口，每 20ms 刷新一次所有逻辑通道缓存。
 - 在 BSP 未提供毫伏接口时，根据参考电压和分辨率把原始值换算为毫伏。
+- 对采样结果执行固定窗口移动平均，输出滤波后的原始值和毫伏值。
 
 BSP 层负责：
 
@@ -57,6 +59,14 @@ typedef struct stDrvAdcBspInterface {
 
 - `raw`
 - `mv`
+- `rawFiltered`
+- `mvFiltered`
+
+公共层额外提供：
+
+- `drvAdcBackground()`：供主循环或任务周期调用，内部按 `DRVADC_BACKGROUND_PERIOD_MS` 节拍执行一次全通道采样。
+- 后台采样会在通道尚未初始化时自动尝试 `drvAdcInit()`，采样成功后把原始值和换算后的毫伏值写回 `stDrvAdcData` 缓存。
+- 滤波方式为固定窗口移动平均，窗口长度由 `DRVADC_FILTER_WINDOW_SIZE` 控制，默认 4 个采样点。
 
 ## 4. BSP 函数语义
 
