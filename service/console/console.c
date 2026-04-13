@@ -23,16 +23,19 @@ static stConsoleSession gConsoleSessions[CONSOLE_MAX_SESSIONS];
 static uint32_t gConsoleSessionCount = 0U;
 static stConsoleCommand gConsoleCommands[CONSOLE_MAX_COMMANDS];
 static uint32_t gConsoleCommandCount = 0U;
+static char gConsoleReplyBuffer[CONSOLE_REPLY_BUFFER_SIZE];
+static stRepRtosMutex gConsoleReplyMutex;
 
 static uint32_t consoleGetTick(void);
+static bool consoleInitReplyLock(void);
+static bool consoleLockReplyBuffer(void);
+static void consoleUnlockReplyBuffer(void);
 static bool consoleIsSpace(char value);
 static bool consoleIsSameString(const char *left, const char *right);
 static bool consoleIsSameCommand(const stConsoleCommand *left, const stConsoleCommand *right);
 static bool consoleIsHelpCommand(const char *commandName);
 static bool consoleIsReservedCommandName(const char *commandName);
 static const char *consoleGetCommandGroupName(const stConsoleCommand *command);
-static bool consoleIsSameCommandGroup(const stConsoleCommand *left, const stConsoleCommand *right);
-static bool consoleIsFirstCommandInGroup(uint32_t commandIndex);
 static const stConsoleCommand *consoleFindCommand(const char *commandName);
 static void consoleResetSession(stConsoleSession *session);
 static int consoleTokenize(char *lineBuffer, char *argv[], int maxArgs);
@@ -44,6 +47,37 @@ static void consoleProcessSession(stConsoleSession *session);
 static uint32_t consoleGetTick(void)
 {
     return repRtosGetTickMs();
+}
+
+static bool consoleInitReplyLock(void)
+{
+    if (!gConsoleReplyMutex.isCreated) {
+        if (repRtosMutexCreate(&gConsoleReplyMutex) != REP_RTOS_STATUS_OK) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool consoleLockReplyBuffer(void)
+{
+    uint32_t lWaitMs = 0U;
+
+    if (!consoleInitReplyLock()) {
+        return false;
+    }
+
+    if (repRtosIsSchedulerRunning()) {
+        lWaitMs = REP_RTOS_WAIT_FOREVER;
+    }
+
+    return repRtosMutexTake(&gConsoleReplyMutex, lWaitMs) == REP_RTOS_STATUS_OK;
+}
+
+static void consoleUnlockReplyBuffer(void)
+{
+    (void)repRtosMutexGive(&gConsoleReplyMutex);
 }
 
 static bool consoleIsSpace(char value)
@@ -97,28 +131,6 @@ static const char *consoleGetCommandGroupName(const stConsoleCommand *command)
     }
 
     return command->commandName;
-}
-
-static bool consoleIsSameCommandGroup(const stConsoleCommand *left, const stConsoleCommand *right)
-{
-    return consoleIsSameString(consoleGetCommandGroupName(left), consoleGetCommandGroupName(right));
-}
-
-static bool consoleIsFirstCommandInGroup(uint32_t commandIndex)
-{
-    uint32_t lIndex = 0U;
-
-    if (commandIndex >= gConsoleCommandCount) {
-        return false;
-    }
-
-    for (lIndex = 0U; lIndex < commandIndex; lIndex++) {
-        if (consoleIsSameCommandGroup(&gConsoleCommands[lIndex], &gConsoleCommands[commandIndex])) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 static const stConsoleCommand *consoleFindCommand(const char *commandName)
@@ -193,7 +205,7 @@ static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport)
 {
     uint32_t lIndex = 0U;
 
-    if (consoleReply(transport, "Available command groups:") <= 0) {
+    if (consoleReply(transport, "Available commands:") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -210,57 +222,22 @@ static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport)
     }
 
     for (lIndex = 0U; lIndex < gConsoleCommandCount; lIndex++) {
-        char lLineBuffer[CONSOLE_REPLY_BUFFER_SIZE];
-        int lLength = 0;
-        uint32_t lGroupIndex = 0U;
-        const char *lGroupName = NULL;
+        const char *lGroupName = consoleGetCommandGroupName(&gConsoleCommands[lIndex]);
+        const char *lHelpText = gConsoleCommands[lIndex].helpText;
 
-        if (!consoleIsFirstCommandInGroup(lIndex)) {
-            continue;
-        }
-
-        lGroupName = consoleGetCommandGroupName(&gConsoleCommands[lIndex]);
-        if ((lGroupName == NULL) || (lGroupName[0] == '\0')) {
-            continue;
-        }
-
-        lLength = snprintf(lLineBuffer, sizeof(lLineBuffer), "%s: %s",
-                           lGroupName,
-                           gConsoleCommands[lIndex].commandName);
-        if (lLength < 0) {
-            return CONSOLE_COMMAND_RESULT_ERROR;
-        }
-
-        if (lLength >= (int)sizeof(lLineBuffer)) {
-            lLength = (int)sizeof(lLineBuffer) - 1;
-            lLineBuffer[lLength] = '\0';
-        }
-
-        for (lGroupIndex = lIndex + 1U; lGroupIndex < gConsoleCommandCount; lGroupIndex++) {
-            int lWritten = 0;
-
-            if (!consoleIsSameCommandGroup(&gConsoleCommands[lIndex], &gConsoleCommands[lGroupIndex])) {
-                continue;
-            }
-
-            lWritten = snprintf(&lLineBuffer[lLength],
-                                sizeof(lLineBuffer) - (size_t)lLength,
-                                ", %s",
-                                gConsoleCommands[lGroupIndex].commandName);
-            if (lWritten < 0) {
+        if ((lHelpText != NULL) && (lHelpText[0] != '\0')) {
+            if ((lGroupName != NULL) && (lGroupName[0] != '\0')) {
+                if (consoleReply(transport, "%s: %s", lGroupName, lHelpText) <= 0) {
+                    return CONSOLE_COMMAND_RESULT_ERROR;
+                }
+            } else if (consoleReply(transport, "%s", lHelpText) <= 0) {
                 return CONSOLE_COMMAND_RESULT_ERROR;
             }
-
-            if (lWritten >= (int)(sizeof(lLineBuffer) - (size_t)lLength)) {
-                lLength = (int)sizeof(lLineBuffer) - 1;
-                lLineBuffer[lLength] = '\0';
-                break;
+        } else if ((lGroupName != NULL) && (lGroupName[0] != '\0')) {
+            if (consoleReply(transport, "%s: %s", lGroupName, gConsoleCommands[lIndex].commandName) <= 0) {
+                return CONSOLE_COMMAND_RESULT_ERROR;
             }
-
-            lLength += lWritten;
-        }
-
-        if (consoleReply(transport, "%s", lLineBuffer) <= 0) {
+        } else if (consoleReply(transport, "%s", gConsoleCommands[lIndex].commandName) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
     }
@@ -471,7 +448,6 @@ void consoleProcess(void)
 
 int32_t consoleReply(uint32_t transport, const char *format, ...)
 {
-    char lBuffer[CONSOLE_REPLY_BUFFER_SIZE];
     int lLength = 0;
     int32_t lTotalWritten = 0;
     int32_t lWritten = 0;
@@ -483,26 +459,31 @@ int32_t consoleReply(uint32_t transport, const char *format, ...)
         return 0;
     }
 
-    va_start(lArgs, format);
-    lLength = vsnprintf(lBuffer, sizeof(lBuffer), format, lArgs);
-    va_end(lArgs);
-
-    if (lLength < 0) {
+    if (!consoleLockReplyBuffer()) {
         return 0;
     }
 
-    if (lLength >= (int)sizeof(lBuffer)) {
-        lLength = (int)sizeof(lBuffer) - 1;
-        lBuffer[lLength] = '\0';
+    va_start(lArgs, format);
+    lLength = vsnprintf(gConsoleReplyBuffer, sizeof(gConsoleReplyBuffer), format, lArgs);
+    va_end(lArgs);
+
+    if (lLength < 0) {
+        consoleUnlockReplyBuffer();
+        return 0;
     }
 
-    if ((lLength == 0) || (lBuffer[lLength - 1] != '\n')) {
-        if (lLength >= ((int)sizeof(lBuffer) - 1)) {
-            lLength = (int)sizeof(lBuffer) - 2;
+    if (lLength >= (int)sizeof(gConsoleReplyBuffer)) {
+        lLength = (int)sizeof(gConsoleReplyBuffer) - 1;
+        gConsoleReplyBuffer[lLength] = '\0';
+    }
+
+    if ((lLength == 0) || (gConsoleReplyBuffer[lLength - 1] != '\n')) {
+        if (lLength >= ((int)sizeof(gConsoleReplyBuffer) - 1)) {
+            lLength = (int)sizeof(gConsoleReplyBuffer) - 2;
         }
-        lBuffer[lLength] = '\n';
+        gConsoleReplyBuffer[lLength] = '\n';
         lLength++;
-        lBuffer[lLength] = '\0';
+        gConsoleReplyBuffer[lLength] = '\0';
     }
 
     while (lOffset < (uint16_t)lLength) {
@@ -511,14 +492,17 @@ int32_t consoleReply(uint32_t transport, const char *format, ...)
             lChunkLength = LOG_OUTPUT_MAX_FRAME_SIZE;
         }
 
-        lWritten = logWriteToTransport(transport, (const uint8_t *)&lBuffer[lOffset], lChunkLength);
+        lWritten = logWriteToTransport(transport, (const uint8_t *)&gConsoleReplyBuffer[lOffset], lChunkLength);
         if (lWritten <= 0) {
+            consoleUnlockReplyBuffer();
             return 0;
         }
 
         lTotalWritten += lWritten;
         lOffset = (uint16_t)(lOffset + lChunkLength);
     }
+
+    consoleUnlockReplyBuffer();
 
     return lTotalWritten;
 }
