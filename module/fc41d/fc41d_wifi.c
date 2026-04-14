@@ -14,9 +14,14 @@
 
 #include "fc41d_priv.h"
 
-static const char *const gFc41dWifiStaConnectedUrcPatterns[] = {
+static const char *const gFc41dWifiStaLinkUpUrcPatterns[] = {
 	"+STACONNECTED*",
+	"+QSTASTAT:WLAN_CONNECTED*",
+};
+
+static const char *const gFc41dWifiStaGotIpUrcPatterns[] = {
 	"+STAGOTIP*",
+	"+QSTASTAT:GOT_IP*",
 };
 
 static const char *const gFc41dWifiStaDisconnectedUrcPatterns[] = {
@@ -178,9 +183,9 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 
 	switch (ctx->info.wifi.state) {
 		case FC41D_WIFI_STATE_IDLE:
-		case FC41D_WIFI_STATE_STA_CONNECTED:
 		case FC41D_WIFI_STATE_AP_ACTIVE:
 		case FC41D_WIFI_STATE_AP_STOPPED:
+		case FC41D_WIFI_STATE_STA_CONNECTED:
 			return FC41D_STATUS_OK;
 		case FC41D_WIFI_STATE_STA_DISCONNECTED:
 			if (!ctx->cfg.wifi.autoReconnect) {
@@ -209,12 +214,12 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_STA_CONNECTING : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_STA_CONNECTING:
-			if (ctx->wifiStaStartIssued) {
-				return FC41D_STATUS_OK;
-			}
+			return FC41D_STATUS_OK;
+		case FC41D_WIFI_STATE_STA_SERVICE_STARTING:
 			cmdSeq = fc41dWifiGetDefStartCmdSeq(&ctx->cfg.wifi, &cmdSeqLen);
 			if (cmdSeqLen == 0U) {
-				ctx->info.wifi.state = FC41D_WIFI_STATE_STA_DISCONNECTED;
+				ctx->wifiStaStartIssued = true;
+				ctx->info.wifi.state = FC41D_WIFI_STATE_STA_CONNECTED;
 				return FC41D_STATUS_OK;
 			}
 			status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_WIFI, cmdSeq, cmdSeqLen, &ctx->wifiCmdStepIndex);
@@ -222,7 +227,7 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 				return FC41D_STATUS_OK;
 			}
 			ctx->wifiStaStartIssued = (status == FC41D_STATUS_OK);
-			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_STA_CONNECTING : FC41D_WIFI_STATE_ERROR;
+			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_STA_CONNECTED : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_AP_INIT:
 			cmdSeq = fc41dWifiGetDefInitCmdSeq(&ctx->cfg.wifi, &cmdSeqLen);
@@ -270,12 +275,27 @@ void fc41dWifiUpdateLinkStateByUrc(stFc41dCtx *ctx, const uint8_t *lineBuf, uint
 		}
 		ctx->info.wifi.reconnectRetryCount = ctx->wifiReconnectCount;
 		ctx->info.wifi.state = FC41D_WIFI_STATE_STA_DISCONNECTED;
-	} else if (fc41dWifiMatchUrcPatterns(lineBuf, lineLen, gFc41dWifiStaConnectedUrcPatterns,
-			(uint8_t)(sizeof(gFc41dWifiStaConnectedUrcPatterns) / sizeof(gFc41dWifiStaConnectedUrcPatterns[0])))) {
-		ctx->wifiStaStartIssued = false;
+	} else if (fc41dWifiMatchUrcPatterns(lineBuf, lineLen, gFc41dWifiStaLinkUpUrcPatterns,
+			(uint8_t)(sizeof(gFc41dWifiStaLinkUpUrcPatterns) / sizeof(gFc41dWifiStaLinkUpUrcPatterns[0])))) {
 		ctx->wifiReconnectCount = 0U;
 		ctx->info.wifi.reconnectRetryCount = 0U;
-		ctx->info.wifi.state = FC41D_WIFI_STATE_STA_CONNECTED;
+	} else if (fc41dWifiMatchUrcPatterns(lineBuf, lineLen, gFc41dWifiStaGotIpUrcPatterns,
+			(uint8_t)(sizeof(gFc41dWifiStaGotIpUrcPatterns) / sizeof(gFc41dWifiStaGotIpUrcPatterns[0])))) {
+		if ((ctx->info.wifi.state == FC41D_WIFI_STATE_STA_CONNECTED) ||
+			(ctx->info.wifi.state == FC41D_WIFI_STATE_STA_SERVICE_STARTING)) {
+			return;
+		}
+
+		ctx->wifiStaStartIssued = false;
+		ctx->wifiCmdStepIndex = 0U;
+		ctx->wifiReconnectCount = 0U;
+		ctx->info.wifi.reconnectRetryCount = 0U;
+		if ((ctx->cfg.wifi.startCmdSeq != NULL) && (ctx->cfg.wifi.startCmdSeqLen > 0U)) {
+			ctx->info.wifi.state = FC41D_WIFI_STATE_STA_SERVICE_STARTING;
+		} else {
+			ctx->wifiStaStartIssued = true;
+			ctx->info.wifi.state = FC41D_WIFI_STATE_STA_CONNECTED;
+		}
 	} else if (fc41dWifiMatchUrcPatterns(lineBuf, lineLen, gFc41dWifiApActiveUrcPatterns,
 			(uint8_t)(sizeof(gFc41dWifiApActiveUrcPatterns) / sizeof(gFc41dWifiApActiveUrcPatterns[0])))) {
 		ctx->info.wifi.state = FC41D_WIFI_STATE_AP_ACTIVE;
