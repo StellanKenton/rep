@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "Rep/driver/drvspi/drvspi.h"
+#include "driver/drvspi/drvspi.h"
 
 #ifdef __cplusplus
 extern "C" {
