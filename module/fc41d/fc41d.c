@@ -28,13 +28,22 @@ __attribute__((weak)) void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stF
 	cfg->ble.rxOverwriteOnFull = true;
 	cfg->wifi.rxOverwriteOnFull = true;
 	cfg->ble.workMode = FC41D_BLE_WORK_MODE_DISABLED;
-	cfg->ble.initCmdText = NULL;
-	cfg->ble.startCmdText = NULL;
-	cfg->ble.stopCmdText = NULL;
+	cfg->ble.initCmdSeq = NULL;
+	cfg->ble.initCmdSeqLen = 0U;
+	cfg->ble.startCmdSeq = NULL;
+	cfg->ble.startCmdSeqLen = 0U;
+	cfg->ble.stopCmdSeq = NULL;
+	cfg->ble.stopCmdSeqLen = 0U;
 	cfg->wifi.workMode = FC41D_WIFI_WORK_MODE_DISABLED;
-	cfg->wifi.initCmdText = NULL;
-	cfg->wifi.startCmdText = NULL;
-	cfg->wifi.stopCmdText = NULL;
+	cfg->wifi.initCmdSeq = NULL;
+	cfg->wifi.initCmdSeqLen = 0U;
+	cfg->wifi.startCmdSeq = NULL;
+	cfg->wifi.startCmdSeqLen = 0U;
+	cfg->wifi.stopCmdSeq = NULL;
+	cfg->wifi.stopCmdSeqLen = 0U;
+	cfg->wifi.autoReconnect = false;
+	cfg->wifi.reconnectIntervalMs = 3000U;
+	cfg->wifi.reconnectMaxRetries = 0U;
 	cfg->execGuardMs = 5000U;
 	cfg->bootMode = FC41D_MODE_COMMAND;
 }
@@ -106,9 +115,10 @@ static void fc41dExecDoneHandler(void *userData, eFlowParserResult result);
 static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const uint8_t *payloadBuf, uint16_t payloadLen);
 static eFc41dStatus fc41dServiceFlowParser(stFc41dCtx *ctx, eFc41dMapType device);
-static void fc41dUpdateModeFromStates(stFc41dCtx *ctx);
 static eFc41dTxnOwner fc41dMapTxnOwner(uint8_t owner);
 static eFc41dTxnStage fc41dMapTxnStage(eFlowParserStage stage);
+static eFc41dMode fc41dResolveDataModeFromLinks(const stFc41dCtx *ctx);
+static void fc41dPrepareModeSwitch(stFc41dCtx *ctx, const uint8_t *cmdBuf, uint16_t cmdLen);
 
 bool fc41dIsValidDevMap(eFc41dMapType device)
 {
@@ -312,8 +322,6 @@ eFc41dStatus fc41dProcess(eFc41dMapType device)
 	if (status != FC41D_STATUS_OK) {
 		return status;
 	}
-
-	fc41dUpdateModeFromStates(ctx);
 	return FC41D_STATUS_OK;
 }
 
@@ -491,6 +499,8 @@ static void fc41dClearExecState(stFc41dCtx *ctx)
 	ctx->execOwner = FC41D_EXEC_OWNER_NONE;
 	ctx->execDone = false;
 	ctx->execStartTick = 0U;
+	ctx->hasPendingModeSwitch = false;
+	ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
 }
 
 static void fc41dAbortExec(stFc41dCtx *ctx, eFc41dAtExecResult result)
@@ -509,6 +519,50 @@ static void fc41dAbortExec(stFc41dCtx *ctx, eFc41dAtExecResult result)
 	}
 
 	fc41dClearExecState(ctx);
+}
+
+static eFc41dMode fc41dResolveDataModeFromLinks(const stFc41dCtx *ctx)
+{
+	if (ctx == NULL) {
+		return FC41D_MODE_COMMAND;
+	}
+
+	if ((ctx->info.wifi.state == FC41D_WIFI_STATE_STA_CONNECTED) ||
+		(ctx->info.wifi.state == FC41D_WIFI_STATE_AP_ACTIVE)) {
+		return FC41D_MODE_WIFI_DATA;
+	}
+
+	if ((ctx->info.ble.state == FC41D_BLE_STATE_PERIPHERAL_CONNECTED) ||
+		(ctx->info.ble.state == FC41D_BLE_STATE_CENTRAL_CONNECTED)) {
+		return FC41D_MODE_BLE_DATA;
+	}
+
+	return FC41D_MODE_COMMAND;
+}
+
+static void fc41dPrepareModeSwitch(stFc41dCtx *ctx, const uint8_t *cmdBuf, uint16_t cmdLen)
+{
+	uint16_t trimLen;
+
+	if ((ctx == NULL) || (cmdBuf == NULL) || (cmdLen == 0U)) {
+		return;
+	}
+
+	trimLen = cmdLen;
+	while ((trimLen > 0U) && ((cmdBuf[trimLen - 1U] == '\r') || (cmdBuf[trimLen - 1U] == '\n'))) {
+		trimLen--;
+	}
+
+	if ((trimLen == 3U) && (memcmp(cmdBuf, "ATO", 3U) == 0)) {
+		ctx->pendingModeOnSuccess = fc41dResolveDataModeFromLinks(ctx);
+		ctx->hasPendingModeSwitch = true;
+		return;
+	}
+
+	if ((trimLen == 3U) && (memcmp(cmdBuf, "+++", 3U) == 0)) {
+		ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
+		ctx->hasPendingModeSwitch = true;
+	}
 }
 
 static eFc41dStatus fc41dSubmitExec(stFc41dCtx *ctx, eFc41dExecOwner owner, const uint8_t *cmdBuf, uint16_t cmdLen,
@@ -563,6 +617,9 @@ static eFc41dStatus fc41dSubmitExec(stFc41dCtx *ctx, eFc41dExecOwner owner, cons
 	ctx->execResult = FC41D_AT_RESULT_NONE;
 	ctx->execOwner = (uint8_t)owner;
 	ctx->execStartTick = fc41dPlatformGetTickMs();
+	ctx->hasPendingModeSwitch = false;
+	ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
+	fc41dPrepareModeSwitch(ctx, cmdBuf, cmdLen);
 
 	fpStatus = flowparserStreamSubmit(&ctx->atStream, &req);
 	if (fpStatus == FLOWPARSER_STREAM_BUSY) {
@@ -578,6 +635,38 @@ static eFc41dStatus fc41dSubmitExec(stFc41dCtx *ctx, eFc41dExecOwner owner, cons
 	return FC41D_STATUS_OK;
 }
 
+eFc41dStatus fc41dExecCmdSeq(eFc41dMapType device, eFc41dExecOwner owner, const char *const *cmdSeq,
+							 uint8_t cmdSeqLen, uint8_t *stepIndex)
+{
+	eFc41dStatus status;
+
+	if (stepIndex == NULL) {
+		return FC41D_STATUS_INVALID_PARAM;
+	}
+
+	if ((cmdSeq == NULL) || (cmdSeqLen == 0U)) {
+		*stepIndex = 0U;
+		return FC41D_STATUS_OK;
+	}
+
+	if (*stepIndex >= cmdSeqLen) {
+		*stepIndex = 0U;
+	}
+
+	status = fc41dExecOptionalCmdText(device, owner, cmdSeq[*stepIndex]);
+	if (status != FC41D_STATUS_OK) {
+		return status;
+	}
+
+	(*stepIndex)++;
+	if (*stepIndex < cmdSeqLen) {
+		return FC41D_STATUS_BUSY;
+	}
+
+	*stepIndex = 0U;
+	return FC41D_STATUS_OK;
+}
+
 static void fc41dExecLineHandler(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
 	stFc41dCtx *ctx = (stFc41dCtx *)userData;
@@ -588,6 +677,9 @@ static void fc41dExecLineHandler(void *userData, const uint8_t *lineBuf, uint16_
 	}
 
 	ctx->activeResp->lineCount++;
+	if (ctx->activeResp->pfLineCallback != NULL) {
+		ctx->activeResp->pfLineCallback(ctx->activeResp->lineCallbackUserData, lineBuf, lineLen);
+	}
 	if ((ctx->activeResp->lineBuf == NULL) || (ctx->activeResp->lineBufSize == 0U)) {
 		return;
 	}
@@ -635,6 +727,9 @@ static void fc41dExecDoneHandler(void *userData, eFlowParserResult result)
 
 	if (ctx->activeResp != NULL) {
 		ctx->activeResp->result = ctx->execResult;
+	}
+	if ((ctx->execResult == FC41D_AT_RESULT_OK) && ctx->hasPendingModeSwitch) {
+		ctx->info.mode = ctx->pendingModeOnSuccess;
 	}
 	ctx->execDone = true;
 	ctx->lastExecResult = ctx->execResult;
@@ -807,27 +902,6 @@ static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const u
 	return written == (uint32_t)payloadLen;
 }
 
-static void fc41dUpdateModeFromStates(stFc41dCtx *ctx)
-{
-	if (ctx == NULL) {
-		return;
-	}
-
-	if ((ctx->info.ble.state == FC41D_BLE_STATE_PERIPHERAL_CONNECTED) ||
-		(ctx->info.ble.state == FC41D_BLE_STATE_CENTRAL_CONNECTED)) {
-		ctx->info.mode = FC41D_MODE_BLE_DATA;
-		return;
-	}
-
-	if ((ctx->info.wifi.state == FC41D_WIFI_STATE_STA_CONNECTED) ||
-		(ctx->info.wifi.state == FC41D_WIFI_STATE_AP_ACTIVE)) {
-		ctx->info.mode = FC41D_MODE_WIFI_DATA;
-		return;
-	}
-
-	ctx->info.mode = FC41D_MODE_COMMAND;
-}
-
 static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
 	stFc41dCtx *ctx = (stFc41dCtx *)userData;
@@ -855,8 +929,6 @@ static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t 
 	if (fc41dPushRxPayload(ctx, channel, payloadBuf, payloadLen)) {
 		ctx->info.lastRxChannel = channel;
 	}
-
-	fc41dUpdateModeFromStates(ctx);
 }
 
 /**************************End of file********************************/

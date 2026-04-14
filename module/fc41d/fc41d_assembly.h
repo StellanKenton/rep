@@ -13,6 +13,8 @@
 extern "C" {
 #endif
 
+/* single-task constraint: platform code should serialize fc41dProcess/exec access from one task context. */
+
 void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stFc41dCfg *cfg);
 bool fc41dPlatformIsValidAssemble(eFc41dMapType device);
 uint32_t fc41dPlatformGetTickMs(void);

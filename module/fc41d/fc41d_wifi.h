@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 stRingBuffer *fc41dWifiGetRxRingBuffer(eFc41dMapType device);
+eFc41dStatus fc41dWifiSend(eFc41dMapType device, uint8_t linkId, const uint8_t *data, uint16_t len);
 uint32_t fc41dWifiRead(eFc41dMapType device, uint8_t *buffer, uint32_t length);
 uint32_t fc41dWifiPeek(eFc41dMapType device, uint8_t *buffer, uint32_t length);
 uint32_t fc41dWifiDiscard(eFc41dMapType device, uint32_t length);

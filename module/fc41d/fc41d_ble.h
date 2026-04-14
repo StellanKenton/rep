@@ -18,6 +18,7 @@ eFc41dStatus fc41dAtBuildBleGattServiceCmd(char *cmdBuf, uint16_t cmdBufSize, ui
 eFc41dStatus fc41dAtBuildBleGattCharCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t charUuid);
 eFc41dStatus fc41dAtBuildBleAdvParamCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t intervalMin, uint16_t intervalMax);
 eFc41dStatus fc41dAtBuildBleAdvDataCmd(char *cmdBuf, uint16_t cmdBufSize, const uint8_t *advData, uint16_t advLen);
+eFc41dStatus fc41dBleSend(eFc41dMapType device, const uint8_t *data, uint16_t len);
 
 stRingBuffer *fc41dBleGetRxRingBuffer(eFc41dMapType device);
 uint32_t fc41dBleRead(eFc41dMapType device, uint8_t *buffer, uint32_t length);

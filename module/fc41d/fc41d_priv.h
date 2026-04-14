@@ -32,8 +32,15 @@ typedef struct stFc41dCtx {
     eFc41dAtExecResult execResult;
     eFc41dAtExecResult lastExecResult;
     uint8_t execOwner;
+    eFc41dMode pendingModeOnSuccess;
     bool execDone;
+    bool hasPendingModeSwitch;
     bool defCfgLoaded;
+    bool wifiStaStartIssued;
+    uint8_t bleCmdStepIndex;
+    uint8_t wifiCmdStepIndex;
+    uint8_t wifiReconnectCount;
+    uint32_t wifiReconnectTick;
 } stFc41dCtx;
 
 typedef enum eFc41dExecOwner {
@@ -49,9 +56,12 @@ bool fc41dIsReadyCtx(const stFc41dCtx *ctx);
 stRingBuffer *fc41dGetRxRbByChannel(stFc41dCtx *ctx, eFc41dRxChannel channel);
 void fc41dAtGetBaseOpt(stFc41dAtOpt *opt);
 bool fc41dAtIsUrc(const uint8_t *lineBuf, uint16_t lineLen);
+bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern);
 eFc41dStatus fc41dBuildFmtCmd(char *cmdBuf, uint16_t cmdBufSize, const char *fmt, ...);
 bool fc41dLineHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
 eFc41dStatus fc41dExecOptionalCmdText(eFc41dMapType device, eFc41dExecOwner owner, const char *cmdText);
+eFc41dStatus fc41dExecCmdSeq(eFc41dMapType device, eFc41dExecOwner owner, const char *const *cmdSeq,
+                             uint8_t cmdSeqLen, uint8_t *stepIndex);
 void fc41dReleaseExecOwner(stFc41dCtx *ctx, eFc41dExecOwner owner);
 void fc41dBleSyncInfoFromCfg(stFc41dCtx *ctx);
 void fc41dWifiSyncInfoFromCfg(stFc41dCtx *ctx);

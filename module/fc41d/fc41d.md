@@ -84,23 +84,26 @@ read_next:
 - `fc41d_base.h` 承载公共类型与核心 API，子头直接依赖 `fc41d_base.h`，避免循环包含。
 - `stFc41dCfg` 与 `stFc41dInfo` 按链路拆成 `ble` / `wifi` 子结构，模块级公共字段保留在顶层。
 - `fc41dExecAt*()` 改为非阻塞提交接口，只负责把事务提交给 flowparser；完成由周期 `fc41dProcess()` 驱动。
+- `stFc41dAtResp` 支持逐行回调；`lineBuf` 继续保留最后一行快照，扫描/版本等多行响应通过 `pfLineCallback` 逐行消费。
 - `fc41dProcess()` 先统一处理 AT/URC flowparser，再调用 BLE/WiFi 状态机。
 - 稳定接口包括：
   - `fc41dGetDefCfg/GetCfg/SetCfg/Init/IsReady/Process/GetInfo`
   - `fc41dExecAt/fc41dExecAtCmd/fc41dExecAtText/fc41dAtCheckAlive`
   - `fc41dExecAtIsBusy/fc41dGetLastExecResult/fc41dRecover`
   - `fc41dAtGetCmdInfo*` 与 `fc41dAtBuild*`
-  - `fc41dBle*` 与 `fc41dWifi*` ring buffer 访问接口
+  - `fc41dBle*` 与 `fc41dWifi*` ring buffer 访问接口，以及 `fc41dBleSend/fc41dWifiSend`
   - `fc41dSetModeState/fc41dGetModeState`
 
 ## 4. 当前状态机约定
 
 - BLE 按 `workMode` 区分 `disabled / peripheral / central`，状态覆盖初始化、广播/扫描启动、等待连接、连接、断联和错误。
 - WiFi 按 `workMode` 区分 `disabled / sta / ap`，状态覆盖初始化、连接中、已连接、断联、AP 启动、AP 活跃和错误。
-- 默认配置下两套状态机都不自动启动；调用方需要在 `cfg.ble` / `cfg.wifi` 里设置 `workMode`，并按需要覆盖 `initCmdText/startCmdText/stopCmdText`。
-- BLE 在未覆盖命令文本时，默认外设流程使用 `AT+QBLEINIT=2` + `AT+QBLEADVSTART`，中心流程使用 `AT+QBLEINIT=1` + `AT+QBLESCAN=1`。
-- WiFi 不提供默认 init/start 命令，原因是 STA/AP 启动参数通常依赖项目侧凭证与装配配置；仅 stop 命令提供默认值：STA 用 `AT+QSTASTOP`，AP 用 `AT+QSOFTAPSTOP`。
+- 默认配置下两套状态机都不自动启动；调用方需要在 `cfg.ble` / `cfg.wifi` 里设置 `workMode`，并按需要覆盖 `initCmdSeq/startCmdSeq/stopCmdSeq`。
+- BLE 在未覆盖命令序列时，默认外设流程使用 `AT+QBLEINIT=2` + `AT+QBLEADVSTART`，中心流程使用 `AT+QBLEINIT=1` + `AT+QBLESCAN=1`。
+- WiFi 不提供默认 init/start 命令序列，原因是 STA/AP 启动参数通常依赖项目侧凭证与装配配置；仅 stop 命令提供默认值：STA 用 `AT+QSTASTOP`，AP 用 `AT+QSOFTAPSTOP`。
+- WiFi STA 支持可选自动重连：`autoReconnect/reconnectIntervalMs/reconnectMaxRetries` 控制断连后的重试行为。
 - BLE/WiFi 状态机里的 AT 步骤通过 `submit + process` 非阻塞推进；若进入 `ERROR` 状态，可调用 `fc41dRecover()` 复位内部事务与子状态机。
+- `info.mode` 不再由连接态自动推导，只在 `ATO` 成功进入透明传输、或 `+++` 成功退出后切换。
 
 ## 5. assembly / platform hook 契约
 
@@ -112,6 +115,8 @@ read_next:
 - `fc41dPlatformInitRxBuffers`：提供 BLE/WiFi 接收 ring buffer 的实际存储。
 - `fc41dPlatformInitAtStream`：完成 flowparser stream 初始化与 send/path 绑定。
 - `fc41dPlatformRouteLine`：把 URC 行解析为 BLE/WiFi 通道和 payload。
+
+single-task constraint：`stFc41dCtx` 本身不带锁，默认契约是单任务周期调用 `fc41dProcess()`，并由同一执行上下文提交 AT 请求与读取状态。若项目侧需要跨任务访问，应在 platform/manager 层自行串行化。
 
 core 不直接包含 BSP 或 UART 私有头，只依赖这些 hook 与 `flowparser`、`ringbuffer` 公共能力。
 
@@ -125,6 +130,11 @@ core 不直接包含 BSP 或 UART 私有头，只依赖这些 hook 与 `flowpars
 | 改 WiFi 默认命令或连接状态迁移 | `fc41d_wifi.c` / `fc41d_wifi.h` | BLE 状态机 |
 | 改 transport、tick、URC 路由、默认 buffer | 当前工程的 hook 实现文件 | `fc41d.c` core 逻辑 |
 
-## 7. 复制到其他工程的最小步骤
+## 7. 补充阅读
+
+- `fc41d_plan.md`：当前模块已知问题与改进计划（补充文档，不是权威契约）。
+- `fc41d_at_commands.md`：AT 命令目录参考。
+
+## 8. 复制到其他工程的最小步骤
 
 带走 `fc41d` 目录全部核心文件，并在目标工程实现 `fc41d_assembly.h` 中声明的 hook。若链路格式不同，重点重写 transport 初始化、AT stream 绑定、tick 获取和 URC 路由逻辑。

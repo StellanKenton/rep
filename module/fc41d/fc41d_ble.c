@@ -15,9 +15,42 @@
 
 #include "fc41d_priv.h"
 
-static const char *fc41dBleGetDefInitCmdText(const stFc41dBleCfg *cfg);
-static const char *fc41dBleGetDefStartCmdText(const stFc41dBleCfg *cfg);
-static const char *fc41dBleGetDefStopCmdText(const stFc41dBleCfg *cfg);
+static const char *const gFc41dBlePeripheralInitCmdSeq[] = {
+	"AT+QBLEINIT=2",
+};
+
+static const char *const gFc41dBleCentralInitCmdSeq[] = {
+	"AT+QBLEINIT=1",
+};
+
+static const char *const gFc41dBlePeripheralStartCmdSeq[] = {
+	"AT+QBLEADVSTART",
+};
+
+static const char *const gFc41dBleCentralStartCmdSeq[] = {
+	"AT+QBLESCAN=1",
+};
+
+static const char *const gFc41dBlePeripheralStopCmdSeq[] = {
+	"AT+QBLEADVSTOP",
+};
+
+static const char *const gFc41dBleCentralStopCmdSeq[] = {
+	"AT+QBLESCAN=0",
+};
+
+static const char *const gFc41dBleConnectedUrcPatterns[] = {
+	"+BLECONN*",
+};
+
+static const char *const gFc41dBleDisconnectedUrcPatterns[] = {
+	"+BLEDISCONN*",
+};
+
+static const char *const *fc41dBleGetDefInitCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen);
+static const char *const *fc41dBleGetDefStartCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen);
+static const char *const *fc41dBleGetDefStopCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen);
+static bool fc41dBleMatchUrcPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt);
 
 eFc41dStatus fc41dAtBuildBleNameCmd(char *cmdBuf, uint16_t cmdBufSize, const char *name)
 {
@@ -93,6 +126,33 @@ eFc41dStatus fc41dAtBuildBleAdvDataCmd(char *cmdBuf, uint16_t cmdBufSize, const 
 	return FC41D_STATUS_OK;
 }
 
+eFc41dStatus fc41dBleSend(eFc41dMapType device, const uint8_t *data, uint16_t len)
+{
+	const stFc41dAtCmdInfo *cmdInfo;
+	stFc41dAtOpt opt;
+	char cmdBuf[48U];
+	uint32_t cmdLen;
+
+	if ((data == NULL) || (len == 0U)) {
+		return FC41D_STATUS_INVALID_PARAM;
+	}
+
+	cmdInfo = fc41dAtGetCmdInfo(FC41D_AT_CATALOG_CMD_QBLEGATTSNTFY);
+	if (cmdInfo == NULL) {
+		return FC41D_STATUS_INVALID_PARAM;
+	}
+
+	if (fc41dBuildFmtCmd(cmdBuf, (uint16_t)sizeof(cmdBuf), "%s=%u\r\n", cmdInfo->name, (unsigned int)len) != FC41D_STATUS_OK) {
+		return FC41D_STATUS_ERROR;
+	}
+
+	cmdLen = (uint32_t)strlen(cmdBuf);
+	fc41dAtGetBaseOpt(&opt);
+	opt.needPrompt = true;
+	opt.finalToutMs = 5000U;
+	return fc41dExecAt(device, (const uint8_t *)cmdBuf, (uint16_t)cmdLen, data, len, &opt, NULL);
+}
+
 stRingBuffer *fc41dBleGetRxRingBuffer(eFc41dMapType device)
 {
 	return fc41dGetRxRbByChannel(fc41dGetCtx(device), FC41D_RX_CHANNEL_BLE);
@@ -152,6 +212,7 @@ void fc41dBleResetState(stFc41dCtx *ctx)
 	} else {
 		ctx->info.ble.state = FC41D_BLE_STATE_IDLE;
 	}
+	ctx->bleCmdStepIndex = 0U;
 }
 
 void fc41dBleAccumulateRxStats(stFc41dCtx *ctx, uint32_t written, uint32_t dropped)
@@ -168,6 +229,8 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 {
 	eFc41dStatus status;
 	stFc41dBleCfg prevCfg;
+	const char *const *cmdSeq;
+	uint8_t cmdSeqLen;
 
 	if (ctx == NULL) {
 		return FC41D_STATUS_INVALID_PARAM;
@@ -176,7 +239,8 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 	if (ctx->info.ble.workMode != ctx->cfg.ble.workMode) {
 		prevCfg = ctx->cfg.ble;
 		prevCfg.workMode = ctx->info.ble.workMode;
-		status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_BLE, fc41dBleGetDefStopCmdText(&prevCfg));
+		cmdSeq = fc41dBleGetDefStopCmdSeq(&prevCfg, &cmdSeqLen);
+		status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_BLE, cmdSeq, cmdSeqLen, &ctx->bleCmdStepIndex);
 		if (status == FC41D_STATUS_BUSY) {
 			return FC41D_STATUS_OK;
 		}
@@ -197,15 +261,18 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 			return FC41D_STATUS_OK;
 
 		case FC41D_BLE_STATE_PERIPHERAL_DISCONNECTED:
+			ctx->bleCmdStepIndex = 0U;
 			ctx->info.ble.state = FC41D_BLE_STATE_PERIPHERAL_ADV_START;
 			return FC41D_STATUS_OK;
 
 		case FC41D_BLE_STATE_CENTRAL_DISCONNECTED:
+			ctx->bleCmdStepIndex = 0U;
 			ctx->info.ble.state = FC41D_BLE_STATE_CENTRAL_SCAN_START;
 			return FC41D_STATUS_OK;
 
 		case FC41D_BLE_STATE_PERIPHERAL_INIT:
-			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_BLE, fc41dBleGetDefInitCmdText(&ctx->cfg.ble));
+			cmdSeq = fc41dBleGetDefInitCmdSeq(&ctx->cfg.ble, &cmdSeqLen);
+			status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_BLE, cmdSeq, cmdSeqLen, &ctx->bleCmdStepIndex);
 			if (status == FC41D_STATUS_BUSY) {
 				return FC41D_STATUS_OK;
 			}
@@ -213,7 +280,8 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 			return status;
 
 		case FC41D_BLE_STATE_PERIPHERAL_ADV_START:
-			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_BLE, fc41dBleGetDefStartCmdText(&ctx->cfg.ble));
+			cmdSeq = fc41dBleGetDefStartCmdSeq(&ctx->cfg.ble, &cmdSeqLen);
+			status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_BLE, cmdSeq, cmdSeqLen, &ctx->bleCmdStepIndex);
 			if (status == FC41D_STATUS_BUSY) {
 				return FC41D_STATUS_OK;
 			}
@@ -221,7 +289,8 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 			return status;
 
 		case FC41D_BLE_STATE_CENTRAL_INIT:
-			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_BLE, fc41dBleGetDefInitCmdText(&ctx->cfg.ble));
+			cmdSeq = fc41dBleGetDefInitCmdSeq(&ctx->cfg.ble, &cmdSeqLen);
+			status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_BLE, cmdSeq, cmdSeqLen, &ctx->bleCmdStepIndex);
 			if (status == FC41D_STATUS_BUSY) {
 				return FC41D_STATUS_OK;
 			}
@@ -229,7 +298,8 @@ eFc41dStatus fc41dBleProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 			return status;
 
 		case FC41D_BLE_STATE_CENTRAL_SCAN_START:
-			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_BLE, fc41dBleGetDefStartCmdText(&ctx->cfg.ble));
+			cmdSeq = fc41dBleGetDefStartCmdSeq(&ctx->cfg.ble, &cmdSeqLen);
+			status = fc41dExecCmdSeq(device, FC41D_EXEC_OWNER_BLE, cmdSeq, cmdSeqLen, &ctx->bleCmdStepIndex);
 			if (status == FC41D_STATUS_BUSY) {
 				return FC41D_STATUS_OK;
 			}
@@ -248,77 +318,117 @@ void fc41dBleUpdateLinkStateByUrc(stFc41dCtx *ctx, const uint8_t *lineBuf, uint1
 		return;
 	}
 
-	if (!fc41dLineHasToken(lineBuf, lineLen, "BLE")) {
+	if ((lineBuf == NULL) || (lineLen == 0U) || (lineBuf[0] != '+')) {
 		return;
 	}
 
-	if (fc41dLineHasToken(lineBuf, lineLen, "DISCONN")) {
+	if (fc41dBleMatchUrcPatterns(lineBuf, lineLen, gFc41dBleDisconnectedUrcPatterns,
+			(uint8_t)(sizeof(gFc41dBleDisconnectedUrcPatterns) / sizeof(gFc41dBleDisconnectedUrcPatterns[0])))) {
+		ctx->bleCmdStepIndex = 0U;
 		ctx->info.ble.state = (ctx->info.ble.workMode == FC41D_BLE_WORK_MODE_CENTRAL) ?
 			FC41D_BLE_STATE_CENTRAL_DISCONNECTED : FC41D_BLE_STATE_PERIPHERAL_DISCONNECTED;
-	} else if (fc41dLineHasToken(lineBuf, lineLen, "CONN")) {
+	} else if (fc41dBleMatchUrcPatterns(lineBuf, lineLen, gFc41dBleConnectedUrcPatterns,
+			(uint8_t)(sizeof(gFc41dBleConnectedUrcPatterns) / sizeof(gFc41dBleConnectedUrcPatterns[0])))) {
 		ctx->info.ble.state = (ctx->info.ble.workMode == FC41D_BLE_WORK_MODE_CENTRAL) ?
 			FC41D_BLE_STATE_CENTRAL_CONNECTED : FC41D_BLE_STATE_PERIPHERAL_CONNECTED;
 	}
 }
 
-static const char *fc41dBleGetDefInitCmdText(const stFc41dBleCfg *cfg)
+static bool fc41dBleMatchUrcPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt)
 {
+	uint8_t idx;
+
+	for (idx = 0U; idx < patternCnt; idx++) {
+		if (fc41dAtMatchPattern(lineBuf, lineLen, patterns[idx])) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static const char *const *fc41dBleGetDefInitCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen)
+{
+	if (cmdSeqLen == NULL) {
+		return NULL;
+	}
+
+	*cmdSeqLen = 0U;
 	if (cfg == NULL) {
 		return NULL;
 	}
 
-	if (cfg->initCmdText != NULL) {
-		return cfg->initCmdText;
+	if ((cfg->initCmdSeq != NULL) && (cfg->initCmdSeqLen > 0U)) {
+		*cmdSeqLen = cfg->initCmdSeqLen;
+		return cfg->initCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_PERIPHERAL) {
-		return "AT+QBLEINIT=2";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBlePeripheralInitCmdSeq) / sizeof(gFc41dBlePeripheralInitCmdSeq[0]));
+		return gFc41dBlePeripheralInitCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_CENTRAL) {
-		return "AT+QBLEINIT=1";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBleCentralInitCmdSeq) / sizeof(gFc41dBleCentralInitCmdSeq[0]));
+		return gFc41dBleCentralInitCmdSeq;
 	}
 
 	return NULL;
 }
 
-static const char *fc41dBleGetDefStartCmdText(const stFc41dBleCfg *cfg)
+static const char *const *fc41dBleGetDefStartCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen)
 {
+	if (cmdSeqLen == NULL) {
+		return NULL;
+	}
+
+	*cmdSeqLen = 0U;
 	if (cfg == NULL) {
 		return NULL;
 	}
 
-	if (cfg->startCmdText != NULL) {
-		return cfg->startCmdText;
+	if ((cfg->startCmdSeq != NULL) && (cfg->startCmdSeqLen > 0U)) {
+		*cmdSeqLen = cfg->startCmdSeqLen;
+		return cfg->startCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_PERIPHERAL) {
-		return "AT+QBLEADVSTART";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBlePeripheralStartCmdSeq) / sizeof(gFc41dBlePeripheralStartCmdSeq[0]));
+		return gFc41dBlePeripheralStartCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_CENTRAL) {
-		return "AT+QBLESCAN=1";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBleCentralStartCmdSeq) / sizeof(gFc41dBleCentralStartCmdSeq[0]));
+		return gFc41dBleCentralStartCmdSeq;
 	}
 
 	return NULL;
 }
 
-static const char *fc41dBleGetDefStopCmdText(const stFc41dBleCfg *cfg)
+static const char *const *fc41dBleGetDefStopCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen)
 {
+	if (cmdSeqLen == NULL) {
+		return NULL;
+	}
+
+	*cmdSeqLen = 0U;
 	if (cfg == NULL) {
 		return NULL;
 	}
 
-	if (cfg->stopCmdText != NULL) {
-		return cfg->stopCmdText;
+	if ((cfg->stopCmdSeq != NULL) && (cfg->stopCmdSeqLen > 0U)) {
+		*cmdSeqLen = cfg->stopCmdSeqLen;
+		return cfg->stopCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_PERIPHERAL) {
-		return "AT+QBLEADVSTOP";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBlePeripheralStopCmdSeq) / sizeof(gFc41dBlePeripheralStopCmdSeq[0]));
+		return gFc41dBlePeripheralStopCmdSeq;
 	}
 
 	if (cfg->workMode == FC41D_BLE_WORK_MODE_CENTRAL) {
-		return "AT+QBLESCAN=0";
+		*cmdSeqLen = (uint8_t)(sizeof(gFc41dBleCentralStopCmdSeq) / sizeof(gFc41dBleCentralStopCmdSeq[0]));
+		return gFc41dBleCentralStopCmdSeq;
 	}
 
 	return NULL;

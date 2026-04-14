@@ -195,6 +195,8 @@ typedef struct stFc41dAtCmdInfo {
     const char *summary;
 } stFc41dAtCmdInfo;
 
+typedef void (*pfFc41dAtRespLine)(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
+
 typedef eDrvStatus eFc41dStatus;
 
 #define FC41D_STATUS_OK                     DRV_STATUS_OK
@@ -211,18 +213,27 @@ typedef struct stFc41dBleCfg {
     bool enableRx;
     bool rxOverwriteOnFull;
     eFc41dBleWorkMode workMode;
-    const char *initCmdText;
-    const char *startCmdText;
-    const char *stopCmdText;
+    const char *const *initCmdSeq;
+    uint8_t initCmdSeqLen;
+    const char *const *startCmdSeq;
+    uint8_t startCmdSeqLen;
+    const char *const *stopCmdSeq;
+    uint8_t stopCmdSeqLen;
 } stFc41dBleCfg;
 
 typedef struct stFc41dWifiCfg {
     bool enableRx;
     bool rxOverwriteOnFull;
     eFc41dWifiWorkMode workMode;
-    const char *initCmdText;
-    const char *startCmdText;
-    const char *stopCmdText;
+    const char *const *initCmdSeq;
+    uint8_t initCmdSeqLen;
+    const char *const *startCmdSeq;
+    uint8_t startCmdSeqLen;
+    const char *const *stopCmdSeq;
+    uint8_t stopCmdSeqLen;
+    bool autoReconnect;
+    uint32_t reconnectIntervalMs;
+    uint8_t reconnectMaxRetries;
 } stFc41dWifiCfg;
 
 typedef struct stFc41dCfg {
@@ -244,6 +255,7 @@ typedef struct stFc41dWifiInfo {
     bool enableRx;
     eFc41dWifiWorkMode workMode;
     eFc41dWifiState state;
+    uint8_t reconnectRetryCount;
     uint32_t rxDroppedBytes;
     uint32_t rxRoutedBytes;
 } stFc41dWifiInfo;
@@ -277,6 +289,8 @@ typedef struct stFc41dAtResp {
     uint16_t lineBufSize;
     uint16_t lineLen;
     uint16_t lineCount;
+    pfFc41dAtRespLine pfLineCallback;
+    void *lineCallbackUserData;
     eFc41dAtExecResult result;
 } stFc41dAtResp;
 

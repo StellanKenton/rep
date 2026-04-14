@@ -116,7 +116,6 @@ static const stFc41dAtCmdInfo gFc41dAtCmdInfoTable[] = {
 typedef char stFc41dAtCmdInfoTableSizeCheck[
 	((sizeof(gFc41dAtCmdInfoTable) / sizeof(gFc41dAtCmdInfoTable[0])) == FC41D_AT_CATALOG_CMD_MAX) ? 1 : -1];
 
-static bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern);
 static bool fc41dAtMatchPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt);
 static bool fc41dAtIsStandardAtName(const char *name);
 static eFc41dStatus fc41dAtBuildSimpleCmd(char *cmdBuf, uint16_t cmdBufSize, const char *cmdText);
@@ -292,7 +291,7 @@ static eFc41dStatus fc41dAtBuildSimpleCmd(char *cmdBuf, uint16_t cmdBufSize, con
 	return fc41dBuildFmtCmd(cmdBuf, cmdBufSize, "%s", cmdText);
 }
 
-static bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern)
+bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern)
 {
 	uint32_t patLen;
 
