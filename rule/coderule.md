@@ -60,6 +60,8 @@ read_next:
 - 临时局部变量使用 `l` 前缀。
 - 结构体类型使用 `st` 前缀，枚举类型使用 `e` 前缀。
 - 函数名尽量以前缀模块名开头，例如 `drvSpiInit`、`mpu6050Init`、`frmProcProcess`。
+- 函数指针类型使用 `pf` 前缀，例如 `pfDrvSpiTransfer`、`pfFrmProcProcess`。
+- 任务的 entry 函数命名使用 `xxxTaskEntry`，例如 `commTaskEntry`、`memoryTaskEntry`。
 - 缩写可以使用，但必须保持可读性与唯一性。
 
 ## 4. 文档命名与术语规则

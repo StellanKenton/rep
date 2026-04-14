@@ -35,6 +35,46 @@ typedef enum eFc41dMode {
     FC41D_MODE_WIFI_DATA,
 } eFc41dMode;
 
+typedef enum eFc41dBleWorkMode {
+    FC41D_BLE_WORK_MODE_DISABLED = 0,
+    FC41D_BLE_WORK_MODE_PERIPHERAL,
+    FC41D_BLE_WORK_MODE_CENTRAL,
+} eFc41dBleWorkMode;
+
+typedef enum eFc41dBleState {
+    FC41D_BLE_STATE_IDLE = 0,
+    FC41D_BLE_STATE_PERIPHERAL_INIT,
+    FC41D_BLE_STATE_PERIPHERAL_ADV_START,
+    FC41D_BLE_STATE_PERIPHERAL_WAIT_CONNECT,
+    FC41D_BLE_STATE_PERIPHERAL_CONNECTED,
+    FC41D_BLE_STATE_PERIPHERAL_DISCONNECTED,
+    FC41D_BLE_STATE_CENTRAL_INIT,
+    FC41D_BLE_STATE_CENTRAL_SCAN_START,
+    FC41D_BLE_STATE_CENTRAL_WAIT_CONNECT,
+    FC41D_BLE_STATE_CENTRAL_CONNECTED,
+    FC41D_BLE_STATE_CENTRAL_DISCONNECTED,
+    FC41D_BLE_STATE_ERROR,
+} eFc41dBleState;
+
+typedef enum eFc41dWifiWorkMode {
+    FC41D_WIFI_WORK_MODE_DISABLED = 0,
+    FC41D_WIFI_WORK_MODE_STA,
+    FC41D_WIFI_WORK_MODE_AP,
+} eFc41dWifiWorkMode;
+
+typedef enum eFc41dWifiState {
+    FC41D_WIFI_STATE_IDLE = 0,
+    FC41D_WIFI_STATE_STA_INIT,
+    FC41D_WIFI_STATE_STA_CONNECTING,
+    FC41D_WIFI_STATE_STA_CONNECTED,
+    FC41D_WIFI_STATE_STA_DISCONNECTED,
+    FC41D_WIFI_STATE_AP_INIT,
+    FC41D_WIFI_STATE_AP_STARTING,
+    FC41D_WIFI_STATE_AP_ACTIVE,
+    FC41D_WIFI_STATE_AP_STOPPED,
+    FC41D_WIFI_STATE_ERROR,
+} eFc41dWifiState;
+
 typedef enum eFc41dAtExecResult {
     FC41D_AT_RESULT_NONE = 0,
     FC41D_AT_RESULT_OK,
@@ -168,25 +208,53 @@ typedef eDrvStatus eFc41dStatus;
 #define FC41D_STATUS_ID_NOTMATCH            DRV_STATUS_ID_NOTMATCH
 #define FC41D_STATUS_ERROR                  DRV_STATUS_ERROR
 
+typedef struct stFc41dBleCfg {
+    bool enableRx;
+    bool rxOverwriteOnFull;
+    eFc41dBleWorkMode workMode;
+    const char *initCmdText;
+    const char *startCmdText;
+    const char *stopCmdText;
+} stFc41dBleCfg;
+
+typedef struct stFc41dWifiCfg {
+    bool enableRx;
+    bool rxOverwriteOnFull;
+    eFc41dWifiWorkMode workMode;
+    const char *initCmdText;
+    const char *startCmdText;
+    const char *stopCmdText;
+} stFc41dWifiCfg;
+
 typedef struct stFc41dCfg {
-    bool enableBleRx;
-    bool enableWifiRx;
-    bool bleRxOverwriteOnFull;
-    bool wifiRxOverwriteOnFull;
+    stFc41dBleCfg ble;
+    stFc41dWifiCfg wifi;
     uint32_t execGuardMs;
     eFc41dMode bootMode;
 } stFc41dCfg;
 
+typedef struct stFc41dBleInfo {
+    bool enableRx;
+    eFc41dBleWorkMode workMode;
+    eFc41dBleState state;
+    uint32_t rxDroppedBytes;
+    uint32_t rxRoutedBytes;
+} stFc41dBleInfo;
+
+typedef struct stFc41dWifiInfo {
+    bool enableRx;
+    eFc41dWifiWorkMode workMode;
+    eFc41dWifiState state;
+    uint32_t rxDroppedBytes;
+    uint32_t rxRoutedBytes;
+} stFc41dWifiInfo;
+
 typedef struct stFc41dInfo {
     bool isReady;
-    bool enableBleRx;
-    bool enableWifiRx;
+    stFc41dBleInfo ble;
+    stFc41dWifiInfo wifi;
     eFc41dMode mode;
     eFc41dRxChannel lastRxChannel;
-    uint32_t bleRxDroppedBytes;
-    uint32_t wifiRxDroppedBytes;
-    uint32_t bleRxRoutedBytes;
-    uint32_t wifiRxRoutedBytes;
     uint32_t urcLineCount;
     uint32_t unknownUrcLineCount;
 } stFc41dInfo;
@@ -236,26 +304,12 @@ eFc41dStatus fc41dAtBuildExecCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCata
 eFc41dStatus fc41dAtBuildQueryCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatalogCmd cmd);
 eFc41dStatus fc41dAtBuildTestCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatalogCmd cmd);
 eFc41dStatus fc41dAtBuildSetCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatalogCmd cmd, const char *args);
-eFc41dStatus fc41dAtBuildBleNameCmd(char *cmdBuf, uint16_t cmdBufSize, const char *name);
-eFc41dStatus fc41dAtBuildBleGattServiceCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t serviceUuid);
-eFc41dStatus fc41dAtBuildBleGattCharCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t charUuid);
-eFc41dStatus fc41dAtBuildBleAdvParamCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t intervalMin, uint16_t intervalMax);
-eFc41dStatus fc41dAtBuildBleAdvDataCmd(char *cmdBuf, uint16_t cmdBufSize, const uint8_t *advData, uint16_t advLen);
 
 eFc41dStatus fc41dSetModeState(eFc41dMapType device, eFc41dMode mode);
 eFc41dMode fc41dGetModeState(eFc41dMapType device);
 
-stRingBuffer *fc41dBleGetRxRingBuffer(eFc41dMapType device);
-uint32_t fc41dBleRead(eFc41dMapType device, uint8_t *buffer, uint32_t length);
-uint32_t fc41dBlePeek(eFc41dMapType device, uint8_t *buffer, uint32_t length);
-uint32_t fc41dBleDiscard(eFc41dMapType device, uint32_t length);
-eFc41dStatus fc41dBleClearRx(eFc41dMapType device);
-
-stRingBuffer *fc41dWifiGetRxRingBuffer(eFc41dMapType device);
-uint32_t fc41dWifiRead(eFc41dMapType device, uint8_t *buffer, uint32_t length);
-uint32_t fc41dWifiPeek(eFc41dMapType device, uint8_t *buffer, uint32_t length);
-uint32_t fc41dWifiDiscard(eFc41dMapType device, uint32_t length);
-eFc41dStatus fc41dWifiClearRx(eFc41dMapType device);
+#include "fc41d_ble.h"
+#include "fc41d_wifi.h"
 
 #ifdef __cplusplus
 }

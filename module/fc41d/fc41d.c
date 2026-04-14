@@ -24,10 +24,18 @@ __attribute__((weak)) void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stF
 		return;
 	}
 
-	cfg->enableBleRx = true;
-	cfg->enableWifiRx = true;
-	cfg->bleRxOverwriteOnFull = true;
-	cfg->wifiRxOverwriteOnFull = true;
+	cfg->ble.enableRx = true;
+	cfg->wifi.enableRx = true;
+	cfg->ble.rxOverwriteOnFull = true;
+	cfg->wifi.rxOverwriteOnFull = true;
+	cfg->ble.workMode = FC41D_BLE_WORK_MODE_DISABLED;
+	cfg->ble.initCmdText = NULL;
+	cfg->ble.startCmdText = NULL;
+	cfg->ble.stopCmdText = NULL;
+	cfg->wifi.workMode = FC41D_WIFI_WORK_MODE_DISABLED;
+	cfg->wifi.initCmdText = NULL;
+	cfg->wifi.startCmdText = NULL;
+	cfg->wifi.stopCmdText = NULL;
 	cfg->execGuardMs = 5000U;
 	cfg->bootMode = FC41D_MODE_COMMAND;
 }
@@ -85,6 +93,7 @@ __attribute__((weak)) bool fc41dPlatformRouteLine(eFc41dMapType device, const ui
 }
 
 static bool fc41dIsValidCfg(const stFc41dCfg *cfg);
+static void fc41dSyncInfoFromCfg(stFc41dCtx *ctx);
 static void fc41dEnsureDefCfgLoaded(stFc41dCtx *ctx, eFc41dMapType device);
 static eFc41dStatus fc41dMapExecResult(eFc41dAtExecResult result);
 static void fc41dBuildAtSpec(const stFc41dAtOpt *opt, stFlowParserSpec *spec);
@@ -92,6 +101,8 @@ static void fc41dExecLineHandler(void *userData, const uint8_t *lineBuf, uint16_
 static void fc41dExecDoneHandler(void *userData, eFlowParserResult result);
 static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const uint8_t *payloadBuf, uint16_t payloadLen);
+static eFc41dStatus fc41dServiceFlowParser(stFc41dCtx *ctx, eFc41dMapType device);
+static void fc41dUpdateModeFromStates(stFc41dCtx *ctx);
 
 bool fc41dIsValidDevMap(eFc41dMapType device)
 {
@@ -134,7 +145,20 @@ stRingBuffer *fc41dGetRxRbByChannel(stFc41dCtx *ctx, eFc41dRxChannel channel)
 
 static bool fc41dIsValidCfg(const stFc41dCfg *cfg)
 {
-	return (cfg != NULL) && (cfg->bootMode <= FC41D_MODE_WIFI_DATA);
+	return (cfg != NULL) &&
+		   (cfg->bootMode <= FC41D_MODE_WIFI_DATA) &&
+		   (cfg->ble.workMode <= FC41D_BLE_WORK_MODE_CENTRAL) &&
+		   (cfg->wifi.workMode <= FC41D_WIFI_WORK_MODE_AP);
+}
+
+static void fc41dSyncInfoFromCfg(stFc41dCtx *ctx)
+{
+	if (ctx == NULL) {
+		return;
+	}
+
+	fc41dBleSyncInfoFromCfg(ctx);
+	fc41dWifiSyncInfoFromCfg(ctx);
 }
 
 static void fc41dEnsureDefCfgLoaded(stFc41dCtx *ctx, eFc41dMapType device)
@@ -145,8 +169,7 @@ static void fc41dEnsureDefCfgLoaded(stFc41dCtx *ctx, eFc41dMapType device)
 
 	(void)memset(ctx, 0, sizeof(*ctx));
 	fc41dLoadPlatformDefaultCfg(device, &ctx->cfg);
-	ctx->info.enableBleRx = ctx->cfg.enableBleRx;
-	ctx->info.enableWifiRx = ctx->cfg.enableWifiRx;
+	fc41dSyncInfoFromCfg(ctx);
 	ctx->info.mode = ctx->cfg.bootMode;
 	ctx->defCfgLoaded = true;
 }
@@ -192,8 +215,7 @@ eFc41dStatus fc41dSetCfg(eFc41dMapType device, const stFc41dCfg *cfg)
 	}
 
 	ctx->cfg = *cfg;
-	ctx->info.enableBleRx = cfg->enableBleRx;
-	ctx->info.enableWifiRx = cfg->enableWifiRx;
+	fc41dSyncInfoFromCfg(ctx);
 	ctx->info.mode = cfg->bootMode;
 	ctx->info.isReady = false;
 	return FC41D_STATUS_OK;
@@ -232,6 +254,7 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
 	ctx->execDone = false;
 	ctx->execResult = FC41D_AT_RESULT_NONE;
 	ctx->activeResp = NULL;
+	fc41dSyncInfoFromCfg(ctx);
 	ctx->info.isReady = true;
 	ctx->info.mode = ctx->cfg.bootMode;
 	return FC41D_STATUS_OK;
@@ -245,20 +268,34 @@ bool fc41dIsReady(eFc41dMapType device)
 eFc41dStatus fc41dProcess(eFc41dMapType device)
 {
 	stFc41dCtx *ctx;
-	eFlowParserStrmSta fpStatus;
+	eFc41dStatus status;
 
 	ctx = fc41dGetCtx(device);
 	if (!fc41dIsReadyCtx(ctx)) {
 		return FC41D_STATUS_NOT_READY;
 	}
 
-	fc41dPlatformPollRx(device);
-	fpStatus = flowparserStreamProc(&ctx->atStream);
-	if ((fpStatus == FLOWPARSER_STREAM_OK) || (fpStatus == FLOWPARSER_STREAM_EMPTY)) {
+	status = fc41dServiceFlowParser(ctx, device);
+	if (status != FC41D_STATUS_OK) {
+		return status;
+	}
+
+	if (flowparserStreamIsBusy(&ctx->atStream)) {
 		return FC41D_STATUS_OK;
 	}
 
-	return FC41D_STATUS_ERROR;
+	status = fc41dBleProcessStateMachine(ctx, device);
+	if (status != FC41D_STATUS_OK) {
+		return status;
+	}
+
+	status = fc41dWifiProcessStateMachine(ctx, device);
+	if (status != FC41D_STATUS_OK) {
+		return status;
+	}
+
+	fc41dUpdateModeFromStates(ctx);
+	return FC41D_STATUS_OK;
 }
 
 eFc41dStatus fc41dGetInfo(eFc41dMapType device, stFc41dInfo *info)
@@ -406,6 +443,23 @@ static eFc41dStatus fc41dMapExecResult(eFc41dAtExecResult result)
 	}
 }
 
+static eFc41dStatus fc41dServiceFlowParser(stFc41dCtx *ctx, eFc41dMapType device)
+{
+	eFlowParserStrmSta fpStatus;
+
+	if (ctx == NULL) {
+		return FC41D_STATUS_INVALID_PARAM;
+	}
+
+	fc41dPlatformPollRx(device);
+	fpStatus = flowparserStreamProc(&ctx->atStream);
+	if ((fpStatus == FLOWPARSER_STREAM_OK) || (fpStatus == FLOWPARSER_STREAM_EMPTY) || (fpStatus == FLOWPARSER_STREAM_BUSY)) {
+		return FC41D_STATUS_OK;
+	}
+
+	return FC41D_STATUS_ERROR;
+}
+
 eFc41dStatus fc41dExecAt(eFc41dMapType device, const uint8_t *cmdBuf, uint16_t cmdLen,
 						 const uint8_t *payloadBuf, uint16_t payloadLen,
 						 const stFc41dAtOpt *opt, stFc41dAtResp *resp)
@@ -471,7 +525,7 @@ eFc41dStatus fc41dExecAt(eFc41dMapType device, const uint8_t *cmdBuf, uint16_t c
 	}
 
 	while (flowparserStreamIsBusy(&ctx->atStream)) {
-		(void)fc41dProcess(device);
+		(void)fc41dServiceFlowParser(ctx, device);
 		if ((uint32_t)(fc41dPlatformGetTickMs() - startTick) >= guardMs) {
 			ctx->execResult = FC41D_AT_RESULT_TIMEOUT;
 			ctx->execDone = true;
@@ -505,7 +559,7 @@ static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const u
 		return false;
 	}
 
-	overwrite = (channel == FC41D_RX_CHANNEL_BLE) ? ctx->cfg.bleRxOverwriteOnFull : ctx->cfg.wifiRxOverwriteOnFull;
+	overwrite = (channel == FC41D_RX_CHANNEL_BLE) ? ctx->cfg.ble.rxOverwriteOnFull : ctx->cfg.wifi.rxOverwriteOnFull;
 	freeLen = ringBufferGetFree(rb);
 	cap = ringBufferGetCapacity(rb);
 
@@ -526,14 +580,33 @@ static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const u
 	}
 
 	if (channel == FC41D_RX_CHANNEL_BLE) {
-		ctx->info.bleRxRoutedBytes += written;
-		ctx->info.bleRxDroppedBytes += dropped;
+		fc41dBleAccumulateRxStats(ctx, written, dropped);
 	} else if (channel == FC41D_RX_CHANNEL_WIFI) {
-		ctx->info.wifiRxRoutedBytes += written;
-		ctx->info.wifiRxDroppedBytes += dropped;
+		fc41dWifiAccumulateRxStats(ctx, written, dropped);
 	}
 
 	return written == (uint32_t)payloadLen;
+}
+
+static void fc41dUpdateModeFromStates(stFc41dCtx *ctx)
+{
+	if (ctx == NULL) {
+		return;
+	}
+
+	if ((ctx->info.ble.state == FC41D_BLE_STATE_PERIPHERAL_CONNECTED) ||
+		(ctx->info.ble.state == FC41D_BLE_STATE_CENTRAL_CONNECTED)) {
+		ctx->info.mode = FC41D_MODE_BLE_DATA;
+		return;
+	}
+
+	if ((ctx->info.wifi.state == FC41D_WIFI_STATE_STA_CONNECTED) ||
+		(ctx->info.wifi.state == FC41D_WIFI_STATE_AP_ACTIVE)) {
+		ctx->info.mode = FC41D_MODE_WIFI_DATA;
+		return;
+	}
+
+	ctx->info.mode = FC41D_MODE_COMMAND;
 }
 
 static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
@@ -550,19 +623,23 @@ static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t 
 
 	device = (eFc41dMapType)(ctx - &gFc41dCtx[0]);
 	ctx->info.urcLineCount++;
+	fc41dBleUpdateLinkStateByUrc(ctx, lineBuf, lineLen);
+	fc41dWifiUpdateLinkStateByUrc(ctx, lineBuf, lineLen);
 	if (!fc41dPlatformRouteLine(device, lineBuf, lineLen, &channel, &payloadBuf, &payloadLen)) {
 		ctx->info.unknownUrcLineCount++;
 		return;
 	}
 
-	if (((channel == FC41D_RX_CHANNEL_BLE) && !ctx->cfg.enableBleRx) ||
-		((channel == FC41D_RX_CHANNEL_WIFI) && !ctx->cfg.enableWifiRx)) {
+	if (((channel == FC41D_RX_CHANNEL_BLE) && !ctx->cfg.ble.enableRx) ||
+		((channel == FC41D_RX_CHANNEL_WIFI) && !ctx->cfg.wifi.enableRx)) {
 		return;
 	}
 
 	if (fc41dPushRxPayload(ctx, channel, payloadBuf, payloadLen)) {
 		ctx->info.lastRxChannel = channel;
 	}
+
+	fc41dUpdateModeFromStates(ctx);
 }
 
 /**************************End of file********************************/

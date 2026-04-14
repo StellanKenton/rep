@@ -12,7 +12,7 @@
 - 旧接口 `eFc41dAtCmd` + `fc41dExecAtCmd()` 继续保留，只覆盖当前工程里常用的少量“可直接执行”命令。
 - 新接口 `eFc41dAtCatalogCmd` + `fc41dAtGetCmdInfo*()` 提供完整命令目录。
 - 新接口 `fc41dAtBuildExecCmd()`、`fc41dAtBuildQueryCmd()`、`fc41dAtBuildTestCmd()`、`fc41dAtBuildSetCmd()` 用于统一构造命令文本。
-- BLE 现有便捷函数 `fc41dAtBuildBleNameCmd()`、`fc41dAtBuildBleGattServiceCmd()`、`fc41dAtBuildBleGattCharCmd()`、`fc41dAtBuildBleAdvParamCmd()`、`fc41dAtBuildBleAdvDataCmd()` 仍保留，内部已对齐到完整命令目录。
+- BLE 现有便捷函数 `fc41dAtBuildBleNameCmd()`、`fc41dAtBuildBleGattServiceCmd()`、`fc41dAtBuildBleGattCharCmd()`、`fc41dAtBuildBleAdvParamCmd()`、`fc41dAtBuildBleAdvDataCmd()` 仍保留，声明收敛到 `fc41d_ble.h`，实现放在 `fc41d_ble.c`，内部已对齐到完整命令目录。
 
 ## 2. 一般命令
 

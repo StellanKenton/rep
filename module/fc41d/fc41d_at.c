@@ -303,62 +303,6 @@ eFc41dStatus fc41dAtBuildSetCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatal
 	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%s", cmdInfo->name, args);
 }
 
-eFc41dStatus fc41dAtBuildBleNameCmd(char *cmdBuf, uint16_t cmdBufSize, const char *name)
-{
-	if (name == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	return fc41dAtBuildSetCmd(cmdBuf, cmdBufSize, FC41D_AT_CATALOG_CMD_QBLENAME, name);
-}
-
-eFc41dStatus fc41dAtBuildBleGattServiceCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t serviceUuid)
-{
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%04X",
-							  fc41dAtGetCmdInfo(FC41D_AT_CATALOG_CMD_QBLEGATTSSRV)->name, serviceUuid);
-}
-
-eFc41dStatus fc41dAtBuildBleGattCharCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t charUuid)
-{
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%04X",
-							  fc41dAtGetCmdInfo(FC41D_AT_CATALOG_CMD_QBLEGATTSCHAR)->name, charUuid);
-}
-
-eFc41dStatus fc41dAtBuildBleAdvParamCmd(char *cmdBuf, uint16_t cmdBufSize, uint16_t intervalMin, uint16_t intervalMax)
-{
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%u,%u",
-							  fc41dAtGetCmdInfo(FC41D_AT_CATALOG_CMD_QBLEADVPARAM)->name,
-							  (unsigned int)intervalMin, (unsigned int)intervalMax);
-}
-
-eFc41dStatus fc41dAtBuildBleAdvDataCmd(char *cmdBuf, uint16_t cmdBufSize, const uint8_t *advData, uint16_t advLen)
-{
-	uint16_t idx;
-	uint32_t offset;
-	int written;
-
-	if ((cmdBuf == NULL) || (cmdBufSize == 0U) || ((advLen > 0U) && (advData == NULL))) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	written = snprintf(cmdBuf, cmdBufSize, "%s=", fc41dAtGetCmdInfo(FC41D_AT_CATALOG_CMD_QBLEADVDATA)->name);
-	if ((written < 0) || ((uint32_t)written >= cmdBufSize)) {
-		return FC41D_STATUS_ERROR;
-	}
-
-	offset = (uint32_t)written;
-	for (idx = 0U; idx < advLen; idx++) {
-		written = snprintf(&cmdBuf[offset], (size_t)(cmdBufSize - offset), "%02X", advData[idx]);
-		if ((written < 0) || ((uint32_t)written >= (uint32_t)(cmdBufSize - offset))) {
-			cmdBuf[0] = '\0';
-			return FC41D_STATUS_ERROR;
-		}
-		offset += (uint32_t)written;
-	}
-
-	return FC41D_STATUS_OK;
-}
-
 static bool fc41dAtIsStandardAtName(const char *name)
 {
 	return (name != NULL) && (strncmp(name, "AT+", 3U) == 0);
