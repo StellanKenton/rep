@@ -5,6 +5,7 @@ module: fc41d
 status: active
 portability: layer-dependent
 public_headers:
+  - fc41d_base.h
   - fc41d.h
   - fc41d_ble.h
   - fc41d_wifi.h
@@ -66,6 +67,7 @@ read_next:
 
 | 文件 | 职责 |
 | --- | --- |
+| `fc41d_base.h` | 核心公共类型、非阻塞 AT 事务接口 |
 | `fc41d.h/.c` | 模块总入口、上下文管理、AT/URC 总控、`fc41dProcess()` 调度 |
 | `fc41d_at.c` | FC41D 通用 AT 命令目录、默认响应规则、通用文本构造接口 |
 | `fc41d_ble.h/.c` | BLE AT 便捷构造接口、BLE 接收接口与 BLE 状态机 |
@@ -78,12 +80,15 @@ read_next:
 
 ## 3. 对外公共接口
 
-- `fc41d.h` 作为模块总入口，对外引出通用接口、BLE 子接口和 WiFi 子接口。
+- `fc41d.h` 作为 umbrella 头，仅负责聚合 `fc41d_base.h`、`fc41d_ble.h`、`fc41d_wifi.h`。
+- `fc41d_base.h` 承载公共类型与核心 API，子头直接依赖 `fc41d_base.h`，避免循环包含。
 - `stFc41dCfg` 与 `stFc41dInfo` 按链路拆成 `ble` / `wifi` 子结构，模块级公共字段保留在顶层。
+- `fc41dExecAt*()` 改为非阻塞提交接口，只负责把事务提交给 flowparser；完成由周期 `fc41dProcess()` 驱动。
 - `fc41dProcess()` 先统一处理 AT/URC flowparser，再调用 BLE/WiFi 状态机。
 - 稳定接口包括：
   - `fc41dGetDefCfg/GetCfg/SetCfg/Init/IsReady/Process/GetInfo`
   - `fc41dExecAt/fc41dExecAtCmd/fc41dExecAtText/fc41dAtCheckAlive`
+  - `fc41dExecAtIsBusy/fc41dGetLastExecResult/fc41dRecover`
   - `fc41dAtGetCmdInfo*` 与 `fc41dAtBuild*`
   - `fc41dBle*` 与 `fc41dWifi*` ring buffer 访问接口
   - `fc41dSetModeState/fc41dGetModeState`
@@ -94,7 +99,8 @@ read_next:
 - WiFi 按 `workMode` 区分 `disabled / sta / ap`，状态覆盖初始化、连接中、已连接、断联、AP 启动、AP 活跃和错误。
 - 默认配置下两套状态机都不自动启动；调用方需要在 `cfg.ble` / `cfg.wifi` 里设置 `workMode`，并按需要覆盖 `initCmdText/startCmdText/stopCmdText`。
 - BLE 在未覆盖命令文本时，默认外设流程使用 `AT+QBLEINIT=2` + `AT+QBLEADVSTART`，中心流程使用 `AT+QBLEINIT=1` + `AT+QBLESCAN=1`。
-- WiFi 停用命令默认仍由子模块内部处理：STA 用 `AT+QSTASTOP`，AP 用 `AT+QSOFTAPSTOP`。
+- WiFi 不提供默认 init/start 命令，原因是 STA/AP 启动参数通常依赖项目侧凭证与装配配置；仅 stop 命令提供默认值：STA 用 `AT+QSTASTOP`，AP 用 `AT+QSOFTAPSTOP`。
+- BLE/WiFi 状态机里的 AT 步骤通过 `submit + process` 非阻塞推进；若进入 `ERROR` 状态，可调用 `fc41dRecover()` 复位内部事务与子状态机。
 
 ## 5. assembly / platform hook 契约
 

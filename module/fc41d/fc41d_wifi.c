@@ -9,15 +9,12 @@
 **********************************************************************************/
 #include "fc41d_wifi.h"
 
-#include <ctype.h>
 #include <stddef.h>
 #include <string.h>
 
 #include "fc41d_priv.h"
 
-static eFc41dStatus fc41dWifiExecOptionalCmdText(eFc41dMapType device, const char *cmdText);
 static const char *fc41dWifiGetDefStopCmdText(const stFc41dWifiCfg *cfg);
-static bool fc41dWifiLineHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
 
 stRingBuffer *fc41dWifiGetRxRingBuffer(eFc41dMapType device)
 {
@@ -61,6 +58,15 @@ void fc41dWifiSyncInfoFromCfg(stFc41dCtx *ctx)
 
 	ctx->info.wifi.enableRx = ctx->cfg.wifi.enableRx;
 	ctx->info.wifi.workMode = ctx->cfg.wifi.workMode;
+	fc41dWifiResetState(ctx);
+}
+
+
+void fc41dWifiResetState(stFc41dCtx *ctx)
+{
+	if (ctx == NULL) {
+		return;
+	}
 
 	if (ctx->cfg.wifi.workMode == FC41D_WIFI_WORK_MODE_STA) {
 		ctx->info.wifi.state = FC41D_WIFI_STATE_STA_INIT;
@@ -93,15 +99,16 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 	if (ctx->info.wifi.workMode != ctx->cfg.wifi.workMode) {
 		prevCfg = ctx->cfg.wifi;
 		prevCfg.workMode = ctx->info.wifi.workMode;
-		(void)fc41dWifiExecOptionalCmdText(device, fc41dWifiGetDefStopCmdText(&prevCfg));
-		ctx->info.wifi.workMode = ctx->cfg.wifi.workMode;
-		if (ctx->cfg.wifi.workMode == FC41D_WIFI_WORK_MODE_STA) {
-			ctx->info.wifi.state = FC41D_WIFI_STATE_STA_INIT;
-		} else if (ctx->cfg.wifi.workMode == FC41D_WIFI_WORK_MODE_AP) {
-			ctx->info.wifi.state = FC41D_WIFI_STATE_AP_INIT;
-		} else {
-			ctx->info.wifi.state = FC41D_WIFI_STATE_IDLE;
+		status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_WIFI, fc41dWifiGetDefStopCmdText(&prevCfg));
+		if (status == FC41D_STATUS_BUSY) {
+			return FC41D_STATUS_OK;
 		}
+		if (status != FC41D_STATUS_OK) {
+			ctx->info.wifi.state = FC41D_WIFI_STATE_ERROR;
+			return status;
+		}
+		ctx->info.wifi.workMode = ctx->cfg.wifi.workMode;
+		fc41dWifiResetState(ctx);
 	}
 
 	switch (ctx->info.wifi.state) {
@@ -112,15 +119,24 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 		case FC41D_WIFI_STATE_AP_STOPPED:
 			return FC41D_STATUS_OK;
 		case FC41D_WIFI_STATE_STA_INIT:
-			status = fc41dWifiExecOptionalCmdText(device, ctx->cfg.wifi.initCmdText);
+			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_WIFI, ctx->cfg.wifi.initCmdText);
+			if (status == FC41D_STATUS_BUSY) {
+				return FC41D_STATUS_OK;
+			}
 			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_STA_CONNECTING : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_STA_CONNECTING:
-			status = fc41dWifiExecOptionalCmdText(device, ctx->cfg.wifi.startCmdText);
+			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_WIFI, ctx->cfg.wifi.startCmdText);
+			if (status == FC41D_STATUS_BUSY) {
+				return FC41D_STATUS_OK;
+			}
 			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_STA_DISCONNECTED : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_AP_INIT:
-			status = fc41dWifiExecOptionalCmdText(device, ctx->cfg.wifi.initCmdText);
+			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_WIFI, ctx->cfg.wifi.initCmdText);
+			if (status == FC41D_STATUS_BUSY) {
+				return FC41D_STATUS_OK;
+			}
 			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_AP_STARTING : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_AP_STARTING:
@@ -128,7 +144,10 @@ eFc41dStatus fc41dWifiProcessStateMachine(stFc41dCtx *ctx, eFc41dMapType device)
 				ctx->info.wifi.state = FC41D_WIFI_STATE_AP_STOPPED;
 				return FC41D_STATUS_OK;
 			}
-			status = fc41dWifiExecOptionalCmdText(device, ctx->cfg.wifi.startCmdText);
+			status = fc41dExecOptionalCmdText(device, FC41D_EXEC_OWNER_WIFI, ctx->cfg.wifi.startCmdText);
+			if (status == FC41D_STATUS_BUSY) {
+				return FC41D_STATUS_OK;
+			}
 			ctx->info.wifi.state = (status == FC41D_STATUS_OK) ? FC41D_WIFI_STATE_AP_ACTIVE : FC41D_WIFI_STATE_ERROR;
 			return status;
 		case FC41D_WIFI_STATE_ERROR:
@@ -143,29 +162,20 @@ void fc41dWifiUpdateLinkStateByUrc(stFc41dCtx *ctx, const uint8_t *lineBuf, uint
 		return;
 	}
 
-	if (!fc41dWifiLineHasToken(lineBuf, lineLen, "WIFI") &&
-		!fc41dWifiLineHasToken(lineBuf, lineLen, "STA") &&
-		!fc41dWifiLineHasToken(lineBuf, lineLen, "AP")) {
+	if (!fc41dLineHasToken(lineBuf, lineLen, "WIFI") &&
+		!fc41dLineHasToken(lineBuf, lineLen, "STA") &&
+		!fc41dLineHasToken(lineBuf, lineLen, "AP")) {
 		return;
 	}
 
-	if (fc41dWifiLineHasToken(lineBuf, lineLen, "DISCONN")) {
+	if (fc41dLineHasToken(lineBuf, lineLen, "DISCONN")) {
 		ctx->info.wifi.state = (ctx->info.wifi.workMode == FC41D_WIFI_WORK_MODE_AP) ?
 			FC41D_WIFI_STATE_AP_STOPPED : FC41D_WIFI_STATE_STA_DISCONNECTED;
-	} else if (fc41dWifiLineHasToken(lineBuf, lineLen, "GOT IP") || fc41dWifiLineHasToken(lineBuf, lineLen, "CONNECTED")) {
+	} else if (fc41dLineHasToken(lineBuf, lineLen, "GOT IP") || fc41dLineHasToken(lineBuf, lineLen, "CONNECTED")) {
 		ctx->info.wifi.state = FC41D_WIFI_STATE_STA_CONNECTED;
-	} else if (fc41dWifiLineHasToken(lineBuf, lineLen, "SOFTAP") || fc41dWifiLineHasToken(lineBuf, lineLen, "AP START")) {
+	} else if (fc41dLineHasToken(lineBuf, lineLen, "SOFTAP") || fc41dLineHasToken(lineBuf, lineLen, "AP START")) {
 		ctx->info.wifi.state = FC41D_WIFI_STATE_AP_ACTIVE;
 	}
-}
-
-static eFc41dStatus fc41dWifiExecOptionalCmdText(eFc41dMapType device, const char *cmdText)
-{
-	if ((cmdText == NULL) || (cmdText[0] == '\0')) {
-		return FC41D_STATUS_OK;
-	}
-
-	return fc41dExecAtText(device, cmdText, NULL, NULL);
 }
 
 static const char *fc41dWifiGetDefStopCmdText(const stFc41dWifiCfg *cfg)
@@ -187,36 +197,6 @@ static const char *fc41dWifiGetDefStopCmdText(const stFc41dWifiCfg *cfg)
 	}
 
 	return NULL;
-}
-
-static bool fc41dWifiLineHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token)
-{
-	uint16_t idx;
-	uint32_t tokenLen;
-	uint32_t matchIdx;
-
-	if ((lineBuf == NULL) || (token == NULL)) {
-		return false;
-	}
-
-	tokenLen = (uint32_t)strlen(token);
-	if ((tokenLen == 0U) || ((uint32_t)lineLen < tokenLen)) {
-		return false;
-	}
-
-	for (idx = 0U; idx <= (uint16_t)(lineLen - tokenLen); idx++) {
-		for (matchIdx = 0U; matchIdx < tokenLen; matchIdx++) {
-			if (toupper((int)lineBuf[idx + matchIdx]) != toupper((int)token[matchIdx])) {
-				break;
-			}
-		}
-
-		if (matchIdx == tokenLen) {
-			return true;
-		}
-	}
-
-	return false;
 }
 
 /**************************End of file********************************/

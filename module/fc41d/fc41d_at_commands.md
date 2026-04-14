@@ -9,9 +9,10 @@
 
 ## 1. 模块接口约定
 
-- 旧接口 `eFc41dAtCmd` + `fc41dExecAtCmd()` 继续保留，只覆盖当前工程里常用的少量“可直接执行”命令。
-- 新接口 `eFc41dAtCatalogCmd` + `fc41dAtGetCmdInfo*()` 提供完整命令目录。
+- 统一接口使用 `eFc41dAtCatalogCmd` + `fc41dAtGetCmdInfo*()` 提供完整命令目录。
+- 旧名字 `eFc41dAtCmd` 与 `FC41D_AT_CMD_*` 仅作为兼容别名保留，内部不再维护第二套枚举语义。
 - 新接口 `fc41dAtBuildExecCmd()`、`fc41dAtBuildQueryCmd()`、`fc41dAtBuildTestCmd()`、`fc41dAtBuildSetCmd()` 用于统一构造命令文本。
+- `fc41dExecAt*()` 现为非阻塞提交接口：调用后需持续执行 `fc41dProcess()`，并通过 `stFc41dAtResp.result` 或 `fc41dGetLastExecResult()` 观察完成结果。
 - BLE 现有便捷函数 `fc41dAtBuildBleNameCmd()`、`fc41dAtBuildBleGattServiceCmd()`、`fc41dAtBuildBleGattCharCmd()`、`fc41dAtBuildBleAdvParamCmd()`、`fc41dAtBuildBleAdvDataCmd()` 仍保留，声明收敛到 `fc41d_ble.h`，实现放在 `fc41d_ble.c`，内部已对齐到完整命令目录。
 
 ## 2. 一般命令

@@ -7,7 +7,7 @@
 * @version  : 
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
-#include "fc41d.h"
+#include "fc41d_base.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -30,14 +30,6 @@ static const char *const gFc41dAtUrcPatterns[] = {
 	"+BLE*",
 	"+WIFI*",
 };
-
-static const char gFc41dAtCmdCheckAlive[] = "AT";
-static const char gFc41dAtCmdReset[] = "AT+QRST";
-static const char gFc41dAtCmdStaStop[] = "AT+QSTASTOP";
-static const char gFc41dAtCmdBleInitGatts[] = "AT+QBLEINIT=2";
-static const char gFc41dAtCmdBleAddrQuery[] = "AT+QBLEADDR?";
-static const char gFc41dAtCmdVersionQuery[] = "AT+QVERSION";
-static const char gFc41dAtCmdBleAdvStart[] = "AT+QBLEADVSTART";
 
 static const stFc41dAtCmdInfo gFc41dAtCmdInfoTable[] = {
 	{FC41D_AT_CATALOG_CMD_AT, FC41D_AT_GROUP_GENERAL, "AT", "AT test command"},
@@ -121,14 +113,13 @@ static const stFc41dAtCmdInfo gFc41dAtCmdInfoTable[] = {
 	{FC41D_AT_CATALOG_CMD_QHTTPREAD, FC41D_AT_GROUP_HTTP, "AT+QHTTPREAD", "Read response data of HTTP(S) request"},
 };
 
-_Static_assert((sizeof(gFc41dAtCmdInfoTable) / sizeof(gFc41dAtCmdInfoTable[0])) == FC41D_AT_CATALOG_CMD_MAX,
-			   "FC41D AT command catalog is out of sync");
+typedef char stFc41dAtCmdInfoTableSizeCheck[
+	((sizeof(gFc41dAtCmdInfoTable) / sizeof(gFc41dAtCmdInfoTable[0])) == FC41D_AT_CATALOG_CMD_MAX) ? 1 : -1];
 
 static bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern);
 static bool fc41dAtMatchPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt);
 static bool fc41dAtIsStandardAtName(const char *name);
 static eFc41dStatus fc41dAtBuildSimpleCmd(char *cmdBuf, uint16_t cmdBufSize, const char *cmdText);
-static eFc41dStatus fc41dAtBuildFmtCmd(char *cmdBuf, uint16_t cmdBufSize, const char *fmt, ...);
 
 void fc41dAtGetBaseOpt(stFc41dAtOpt *opt)
 {
@@ -158,29 +149,13 @@ bool fc41dAtIsUrc(const uint8_t *lineBuf, uint16_t lineLen)
 								(uint8_t)(sizeof(gFc41dAtUrcPatterns) / sizeof(gFc41dAtUrcPatterns[0])));
 }
 
-const char *fc41dAtGetCmdText(eFc41dAtCmd cmd)
+const char *fc41dAtGetCmdText(eFc41dAtCatalogCmd cmd)
 {
-	switch (cmd) {
-		case FC41D_AT_CMD_CHECK_ALIVE:
-			return gFc41dAtCmdCheckAlive;
-		case FC41D_AT_CMD_RESET:
-			return gFc41dAtCmdReset;
-		case FC41D_AT_CMD_STA_STOP:
-			return gFc41dAtCmdStaStop;
-		case FC41D_AT_CMD_BLE_INIT_GATTS:
-			return gFc41dAtCmdBleInitGatts;
-		case FC41D_AT_CMD_BLE_ADDR_QUERY:
-			return gFc41dAtCmdBleAddrQuery;
-		case FC41D_AT_CMD_VERSION_QUERY:
-			return gFc41dAtCmdVersionQuery;
-		case FC41D_AT_CMD_BLE_ADV_START:
-			return gFc41dAtCmdBleAdvStart;
-		default:
-			return NULL;
-	}
+	const stFc41dAtCmdInfo *cmdInfo = fc41dAtGetCmdInfo(cmd);
+	return (cmdInfo != NULL) ? cmdInfo->name : NULL;
 }
 
-eFc41dStatus fc41dExecAtCmd(eFc41dMapType device, eFc41dAtCmd cmd, const stFc41dAtOpt *opt, stFc41dAtResp *resp)
+eFc41dStatus fc41dExecAtCmd(eFc41dMapType device, eFc41dAtCatalogCmd cmd, const stFc41dAtOpt *opt, stFc41dAtResp *resp)
 {
 	const char *cmdText = fc41dAtGetCmdText(cmd);
 
@@ -278,7 +253,7 @@ eFc41dStatus fc41dAtBuildQueryCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCat
 		return FC41D_STATUS_UNSUPPORTED;
 	}
 
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s?", cmdInfo->name);
+	return fc41dBuildFmtCmd(cmdBuf, cmdBufSize, "%s?", cmdInfo->name);
 }
 
 eFc41dStatus fc41dAtBuildTestCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatalogCmd cmd)
@@ -289,7 +264,7 @@ eFc41dStatus fc41dAtBuildTestCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCata
 		return FC41D_STATUS_UNSUPPORTED;
 	}
 
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=?", cmdInfo->name);
+	return fc41dBuildFmtCmd(cmdBuf, cmdBufSize, "%s=?", cmdInfo->name);
 }
 
 eFc41dStatus fc41dAtBuildSetCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatalogCmd cmd, const char *args)
@@ -300,7 +275,7 @@ eFc41dStatus fc41dAtBuildSetCmd(char *cmdBuf, uint16_t cmdBufSize, eFc41dAtCatal
 		return FC41D_STATUS_INVALID_PARAM;
 	}
 
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%s", cmdInfo->name, args);
+	return fc41dBuildFmtCmd(cmdBuf, cmdBufSize, "%s=%s", cmdInfo->name, args);
 }
 
 static bool fc41dAtIsStandardAtName(const char *name)
@@ -314,7 +289,7 @@ static eFc41dStatus fc41dAtBuildSimpleCmd(char *cmdBuf, uint16_t cmdBufSize, con
 		return FC41D_STATUS_INVALID_PARAM;
 	}
 
-	return fc41dAtBuildFmtCmd(cmdBuf, cmdBufSize, "%s", cmdText);
+	return fc41dBuildFmtCmd(cmdBuf, cmdBufSize, "%s", cmdText);
 }
 
 static bool fc41dAtMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern)
@@ -362,7 +337,7 @@ static bool fc41dAtMatchPatterns(const uint8_t *lineBuf, uint16_t lineLen, const
 	return false;
 }
 
-static eFc41dStatus fc41dAtBuildFmtCmd(char *cmdBuf, uint16_t cmdBufSize, const char *fmt, ...)
+eFc41dStatus fc41dBuildFmtCmd(char *cmdBuf, uint16_t cmdBufSize, const char *fmt, ...)
 {
 	va_list args;
 	int written;

@@ -6,7 +6,7 @@
 #ifndef FC41D_ASSEMBLY_H
 #define FC41D_ASSEMBLY_H
 
-#include "fc41d.h"
+#include "fc41d_base.h"
 #include "../../comm/flowparser/flowparser_stream.h"
 
 #ifdef __cplusplus

@@ -7,7 +7,7 @@
 * @version  : 
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
-#include "fc41d.h"
+#include "fc41d_base.h"
 
 #include <stddef.h>
 
@@ -37,3 +37,4 @@ eFc41dMode fc41dGetModeState(eFc41dMapType device)
 }
 
 /**************************End of file********************************/
+

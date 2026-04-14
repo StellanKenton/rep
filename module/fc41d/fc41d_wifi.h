@@ -7,9 +7,7 @@
 #ifndef FC41D_WIFI_H
 #define FC41D_WIFI_H
 
-#ifndef FC41D_H
-#include "fc41d.h"
-#endif
+#include "fc41d_base.h"
 
 #ifdef __cplusplus
 extern "C" {
