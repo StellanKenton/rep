@@ -4,6 +4,28 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef enum eRepSTM32Platform {
+    REP_STM32_F0 = 1U,
+    REP_STM32_F1 = 2U,
+    REP_STM32_F4 = 3U,
+    REP_STM32_F7 = 4U,
+    REP_STM32_H7 = 5U,
+    REP_STM32_G4 = 6U,
+} eRepSTM32Platform;
+
+typedef enum eRepGd32Platform {
+    REP_GD32F1 = 1U,
+    REP_GD32F3 = 2U,
+    REP_GD32F4 = 3U,
+    REP_GD32F7 = 4U,
+} eRepGd32Platform;
+
+typedef enum eRepEsp32Platform {
+    REP_ESP32 = 1U,
+    REP_ESP32C5 = 2U,
+    REP_ESP32S3 = 3U,
+} eRepEsp32Platform;
+
 typedef enum Rep_MCU_PLATFORM {
     REP_MCU_PLATFORM_GD32 = 1U,
     REP_MCU_PLATFORM_STM32 = 2U,
