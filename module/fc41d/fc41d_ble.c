@@ -41,10 +41,12 @@ static const char *const gFc41dBleCentralStopCmdSeq[] = {
 
 static const char *const gFc41dBleConnectedUrcPatterns[] = {
 	"+BLECONN*",
+	"+QBLESTAT:CONNECTED*",
 };
 
 static const char *const gFc41dBleDisconnectedUrcPatterns[] = {
 	"+BLEDISCONN*",
+	"+QBLESTAT:DISCONNECTED*",
 };
 
 static const char *const *fc41dBleGetDefInitCmdSeq(const stFc41dBleCfg *cfg, uint8_t *cmdSeqLen);
@@ -130,8 +132,11 @@ eFc41dStatus fc41dBleSend(eFc41dMapType device, const uint8_t *data, uint16_t le
 {
 	const stFc41dAtCmdInfo *cmdInfo;
 	stFc41dAtOpt opt;
-	char cmdBuf[48U];
+	char cmdBuf[320U];
 	uint32_t cmdLen;
+	uint32_t offset;
+	uint16_t idx;
+	int written;
 
 	if ((data == NULL) || (len == 0U)) {
 		return FC41D_STATUS_INVALID_PARAM;
@@ -142,15 +147,31 @@ eFc41dStatus fc41dBleSend(eFc41dMapType device, const uint8_t *data, uint16_t le
 		return FC41D_STATUS_INVALID_PARAM;
 	}
 
-	if (fc41dBuildFmtCmd(cmdBuf, (uint16_t)sizeof(cmdBuf), "%s=%u\r\n", cmdInfo->name, (unsigned int)len) != FC41D_STATUS_OK) {
+	written = snprintf(cmdBuf, sizeof(cmdBuf), "%s=FE62,%u,", cmdInfo->name, (unsigned int)len);
+	if ((written < 0) || ((uint32_t)written >= sizeof(cmdBuf))) {
 		return FC41D_STATUS_ERROR;
 	}
+	offset = (uint32_t)written;
+
+	for (idx = 0U; idx < len; idx++) {
+		written = snprintf(&cmdBuf[offset], sizeof(cmdBuf) - offset, "%02X", data[idx]);
+		if ((written < 0) || ((uint32_t)written >= (sizeof(cmdBuf) - offset))) {
+			return FC41D_STATUS_ERROR;
+		}
+		offset += (uint32_t)written;
+	}
+
+	if ((offset + 2U) >= sizeof(cmdBuf)) {
+		return FC41D_STATUS_ERROR;
+	}
+	cmdBuf[offset++] = '\r';
+	cmdBuf[offset++] = '\n';
+	cmdBuf[offset] = '\0';
 
 	cmdLen = (uint32_t)strlen(cmdBuf);
 	fc41dAtGetBaseOpt(&opt);
-	opt.needPrompt = true;
 	opt.finalToutMs = 5000U;
-	return fc41dExecAt(device, (const uint8_t *)cmdBuf, (uint16_t)cmdLen, data, len, &opt, NULL);
+	return fc41dExecAt(device, (const uint8_t *)cmdBuf, (uint16_t)cmdLen, NULL, 0U, &opt, NULL);
 }
 
 stRingBuffer *fc41dBleGetRxRingBuffer(eFc41dMapType device)
