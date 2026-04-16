@@ -53,12 +53,13 @@ typedef struct stDrvMcuFlashBspInterface {
     drvMcuFlashBspGetSectorInfoFunc getSectorInfo;
 } stDrvMcuFlashBspInterface;
 
-eDrvStatus drvMcuFlashInit(void);
+bool drvMcuFlashInit(void);
 bool drvMcuFlashIsReady(void);
-eDrvStatus drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info);
-eDrvStatus drvMcuFlashRead(uint8_t area, uint32_t offset, uint8_t *buffer, uint32_t length);
-eDrvStatus drvMcuFlashWrite(uint8_t area, uint32_t offset, const uint8_t *buffer, uint32_t length);
-eDrvStatus drvMcuFlashErase(uint8_t area, uint32_t offset, uint32_t length);
+bool drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info);
+bool drvMcuFlashRead(uint32_t address, uint8_t *buffer, uint32_t length);
+bool drvMcuFlashWrite(uint32_t address, const uint8_t *buffer, uint32_t length);
+bool drvMcuFlashErase(uint32_t address, uint32_t length);
+bool drvMcuFlashIsRangeValid(uint32_t address, uint32_t length);
 
 #ifdef __cplusplus
 }

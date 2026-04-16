@@ -37,6 +37,7 @@ read_next:
 | `rule/` | 仓库规则、地图、命名和文档约束 | `rule/rule.md` |
 | `driver/` | 公共驱动层与 BSP hook 契约 | `driver/drvrule.md` |
 | `module/` | passive module 与 assembly 契约 | `module/module.md` |
+| `service/` | 通用服务型状态机、生命周期与项目绑定 hook | `service/service.md` |
 | `console/` | console 与 log 公共 contract | `console/console.md`、`console/log.md` |
 | `comm/` | 流解析、帧解析、帧流程编排 | `comm/comm.md` |
 | `tools/` | 算法与基础容器工具 | `tools/tools.md` |
@@ -55,6 +56,7 @@ read_next:
 | --- | --- | --- |
 | 新增或修改驱动 | `rule/rule.md`、`driver/drvrule.md` | 对应 `drvxxx/drvxxx.md`、`.h/.c` |
 | 新增或修改功能模块 | `rule/rule.md`、`module/module.md` | 对应模块主文档、assembly 头、`.h/.c` |
+| 新增或修改公共服务 | `rule/rule.md`、`service/service.md` | 对应 service 主文档、`*_port.h`、`.h/.c` |
 | 修改服务生命周期或系统编排 | `example/example.md` | `example/manager/manager.md`、`example/system/system.md`、对应 service 文档 |
 | 修改 console / log | `console/console.md`、`console/log.md` | 对应头文件和实现 |
 | 修改协议解析或链路流程 | `comm/comm.md` | `flowparser.md`、`frameparser.md`、`frameprocess.md` |
@@ -67,6 +69,7 @@ read_next:
 | --- | --- | --- |
 | `drvxxx` 目录 | `driver/drvrule.md` + 对应 `drvxxx.md` | BSP hook、默认资源映射、debug 可裁剪项 |
 | `module/xxx` 目录 | `module/module.md` + 对应模块主文档 | assembly hook、下层 drv 调用表、默认绑定 |
+| `service/xxx` 目录 | `service/service.md` + 对应服务主文档 | 状态机语义、port hook、项目绑定边界 |
 | `comm/frameparser` | `comm/comm.md` + `frameparser.md` | ringbuffer 依赖、协议格式回调、输出缓冲 ownership |
 | `comm/frameprocess` | `comm/comm.md` + `frameprocess.md` | frameparser 依赖、tx/rx 钩子、ACK 策略 |
 | `tools/ringbuffer` | `tools/tools.md` + `tools/ringbuffer/ringbuffer.md` | 并发模型、调用方 ownership |
@@ -91,13 +94,19 @@ read_next:
 - 叶子目录：`flowparser/`、`frameparser/`、`frameprocess/`
 - 协议说明补充文档：`cprsensorprotol.md`
 
-### 4.4 `tools/`
+### 4.4 `service/`
+
+- 入口：`service/service.md`
+- 叶子目录：`console/`、`rtos/`、`update/`
+- 用途：承载高于 driver/module、低于 example manager 的公共服务型能力和流程状态机
+
+### 4.5 `tools/`
 
 - 入口：`tools/tools.md`
 - 基础容器：`ringbuffer/`
 - 算法工具：`numfilter/`、`butterworthfilter/`、`filter1st/`、`filter2nd/`
 
-### 4.5 `example/`
+### 4.6 `example/`
 
 - 入口：`example/example.md`
 - 项目示例目录：`manager/`、`system/`
