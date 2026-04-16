@@ -240,6 +240,7 @@ __attribute__((weak)) uint32_t updatePortGetTickMs(void)
 
 __attribute__((weak)) void updatePortFeedWatchdog(void)
 {
+    
 }
 
 __attribute__((weak)) bool updatePortJumpToRegion(uint8_t regionId)

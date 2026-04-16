@@ -190,6 +190,7 @@ typedef struct stUpdateRegionCfg {
 | `update` | `updateGetStatus` | 系统管理、诊断命令、debug | 查询当前状态和进度 | `updateInit` 后 | `updateProcess -> updateGetStatus` | 只读使用 | 调用方直接篡改内部对象 |
 | `update` | `updateRequestProgramRegion` | App 侧升级准备层、项目 manager | 在 staging 已 ready 后落盘升级请求 | `STAGING_APP_HEADER` 已是 ready | `write staging -> verify -> request program` | `false` 时不得复位进 Boot | staging 未校验就直接写请求 |
 | `update` | `updateReadBootRecord` | Boot 检查阶段、诊断命令 | 读取当前事务记录 | `BOOT_RECORD` 已绑定 | `init -> read record -> decide` | 无记录时返回默认 idle 记录 | 业务层直接读裸地址 |
+| `update` | `updateWriteBootRecord` | Boot 诊断命令、项目 manager 恢复路径 | 以模块内双槽提交语义写事务记录 | `updateInit` 成功，`requestFlag/targetRegion` 枚举合法 | `read record -> patch fields -> write record -> process` | `false` 时不得假定记录已提交；成功后状态机会回到 `CHECK_REQUEST` | 项目层绕过 API 手工拼 meta record |
 | `update` | `updateJumpToTargetIfValid` | 项目层跳转入口 | 在目标向量表合法时交给 port 层执行跳转 | 工程已实现 `updatePortJumpToRegion` | `check request -> validate vector -> jump` | `false` 表示未接入或校验失败 | 在 core 里硬编码芯片寄存器清理 |
 | `drvmcuflash` | `drvMcuFlashInit/Read/Write/Erase/IsRangeValid` | `update_port.c`、项目 manager | 直接实现内部 Flash 存储操作 | port 区域白名单已绑定 | `init -> erase -> write -> readback` | 返回 `false` 视为失败 | `update.c` 直接 include `drvmcuflash_port.h` |
 | `gd25qxxx` | `gd25qxxxInit/Read/Write/EraseSector/EraseBlock64k` | 仅 `update_port.c` 内部适配器 | 实现外部 Flash 存储操作 | device 已绑定 | `init -> erase -> write -> read` | 非 `OK` 视为失败 | `update.c` 直接拿 `GD25Q32_MEM` 做业务判断 |

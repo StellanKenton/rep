@@ -1420,6 +1420,45 @@ bool updateReadBootRecord(stUpdateBootRecord *record)
     return updateLoadBootRecord(record, &lSequence);
 }
 
+bool updateWriteBootRecord(const stUpdateBootRecord *record)
+{
+    stUpdateBootRecord lRecord;
+    stUpdateBootRecord lCurrentRecord;
+    uint32_t lSequence = 0U;
+
+    if (!gUpdateContext.isInitialized || (record == NULL) ||
+        (record->requestFlag > (uint32_t)E_UPDATE_REQUEST_FAILED) ||
+        (record->targetRegion >= E_UPDATE_REGION_MAX)) {
+        return false;
+    }
+
+    if (!updateLoadBootRecord(&lCurrentRecord, &lSequence)) {
+        return false;
+    }
+
+    lRecord = *record;
+    lRecord.magic = UPDATE_BOOT_RECORD_MAGIC;
+    lRecord.sequence = 0U;
+    lRecord.recordCrc32 = 0U;
+
+    if (!updateStoreBootRecord(&lRecord, &lSequence)) {
+        return false;
+    }
+
+    gUpdateContext.bootRecordMetaSequence = lSequence;
+    gUpdateStatus.requestFlag = (eUpdateRequestFlag)gUpdateContext.bootRecord.requestFlag;
+    gUpdateStatus.targetRegion = gUpdateContext.bootRecord.targetRegion;
+    gUpdateStatus.lastError = (eUpdateError)gUpdateContext.bootRecord.lastError;
+    gUpdateStatus.isUpdateRequested = (gUpdateStatus.requestFlag == E_UPDATE_REQUEST_PROGRAM_APP) ||
+                                      (gUpdateStatus.requestFlag == E_UPDATE_REQUEST_PROGRAM_BOOT) ||
+                                      (gUpdateStatus.requestFlag == E_UPDATE_REQUEST_BACKUP_DONE) ||
+                                      (gUpdateStatus.requestFlag == E_UPDATE_REQUEST_PROGRAM_DONE);
+    gUpdateStatus.isRollbackActive = false;
+    gUpdateContext.targetWasErased = false;
+    updateSetState(E_UPDATE_STATE_CHECK_REQUEST, 0U, 0U);
+    return true;
+}
+
 bool updateJumpToTargetIfValid(void)
 {
     uint32_t lTargetRegion;

@@ -171,6 +171,7 @@ void updateProcess(uint32_t nowTickMs);
 const stUpdateStatus *updateGetStatus(void);
 bool updateRequestProgramRegion(uint32_t targetRegion);
 bool updateReadBootRecord(stUpdateBootRecord *record);
+bool updateWriteBootRecord(const stUpdateBootRecord *record);
 bool updateJumpToTargetIfValid(void);
 
 #ifdef __cplusplus
