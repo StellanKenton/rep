@@ -39,7 +39,7 @@ read_next:
 
 本层负责：
 
-- `LOG_E/W/I/D` 统一入口。
+- `LOG_E/W/I/D` 和 `LOG_T` 统一入口。
 - transport 初始化、输出写接口、输入 ring buffer provider。
 - 为 `console` 提供输入枚举和定向回复能力。
 
@@ -52,6 +52,10 @@ read_next:
 
 稳定公共头文件：`log.h`
 
+稳定宏：
+
+- `LOG_T(transport, buffer, length)`
+
 稳定 API：
 
 - `logInit()`
@@ -59,16 +63,23 @@ read_next:
 - `logGetInputTransport()`
 - `logGetInputBuffer()`
 - `logWriteToTransport()`
+- `logDirectWriteToTransport()`
 - `logProcessOutput()`
 - `logGetStats()`
 - `logSetTimestampProvider()`
+
+补充语义：
+
+- `logWriteToTransport()`：把数据压入目标 transport 的输出队列，真正发出依赖 `logProcessOutput()`。
+- `logDirectWriteToTransport()`：直接调用目标 transport 的 `write` hook，绕过输出队列和 `logProcessOutput()`，调用方自己负责发送时机和必要的重试策略。
+- `LOG_T(transport, buffer, length)`：`logDirectWriteToTransport()` 的宏封装，适合在调用点直接做 transport 级直写。
 
 ## 3. transport hook 契约
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `init` | 可选 | transport provider | `logInit()` | `void (*)(void)` | transport 完成初始化 | `NULL` 表示无需初始化 | `logInit()` 前 | 输入和输出共享同一个 init |
-| `write` | 输出侧必需 | transport provider | `logVWrite()`、`logWriteToTransport()` | `int32_t (*)(const uint8_t *, uint16_t)` | 返回实际写出字节数 | 返回 `0` 视为未发送 | transport 已启用输出 | 不追加额外前缀和换行 |
+| `write` | 输出侧必需 | transport provider | `logVWrite()`、`logWriteToTransport()`、`logDirectWriteToTransport()` | `int32_t (*)(const uint8_t *, uint16_t)` | 返回实际写出字节数 | 返回 `0` 视为未发送 | transport 已启用输出 | 不追加额外前缀和换行 |
 | `getBuffer` | 输入侧必需 | transport provider | `logGetInputBuffer()` | `stRingBuffer *(*)(void)` | 返回该 transport 输入缓冲 | 返回 `NULL` 视为无输入 | transport 已启用输入 | log 不拥有该 ring buffer 生命周期 |
 
 ## 4. 公共函数使用契约
@@ -84,7 +95,7 @@ read_next:
 | --- | --- | --- |
 | 新增 transport | transport provider + `log` 接口表 | `console.c` |
 | 调整日志格式 | `log.c` | transport provider 中硬编码格式化 |
-| 调整 console 回复通道 | `logWriteToTransport()` + `console.c` | 业务命令处理函数 |
+| 调整 console 回复通道 | `logWriteToTransport()` / `logDirectWriteToTransport()` + `console.c` | 业务命令处理函数 |
 
 ## 6. 复制到其他工程的最小步骤
 
@@ -105,4 +116,5 @@ read_next:
 - `logInit()` 后所有启用 transport 都能完成初始化。
 - 广播日志能写到所有启用输出口。
 - `logWriteToTransport()` 只写到目标 transport。
+- `logDirectWriteToTransport()` 能在不调用 `logProcessOutput()` 的前提下直接写到目标 transport。
 - 输入缓冲为空或 `NULL` 时行为可预期。

@@ -84,12 +84,15 @@ uint32_t logGetInputCount(void);
 uint32_t logGetInputTransport(uint32_t index);
 stRingBuffer *logGetInputBuffer(uint32_t transport);
 int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
+int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 void logProcessOutput(void);
 bool logGetStats(uint32_t transport, stLogOutputStats *stats);
 void logSetTimestampProvider(logTimestampProvider provider);
 
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
 void logVWrite(eLogLevel level, const char *tag, const char *format, va_list args);
+
+#define LOG_T(transport, buffer, length) logDirectWriteToTransport((transport), (const uint8_t *)(buffer), (length))
 
 #if LOG_COMPILED_LEVEL >= LOG_LEVEL_ERROR
 #define LOG_E(tag, format, ...) logWrite(LOG_LEVEL_ERROR, tag, format, ##__VA_ARGS__)

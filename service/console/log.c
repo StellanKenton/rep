@@ -530,6 +530,45 @@ int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t 
     return logQueueOutput(lOutputState, buffer, length);
 }
 
+int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length)
+{
+    const stLogInterface *lInterface = NULL;
+    stLogOutputState *lOutputState = NULL;
+    int32_t lWriteLength = 0;
+
+    if ((buffer == NULL) || (length == 0U)) {
+        return 0;
+    }
+
+    if (!logInit()) {
+        return 0;
+    }
+
+    lInterface = logGetInterfaceByTransport(transport);
+    lOutputState = logGetOutputStateByTransport(transport);
+    if (!logIsValidOutputInterface(lInterface) || (lOutputState == NULL)) {
+        return 0;
+    }
+
+    lWriteLength = lInterface->write(buffer, length);
+    if (lWriteLength <= 0) {
+        logEnterCritical();
+        lOutputState->busyCount++;
+        logExitCritical();
+        return 0;
+    }
+
+    if ((uint16_t)lWriteLength > length) {
+        lWriteLength = (int32_t)length;
+    }
+
+    logEnterCritical();
+    lOutputState->sentBytes += (uint32_t)lWriteLength;
+    logExitCritical();
+
+    return lWriteLength;
+}
+
 static void logProcessInterface(const stLogInterface *interface, stLogOutputState *state)
 {
     uint16_t lBudget = LOG_OUTPUT_PROCESS_BUDGET;
