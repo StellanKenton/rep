@@ -54,6 +54,8 @@ read_next:
 
 稳定宏：
 
+- `LOG_T(buffer)`
+- `LOG_T(transport, buffer)`
 - `LOG_T(transport, buffer, length)`
 
 稳定 API：
@@ -72,7 +74,9 @@ read_next:
 
 - `logWriteToTransport()`：把数据压入目标 transport 的输出队列，真正发出依赖 `logProcessOutput()`。
 - `logDirectWriteToTransport()`：直接调用目标 transport 的 `write` hook，绕过输出队列和 `logProcessOutput()`，调用方自己负责发送时机和必要的重试策略。
-- `LOG_T(transport, buffer, length)`：`logDirectWriteToTransport()` 的宏封装，适合在调用点直接做 transport 级直写。
+- `LOG_T(buffer)`：默认通过 `LOG_TRANSPORT_RTT` 直写文本，长度自动按字符串结尾计算。
+- `LOG_T(transport, buffer)`：按指定 transport 直写文本，长度自动按字符串结尾计算。
+- `LOG_T(transport, buffer, length)`：`logDirectWriteToTransport()` 的兼容封装，适合在调用点直接做 transport 级直写。
 
 ## 3. transport hook 契约
 

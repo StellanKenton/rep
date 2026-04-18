@@ -92,7 +92,37 @@ void logSetTimestampProvider(logTimestampProvider provider);
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
 void logVWrite(eLogLevel level, const char *tag, const char *format, va_list args);
 
-#define LOG_T(transport, buffer, length) logDirectWriteToTransport((transport), (const uint8_t *)(buffer), (length))
+static inline uint16_t logGetTextLength(const char *buffer)
+{
+    uint16_t lLength = 0U;
+
+    if (buffer == NULL) {
+        return 0U;
+    }
+
+    while ((buffer[lLength] != '\0') && (lLength < UINT16_MAX)) {
+        lLength++;
+    }
+
+    return lLength;
+}
+
+static inline int32_t logDirectWriteText(uint32_t transport, const char *buffer)
+{
+    uint16_t lLength = logGetTextLength(buffer);
+
+    if ((buffer == NULL) || (lLength == 0U)) {
+        return 0;
+    }
+
+    return logDirectWriteToTransport(transport, (const uint8_t *)buffer, lLength);
+}
+
+#define LOG_T_1(buffer) logDirectWriteText(LOG_TRANSPORT_RTT, (buffer))
+#define LOG_T_2(transport, buffer) logDirectWriteText((transport), (buffer))
+#define LOG_T_3(transport, buffer, length) logDirectWriteToTransport((transport), (const uint8_t *)(buffer), (length))
+#define LOG_T_SELECT(_1, _2, _3, NAME, ...) NAME
+#define LOG_T(...) LOG_T_SELECT(__VA_ARGS__, LOG_T_3, LOG_T_2, LOG_T_1)(__VA_ARGS__)
 
 #if LOG_COMPILED_LEVEL >= LOG_LEVEL_ERROR
 #define LOG_E(tag, format, ...) logWrite(LOG_LEVEL_ERROR, tag, format, ##__VA_ARGS__)
