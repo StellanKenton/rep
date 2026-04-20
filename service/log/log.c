@@ -28,22 +28,6 @@
 #include "esp_log.h"
 #endif
 
-#define LOG_OUTPUT_FRAME_HEADER_SIZE 2U
-
-typedef struct stLogOutputState {
-    stRingBuffer queue;
-    uint8_t queueStorage[LOG_OUTPUT_QUEUE_SIZE];
-    uint8_t activeFrame[LOG_OUTPUT_MAX_FRAME_SIZE];
-    uint16_t activeFrameLength;
-    uint16_t activeFrameOffset;
-    uint32_t pendingBytes;
-    uint32_t droppedLines;
-    uint32_t droppedBytes;
-    uint32_t sentBytes;
-    uint32_t busyCount;
-    bool isQueueInitialized;
-} stLogOutputState;
-
 static logTimestampProvider gLogTimestampProvider = NULL;
 static bool gLogIsInitialized = false;
 static char gLogScratchBuffer[LOG_LINE_BUFFER_SIZE];
@@ -56,6 +40,7 @@ static bool logIsValidInputInterface(const stLogInterface *interface);
 static int32_t logGetInterfaceIndexByTransport(uint32_t transport);
 static const stLogInterface *logGetInterfaceByTransport(uint32_t transport);
 static stLogOutputState *logGetOutputStateByTransport(uint32_t transport);
+static bool logGetOutputBinding(uint32_t transport, const stLogInterface **interface, stLogOutputState **state);
 static uint32_t logGetAvailableInterfaceCount(void);
 static uint32_t logGetInterfaceCount(void);
 static void logEnterCritical(void);
@@ -64,6 +49,9 @@ static bool logInitScratchLock(void);
 static bool logLockScratch(void);
 static void logUnlockScratch(void);
 static bool logInitOutputState(stLogOutputState *state);
+static void logDropFrame(stLogOutputState *state, uint32_t length);
+static void logResetCorruptedQueue(stLogOutputState *state);
+static void logCommitWrite(stLogOutputState *state, uint16_t length);
 static void logEncodeFrameLength(uint8_t header[LOG_OUTPUT_FRAME_HEADER_SIZE], uint16_t length);
 static uint16_t logDecodeFrameLength(const uint8_t header[LOG_OUTPUT_FRAME_HEADER_SIZE]);
 static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, uint16_t length);
@@ -154,6 +142,26 @@ static stLogOutputState *logGetOutputStateByTransport(uint32_t transport)
     return &gLogOutputStates[(uint32_t)lIndex];
 }
 
+static bool logGetOutputBinding(uint32_t transport, const stLogInterface **interface, stLogOutputState **state)
+{
+    const stLogInterface *lInterface = logGetInterfaceByTransport(transport);
+    stLogOutputState *lState = logGetOutputStateByTransport(transport);
+
+    if (!logIsValidOutputInterface(lInterface) || (lState == NULL)) {
+        return false;
+    }
+
+    if (interface != NULL) {
+        *interface = lInterface;
+    }
+
+    if (state != NULL) {
+        *state = lState;
+    }
+
+    return true;
+}
+
 static void logEnterCritical(void)
 {
     repRtosEnterCritical();
@@ -210,6 +218,50 @@ static bool logInitOutputState(stLogOutputState *state)
     return true;
 }
 
+static void logDropFrame(stLogOutputState *state, uint32_t length)
+{
+    if (state == NULL) {
+        return;
+    }
+
+    logEnterCritical();
+    state->droppedLines++;
+    state->droppedBytes += length;
+    logExitCritical();
+}
+
+static void logResetCorruptedQueue(stLogOutputState *state)
+{
+    if (state == NULL) {
+        return;
+    }
+
+    state->queue.tail = state->queue.head;
+    state->activeFrameLength = 0U;
+    state->activeFrameOffset = 0U;
+    if (state->pendingBytes != 0U) {
+        state->droppedLines++;
+        state->droppedBytes += state->pendingBytes;
+        state->pendingBytes = 0U;
+    }
+}
+
+static void logCommitWrite(stLogOutputState *state, uint16_t length)
+{
+    if ((state == NULL) || (length == 0U)) {
+        return;
+    }
+
+    logEnterCritical();
+    state->sentBytes += (uint32_t)length;
+    if (state->pendingBytes >= (uint32_t)length) {
+        state->pendingBytes -= (uint32_t)length;
+    } else {
+        state->pendingBytes = 0U;
+    }
+    logExitCritical();
+}
+
 static void logEncodeFrameLength(uint8_t header[LOG_OUTPUT_FRAME_HEADER_SIZE], uint16_t length)
 {
     header[0] = (uint8_t)(length & 0xFFU);
@@ -233,10 +285,7 @@ static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, ui
     }
 
     if (length > LOG_OUTPUT_MAX_FRAME_SIZE) {
-        logEnterCritical();
-        state->droppedLines++;
-        state->droppedBytes += (uint32_t)length;
-        logExitCritical();
+        logDropFrame(state, (uint32_t)length);
         return 0;
     }
 
@@ -244,9 +293,8 @@ static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, ui
 
     logEnterCritical();
     if (ringBufferGetFree(&state->queue) < lRequiredLength) {
-        state->droppedLines++;
-        state->droppedBytes += (uint32_t)length;
         logExitCritical();
+        logDropFrame(state, (uint32_t)length);
         return 0;
     }
 
@@ -255,18 +303,16 @@ static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, ui
         if (lHeaderWritten > 0U) {
             state->queue.head -= lHeaderWritten;
         }
-        state->droppedLines++;
-        state->droppedBytes += (uint32_t)length;
         logExitCritical();
+        logDropFrame(state, (uint32_t)length);
         return 0;
     }
 
     lPayloadWritten = ringBufferWrite(&state->queue, buffer, length);
     if (lPayloadWritten != length) {
         state->queue.head -= (LOG_OUTPUT_FRAME_HEADER_SIZE + lPayloadWritten);
-        state->droppedLines++;
-        state->droppedBytes += (uint32_t)length;
         logExitCritical();
+        logDropFrame(state, (uint32_t)length);
         return 0;
     }
 
@@ -306,28 +352,14 @@ static bool logLoadNextFrame(stLogOutputState *state)
     if ((lFrameLength == 0U) ||
         (lFrameLength > LOG_OUTPUT_MAX_FRAME_SIZE) ||
         (ringBufferGetUsed(&state->queue) < lFrameLength)) {
-        state->queue.tail = state->queue.head;
-        state->activeFrameLength = 0U;
-        state->activeFrameOffset = 0U;
-        if (state->pendingBytes != 0U) {
-            state->droppedLines++;
-            state->droppedBytes += state->pendingBytes;
-            state->pendingBytes = 0U;
-        }
+        logResetCorruptedQueue(state);
         logExitCritical();
         return false;
     }
 
     lPayloadRead = ringBufferRead(&state->queue, state->activeFrame, lFrameLength);
     if (lPayloadRead != lFrameLength) {
-        state->queue.tail = state->queue.head;
-        state->activeFrameLength = 0U;
-        state->activeFrameOffset = 0U;
-        if (state->pendingBytes != 0U) {
-            state->droppedLines++;
-            state->droppedBytes += state->pendingBytes;
-            state->pendingBytes = 0U;
-        }
+        logResetCorruptedQueue(state);
         logExitCritical();
         return false;
     }
@@ -528,7 +560,6 @@ stRingBuffer *logGetInputBuffer(uint32_t transport)
 
 int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length)
 {
-    const stLogInterface *lInterface = NULL;
     stLogOutputState *lOutputState = NULL;
 
     if ((buffer == NULL) || (length == 0U)) {
@@ -539,9 +570,7 @@ int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t 
         return 0;
     }
 
-    lInterface = logGetInterfaceByTransport(transport);
-    lOutputState = logGetOutputStateByTransport(transport);
-    if (!logIsValidOutputInterface(lInterface) || (lOutputState == NULL)) {
+    if (!logGetOutputBinding(transport, NULL, &lOutputState)) {
         return 0;
     }
 
@@ -562,9 +591,7 @@ int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uin
         return 0;
     }
 
-    lInterface = logGetInterfaceByTransport(transport);
-    lOutputState = logGetOutputStateByTransport(transport);
-    if (!logIsValidOutputInterface(lInterface) || (lOutputState == NULL)) {
+    if (!logGetOutputBinding(transport, &lInterface, &lOutputState)) {
         return 0;
     }
 
@@ -580,9 +607,7 @@ int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uin
         lWriteLength = (int32_t)length;
     }
 
-    logEnterCritical();
-    lOutputState->sentBytes += (uint32_t)lWriteLength;
-    logExitCritical();
+    logCommitWrite(lOutputState, (uint16_t)lWriteLength);
 
     return lWriteLength;
 }
@@ -625,17 +650,13 @@ static void logProcessInterface(const stLogInterface *interface, stLogOutputStat
 
         logEnterCritical();
         state->activeFrameOffset = (uint16_t)(state->activeFrameOffset + (uint16_t)lWriteLength);
-        state->sentBytes += (uint32_t)lWriteLength;
-        if (state->pendingBytes >= (uint32_t)lWriteLength) {
-            state->pendingBytes -= (uint32_t)lWriteLength;
-        } else {
-            state->pendingBytes = 0U;
-        }
         if (state->activeFrameOffset >= state->activeFrameLength) {
             state->activeFrameLength = 0U;
             state->activeFrameOffset = 0U;
         }
         logExitCritical();
+
+        logCommitWrite(state, (uint16_t)lWriteLength);
 
         lBudget = (uint16_t)(lBudget - (uint16_t)lWriteLength);
         if ((uint16_t)lWriteLength < lRequestLength) {
@@ -679,7 +700,6 @@ void ConsoleBackGournd(void)
 
 bool logGetStats(uint32_t transport, stLogOutputStats *stats)
 {
-    const stLogInterface *lInterface = NULL;
     stLogOutputState *lOutputState = NULL;
 
     if (stats == NULL) {
@@ -691,10 +711,7 @@ bool logGetStats(uint32_t transport, stLogOutputStats *stats)
         return false;
     }
 
-    lInterface = logGetInterfaceByTransport(transport);
-    lOutputState = logGetOutputStateByTransport(transport);
-    if (!logIsValidOutputInterface(lInterface) ||
-        (lOutputState == NULL) ||
+    if (!logGetOutputBinding(transport, NULL, &lOutputState) ||
         (lOutputState->isQueueInitialized == false)) {
         return false;
     }

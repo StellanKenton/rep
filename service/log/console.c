@@ -255,59 +255,55 @@ static void consoleHandleLine(stConsoleSession *session)
     char *lArgv[CONSOLE_MAX_ARGS];
     int lArgc = 0;
     const stConsoleCommand *lCommand = NULL;
-    eConsoleCommandResult lResult;
+    eConsoleCommandResult lResult = CONSOLE_COMMAND_RESULT_OK;
 
     if (session == NULL) {
         return;
     }
 
-    if (session->isLineOverflow) {
-        (void)logConsoleReply(session->transport, "ERROR: command buffer overflow");
-        consoleResetSession(session);
-        return;
-    }
+    do {
+        if (session->isLineOverflow) {
+            (void)logConsoleReply(session->transport, "ERROR: command buffer overflow");
+            break;
+        }
 
-    if (session->lineLength == 0U) {
-        consoleResetSession(session);
-        return;
-    }
+        if (session->lineLength == 0U) {
+            break;
+        }
 
-    session->lineBuffer[session->lineLength] = '\0';
-    lArgc = consoleTokenize(session->lineBuffer, lArgv, CONSOLE_MAX_ARGS);
-    if (lArgc <= 0) {
-        (void)logConsoleReply(session->transport, "ERROR: invalid argument");
-        consoleResetSession(session);
-        return;
-    }
+        session->lineBuffer[session->lineLength] = '\0';
+        lArgc = consoleTokenize(session->lineBuffer, lArgv, CONSOLE_MAX_ARGS);
+        if (lArgc <= 0) {
+            (void)logConsoleReply(session->transport, "ERROR: invalid argument");
+            break;
+        }
 
-    if (consoleIsHelpCommand(lArgv[0])) {
-        if (lArgc != 1) {
-            (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: help");
-        } else if (consoleReplyCommandGroups(session->transport) != CONSOLE_COMMAND_RESULT_OK) {
+        if (consoleIsHelpCommand(lArgv[0])) {
+            if (lArgc != 1) {
+                (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: help");
+            } else if (consoleReplyCommandGroups(session->transport) != CONSOLE_COMMAND_RESULT_OK) {
+                (void)logConsoleReply(session->transport, "ERROR: command failed");
+            }
+            break;
+        }
+
+        lCommand = consoleFindCommand(lArgv[0]);
+        if (lCommand == NULL) {
+            (void)logConsoleReply(session->transport, "ERROR: unknown command");
+            break;
+        }
+
+        lResult = lCommand->handler(session->transport, lArgc, lArgv);
+        if (lResult == CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT) {
+            if ((lCommand->helpText != NULL) && (lCommand->helpText[0] != '\0')) {
+                (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: %s", lCommand->helpText);
+            } else {
+                (void)logConsoleReply(session->transport, "ERROR: invalid argument");
+            }
+        } else if (lResult != CONSOLE_COMMAND_RESULT_OK) {
             (void)logConsoleReply(session->transport, "ERROR: command failed");
         }
-
-        consoleResetSession(session);
-        return;
-    }
-
-    lCommand = consoleFindCommand(lArgv[0]);
-    if (lCommand == NULL) {
-        (void)logConsoleReply(session->transport, "ERROR: unknown command");
-        consoleResetSession(session);
-        return;
-    }
-
-    lResult = lCommand->handler(session->transport, lArgc, lArgv);
-    if (lResult == CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT) {
-        if ((lCommand->helpText != NULL) && (lCommand->helpText[0] != '\0')) {
-            (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: %s", lCommand->helpText);
-        } else {
-            (void)logConsoleReply(session->transport, "ERROR: invalid argument");
-        }
-    } else if (lResult != CONSOLE_COMMAND_RESULT_OK) {
-        (void)logConsoleReply(session->transport, "ERROR: command failed");
-    }
+    } while (false);
 
     consoleResetSession(session);
 }
@@ -343,18 +339,24 @@ static void consoleProcessSession(stConsoleSession *session)
 {
     uint32_t lProcessed = 0U;
     uint8_t lData = 0U;
+    stRingBuffer *lInputBuffer = NULL;
 
     if (session == NULL) {
         return;
     }
 
-    session->inputBuffer = logGetInputBuffer(session->transport);
-    if (session->inputBuffer == NULL) {
+    lInputBuffer = session->inputBuffer;
+    if (lInputBuffer == NULL) {
+        lInputBuffer = logGetInputBuffer(session->transport);
+        session->inputBuffer = lInputBuffer;
+    }
+
+    if (lInputBuffer == NULL) {
         return;
     }
 
     while ((lProcessed < CONSOLE_PROCESS_BYTES_PER_SESSION) &&
-           (ringBufferPopByte(session->inputBuffer, &lData) == RINGBUFFER_OK)) {
+           (ringBufferPopByte(lInputBuffer, &lData) == RINGBUFFER_OK)) {
         consoleProcessByte(session, lData);
         lProcessed++;
     }
@@ -472,8 +474,8 @@ int32_t logConsoleReply(uint32_t transport, const char *format, ...)
     va_end(lArgs);
 
     if (lLength < 0) {
-        consoleUnlockReplyBuffer();
-        return 0;
+        lTotalWritten = 0;
+        goto exit;
     }
 
     if (lLength >= (int)sizeof(gConsoleReplyBuffer)) {
@@ -498,14 +500,15 @@ int32_t logConsoleReply(uint32_t transport, const char *format, ...)
 
         lWritten = logWriteToTransport(transport, (const uint8_t *)&gConsoleReplyBuffer[lOffset], lChunkLength);
         if (lWritten <= 0) {
-            consoleUnlockReplyBuffer();
-            return 0;
+            lTotalWritten = 0;
+            goto exit;
         }
 
         lTotalWritten += lWritten;
         lOffset = (uint16_t)(lOffset + lChunkLength);
     }
 
+exit:
     consoleUnlockReplyBuffer();
 
     return lTotalWritten;

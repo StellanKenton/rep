@@ -94,6 +94,22 @@ typedef struct stConsoleCommand {
     consoleCommandHandler handler;
 } stConsoleCommand;
 
+#define LOG_OUTPUT_FRAME_HEADER_SIZE 2U
+
+typedef struct stLogOutputState {
+    stRingBuffer queue;
+    uint8_t queueStorage[LOG_OUTPUT_QUEUE_SIZE];
+    uint8_t activeFrame[LOG_OUTPUT_MAX_FRAME_SIZE];
+    uint16_t activeFrameLength;
+    uint16_t activeFrameOffset;
+    uint32_t pendingBytes;
+    uint32_t droppedLines;
+    uint32_t droppedBytes;
+    uint32_t sentBytes;
+    uint32_t busyCount;
+    bool isQueueInitialized;
+} stLogOutputState;
+
 bool logInit(void);
 int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 bool logRegisterConsole(const stConsoleCommand *command);
