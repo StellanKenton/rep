@@ -24,6 +24,7 @@ typedef enum eGd25qxxxDevMap {
 } eGd25qxxxMapType;
 
 #define GD25QXXX_MANUFACTURER_ID              0xC8U
+#define GD25QXXX_WINBOND_MANUFACTURER_ID      0xEFU
 #define GD25QXXX_PAGE_SIZE                    256U
 #define GD25QXXX_SECTOR_SIZE                  4096UL
 #define GD25QXXX_BLOCK64K_SIZE                65536UL

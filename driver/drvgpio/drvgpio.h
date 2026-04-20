@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "rep_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

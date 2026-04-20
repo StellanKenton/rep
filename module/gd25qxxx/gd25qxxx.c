@@ -49,6 +49,7 @@ static void gd25qxxxClrInfo(stGd25qxxxInfo *info);
 static bool gd25qxxxIsValidDev(const stGd25qxxxDevice *device);
 static bool gd25qxxxIsReadyXfer(const stGd25qxxxDevice *device);
 static bool gd25qxxxIsValidCapacityId(uint8_t capacityId);
+static bool gd25qxxxIsSupportedManufacturerId(uint8_t manufacturerId);
 static bool gd25qxxxIsRangeValid(const stGd25qxxxDevice *device, uint32_t address, uint32_t length);
 static void gd25qxxxFillInfo(stGd25qxxxInfo *info);
 static eGd25qxxxStatus gd25qxxxMapPortStatus(eDrvStatus status);
@@ -145,7 +146,7 @@ eGd25qxxxStatus gd25qxxxInit(eGd25qxxxMapType device)
         return lStatus;
     }
 
-    if (lDeviceCtx->info.manufacturerId != GD25QXXX_MANUFACTURER_ID) {
+    if (!gd25qxxxIsSupportedManufacturerId(lDeviceCtx->info.manufacturerId)) {
         return GD25QXXX_STATUS_DEVICE_ID_MISMATCH;
     }
 
@@ -487,6 +488,12 @@ static bool gd25qxxxIsReadyXfer(const stGd25qxxxDevice *device)
 static bool gd25qxxxIsValidCapacityId(uint8_t capacityId)
 {
     return (capacityId >= 0x10U) && (capacityId < 32U);
+}
+
+static bool gd25qxxxIsSupportedManufacturerId(uint8_t manufacturerId)
+{
+    return (manufacturerId == GD25QXXX_MANUFACTURER_ID) ||
+           (manufacturerId == GD25QXXX_WINBOND_MANUFACTURER_ID);
 }
 
 static bool gd25qxxxIsRangeValid(const stGd25qxxxDevice *device, uint32_t address, uint32_t length)

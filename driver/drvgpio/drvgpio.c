@@ -10,7 +10,7 @@
 #include "drvgpio.h"
 
 #if (DRVGPIO_LOG_SUPPORT == 1)
-#include "../../Console/log.h"
+#include "../../service/log/log.h"
 #endif
 
 #include <stdbool.h>
@@ -18,9 +18,39 @@
 
 #define DRVGPIO_LOG_TAG                 "drvGpio"
 
+static uint32_t gDrvGpioInvalidPinMask = 0U;
+static bool gDrvGpioInvalidBspLogged = false;
+static bool gDrvGpioInvalidStateLogged = false;
+static bool gDrvGpioWriteHookMissingLogged = false;
+static bool gDrvGpioReadHookMissingLogged = false;
+static bool gDrvGpioToggleHookMissingLogged = false;
+
+static void drvGpioLogInvalidPinOnce(uint8_t pin);
+
 __attribute__((weak)) const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void)
 {
     return NULL;
+}
+
+static void drvGpioLogInvalidPinOnce(uint8_t pin)
+{
+    uint32_t lPinMask;
+
+    if (pin >= 32U) {
+        if ((gDrvGpioInvalidPinMask & 0x80000000UL) == 0U) {
+            gDrvGpioInvalidPinMask |= 0x80000000UL;
+            LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
+        }
+        return;
+    }
+
+    lPinMask = (uint32_t)1UL << pin;
+    if ((gDrvGpioInvalidPinMask & lPinMask) != 0U) {
+        return;
+    }
+
+    gDrvGpioInvalidPinMask |= lPinMask;
+    LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
 }
 
 /**
@@ -60,8 +90,11 @@ void drvGpioInit(void)
 
     if (!drvGpioHasValidBspInterface()) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "Invalid BSP interface configuration");
-        LOG_E(DRVGPIO_LOG_TAG, "Please ensure all BSP function hooks are properly assigned");
+        if (!gDrvGpioInvalidBspLogged) {
+            gDrvGpioInvalidBspLogged = true;
+            LOG_E(DRVGPIO_LOG_TAG, "Invalid BSP interface configuration");
+            LOG_E(DRVGPIO_LOG_TAG, "Please ensure all BSP function hooks are properly assigned");
+        }
         #endif
         return;
     }
@@ -82,21 +115,27 @@ void drvGpioWrite(uint8_t pin, eDrvGpioPinState state)
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
+        drvGpioLogInvalidPinOnce(pin);
         #endif
         return;
     }
 
     if ((state != DRVGPIO_PIN_RESET) && (state != DRVGPIO_PIN_SET)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO state: %d", state);
+        if (!gDrvGpioInvalidStateLogged) {
+            gDrvGpioInvalidStateLogged = true;
+            LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO state: %d", state);
+        }
         #endif
         return;
     }
 
     if ((lBspInterface == NULL) || (lBspInterface->write == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "GPIO write hook is not configured");
+        if (!gDrvGpioWriteHookMissingLogged) {
+            gDrvGpioWriteHookMissingLogged = true;
+            LOG_E(DRVGPIO_LOG_TAG, "GPIO write hook is not configured");
+        }
         #endif
         return;
     }
@@ -117,14 +156,17 @@ eDrvGpioPinState drvGpioRead(uint8_t pin)
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
+        drvGpioLogInvalidPinOnce(pin);
         #endif
         return DRVGPIO_PIN_STATE_INVALID;
     }
 
     if ((lBspInterface == NULL) || (lBspInterface->read == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "GPIO read hook is not configured");
+        if (!gDrvGpioReadHookMissingLogged) {
+            gDrvGpioReadHookMissingLogged = true;
+            LOG_E(DRVGPIO_LOG_TAG, "GPIO read hook is not configured");
+        }
         #endif
         return DRVGPIO_PIN_STATE_INVALID;
     }
@@ -146,14 +188,17 @@ void drvGpioToggle(uint8_t pin)
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
+        drvGpioLogInvalidPinOnce(pin);
         #endif
         return;
     }
 
     if ((lBspInterface == NULL) || (lBspInterface->toggle == NULL)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
-        LOG_W(DRVGPIO_LOG_TAG, "GPIO toggle hook is not configured, using read/write fallback");
+        if (!gDrvGpioToggleHookMissingLogged) {
+            gDrvGpioToggleHookMissingLogged = true;
+            LOG_W(DRVGPIO_LOG_TAG, "GPIO toggle hook is not configured, using read/write fallback");
+        }
         #endif
         lTargetState = (drvGpioRead(pin) == DRVGPIO_PIN_SET) ? DRVGPIO_PIN_RESET : DRVGPIO_PIN_SET;
         drvGpioWrite(pin, lTargetState);
