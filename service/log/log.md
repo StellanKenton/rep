@@ -23,15 +23,15 @@ optional_hooks: []
 common_utils:
     - tools/ringbuffer
 copy_minimal_set:
-    - console/log.h
-    - console/log.c
+    - log/log.h
+    - log/log.c
 read_next:
     - console.md
 ---
 
 # Log Hook Guide
 
-这是 `console/` 目录中 log 子模块的权威入口文档。
+这是 `service/log/` 目录中 log 子模块的权威入口文档。
 
 ## 1. 本层目标和边界
 
@@ -40,6 +40,9 @@ read_next:
 本层负责：
 
 - `LOG_E/W/I/D` 和 `LOG_T` 统一入口。
+- `logInit()` 统一初始化 log core 和 console 分支。
+- `logRegisterConsole()` 统一注册 console 命令。
+- `ConsoleBackGournd()` 统一轮询输出刷写、平台输入拉取和 console 命令处理。
 - transport 初始化、输出写接口、输入 ring buffer provider。
 - 为 `console` 提供输入枚举和定向回复能力。
 
@@ -61,22 +64,19 @@ read_next:
 稳定 API：
 
 - `logInit()`
-- `logGetInputCount()`
-- `logGetInputTransport()`
-- `logGetInputBuffer()`
-- `logWriteToTransport()`
 - `logDirectWriteToTransport()`
-- `logProcessOutput()`
-- `logGetStats()`
-- `logSetTimestampProvider()`
+- `logRegisterConsole()`
+- `ConsoleBackGournd()`
 
 补充语义：
 
-- `logWriteToTransport()`：把数据压入目标 transport 的输出队列，真正发出依赖 `logProcessOutput()`。
 - `logDirectWriteToTransport()`：直接调用目标 transport 的 `write` hook，绕过输出队列和 `logProcessOutput()`，调用方自己负责发送时机和必要的重试策略。
 - `LOG_T(buffer)`：默认通过 `LOG_TRANSPORT_RTT` 直写文本，长度自动按字符串结尾计算。
 - `LOG_T(transport, buffer)`：按指定 transport 直写文本，长度自动按字符串结尾计算。
 - `LOG_T(transport, buffer, length)`：`logDirectWriteToTransport()` 的兼容封装，适合在调用点直接做 transport 级直写。
+- `logInit()`：先完成 transport 初始化，再初始化 console 内部分支。
+- `logRegisterConsole()`：命令注册统一入口；系统装配层不再直接调用 `consoleRegisterCommand()`。
+- `ConsoleBackGournd()`：单轮执行输出刷写、平台 console 输入轮询和命令处理；系统装配层不再单独调 `logProcessOutput()` 或 `consoleProcess()`。
 
 ## 3. transport hook 契约
 
@@ -85,6 +85,11 @@ read_next:
 | `init` | 可选 | transport provider | `logInit()` | `void (*)(void)` | transport 完成初始化 | `NULL` 表示无需初始化 | `logInit()` 前 | 输入和输出共享同一个 init |
 | `write` | 输出侧必需 | transport provider | `logVWrite()`、`logWriteToTransport()`、`logDirectWriteToTransport()` | `int32_t (*)(const uint8_t *, uint16_t)` | 返回实际写出字节数 | 返回 `0` 视为未发送 | transport 已启用输出 | 不追加额外前缀和换行 |
 | `getBuffer` | 输入侧必需 | transport provider | `logGetInputBuffer()` | `stRingBuffer *(*)(void)` | 返回该 transport 输入缓冲 | 返回 `NULL` 视为无输入 | transport 已启用输入 | log 不拥有该 ring buffer 生命周期 |
+
+项目侧补充约束：
+
+- console 开关应放在 log port 配置头中，例如 `LOG_PORT_CONSOLE_ENABLE`。
+- 若 transport 输入需要先从硬件或调试链路搬运到 software ring buffer，则应由项目侧实现 `logPlatformConsolePoll()`，并在 `ConsoleBackGournd()` 中统一调用。
 
 ## 4. 公共函数使用契约
 
@@ -100,6 +105,7 @@ read_next:
 | 新增 transport | transport provider + `log` 接口表 | `console.c` |
 | 调整日志格式 | `log.c` | transport provider 中硬编码格式化 |
 | 调整 console 回复通道 | `logWriteToTransport()` / `logDirectWriteToTransport()` + `console.c` | 业务命令处理函数 |
+| 调整 console 开关或输入轮询 | `User/port/log_port.*` | `sysmgr.c` 中硬编码 transport 轮询 |
 
 ## 6. 复制到其他工程的最小步骤
 
@@ -119,6 +125,7 @@ read_next:
 
 - `logInit()` 后所有启用 transport 都能完成初始化。
 - 广播日志能写到所有启用输出口。
-- `logWriteToTransport()` 只写到目标 transport。
 - `logDirectWriteToTransport()` 能在不调用 `logProcessOutput()` 的前提下直接写到目标 transport。
+- `logRegisterConsole()` 后命令可被 `ConsoleBackGournd()` 正常分发。
+- `ConsoleBackGournd()` 能同时完成输出刷新和 console 输入处理。
 - 输入缓冲为空或 `NULL` 时行为可预期。

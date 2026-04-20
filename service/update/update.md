@@ -19,7 +19,7 @@ debug_files:
     - update_debug.h
 depends_on:
     - ../../driver/drvmcuflash/drvmcuflash.md
-    - ../console/log.md
+    - ../log/log.md
 forbidden_depends_on:
     - core 直接依赖具体 GD25QXXX 或 HAL Flash 句柄
     - 业务层直接操作升级区地址和标志位地址
@@ -42,7 +42,7 @@ copy_minimal_set:
     - service/update/update_port.c
 read_next:
     - ../../driver/drvmcuflash/drvmcuflash.md
-    - ../console/log.md
+    - ../log/log.md
 ---
 
 # Update Service Guide

@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "log.h"
 #include "ringbuffer.h"
 
 #ifdef __cplusplus
@@ -52,26 +53,25 @@ typedef struct stConsoleSession {
     uint32_t lastActivityTick;
 } stConsoleSession;
 
-typedef enum eConsoleCommandResult {
-    CONSOLE_COMMAND_RESULT_OK = 0,
-    CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT,
-    CONSOLE_COMMAND_RESULT_ERROR,
-} eConsoleCommandResult;
+uint32_t logGetInputCount(void);
+uint32_t logGetInputTransport(uint32_t index);
+stRingBuffer *logGetInputBuffer(uint32_t transport);
+int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
+bool logGetStats(uint32_t transport, stLogOutputStats *stats);
+void logSetTimestampProvider(logTimestampProvider provider);
 
-typedef eConsoleCommandResult (*consoleCommandHandler)(uint32_t transport, int argc, char *argv[]);
+bool consoleCoreInit(void);
+bool consoleCoreRegisterCommand(const stConsoleCommand *command);
+void consoleCoreProcess(void);
+int32_t logConsoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
+void logPlatformConsolePoll(void);
 
-typedef struct stConsoleCommand {
-    const char *commandName;
-    const char *helpText;
-    const char *ownerTag;
-    consoleCommandHandler handler;
-} stConsoleCommand;
-
-bool consoleInit(void);
-bool consoleInitDefault(void);
-bool consoleRegisterCommand(const stConsoleCommand *command);
-void consoleProcess(void);
-int32_t consoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
+#ifndef LOG_CONSOLE_INTERNAL_BUILD
+#define consoleInit() logInit()
+#define consoleRegisterCommand(command) logRegisterConsole(command)
+#define consoleProcess() ConsoleBackGournd()
+#define consoleReply logConsoleReply
+#endif
 
 #ifdef __cplusplus
 }

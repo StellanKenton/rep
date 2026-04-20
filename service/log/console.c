@@ -1,3 +1,4 @@
+#define LOG_CONSOLE_INTERNAL_BUILD 1
 /************************************************************************************
 * @file     : console.c
 * @brief    : Text command console core implementation.
@@ -205,16 +206,16 @@ static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport)
 {
     uint32_t lIndex = 0U;
 
-    if (consoleReply(transport, "Available commands:") <= 0) {
+    if (logConsoleReply(transport, "Available commands:") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
     if (gConsoleCommandCount == 0U) {
-        if (consoleReply(transport, "(none)") <= 0) {
+        if (logConsoleReply(transport, "(none)") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
-        if (consoleReply(transport, "OK") <= 0) {
+        if (logConsoleReply(transport, "OK") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
@@ -227,22 +228,22 @@ static eConsoleCommandResult consoleReplyCommandGroups(uint32_t transport)
 
         if ((lHelpText != NULL) && (lHelpText[0] != '\0')) {
             if ((lGroupName != NULL) && (lGroupName[0] != '\0')) {
-                if (consoleReply(transport, "%s: %s", lGroupName, lHelpText) <= 0) {
+                if (logConsoleReply(transport, "%s: %s", lGroupName, lHelpText) <= 0) {
                     return CONSOLE_COMMAND_RESULT_ERROR;
                 }
-            } else if (consoleReply(transport, "%s", lHelpText) <= 0) {
+            } else if (logConsoleReply(transport, "%s", lHelpText) <= 0) {
                 return CONSOLE_COMMAND_RESULT_ERROR;
             }
         } else if ((lGroupName != NULL) && (lGroupName[0] != '\0')) {
-            if (consoleReply(transport, "%s: %s", lGroupName, gConsoleCommands[lIndex].commandName) <= 0) {
+            if (logConsoleReply(transport, "%s: %s", lGroupName, gConsoleCommands[lIndex].commandName) <= 0) {
                 return CONSOLE_COMMAND_RESULT_ERROR;
             }
-        } else if (consoleReply(transport, "%s", gConsoleCommands[lIndex].commandName) <= 0) {
+        } else if (logConsoleReply(transport, "%s", gConsoleCommands[lIndex].commandName) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -261,7 +262,7 @@ static void consoleHandleLine(stConsoleSession *session)
     }
 
     if (session->isLineOverflow) {
-        (void)consoleReply(session->transport, "ERROR: command buffer overflow");
+        (void)logConsoleReply(session->transport, "ERROR: command buffer overflow");
         consoleResetSession(session);
         return;
     }
@@ -274,16 +275,16 @@ static void consoleHandleLine(stConsoleSession *session)
     session->lineBuffer[session->lineLength] = '\0';
     lArgc = consoleTokenize(session->lineBuffer, lArgv, CONSOLE_MAX_ARGS);
     if (lArgc <= 0) {
-        (void)consoleReply(session->transport, "ERROR: invalid argument");
+        (void)logConsoleReply(session->transport, "ERROR: invalid argument");
         consoleResetSession(session);
         return;
     }
 
     if (consoleIsHelpCommand(lArgv[0])) {
         if (lArgc != 1) {
-            (void)consoleReply(session->transport, "ERROR: invalid argument\nUsage: help");
+            (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: help");
         } else if (consoleReplyCommandGroups(session->transport) != CONSOLE_COMMAND_RESULT_OK) {
-            (void)consoleReply(session->transport, "ERROR: command failed");
+            (void)logConsoleReply(session->transport, "ERROR: command failed");
         }
 
         consoleResetSession(session);
@@ -292,7 +293,7 @@ static void consoleHandleLine(stConsoleSession *session)
 
     lCommand = consoleFindCommand(lArgv[0]);
     if (lCommand == NULL) {
-        (void)consoleReply(session->transport, "ERROR: unknown command");
+        (void)logConsoleReply(session->transport, "ERROR: unknown command");
         consoleResetSession(session);
         return;
     }
@@ -300,12 +301,12 @@ static void consoleHandleLine(stConsoleSession *session)
     lResult = lCommand->handler(session->transport, lArgc, lArgv);
     if (lResult == CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT) {
         if ((lCommand->helpText != NULL) && (lCommand->helpText[0] != '\0')) {
-            (void)consoleReply(session->transport, "ERROR: invalid argument\nUsage: %s", lCommand->helpText);
+            (void)logConsoleReply(session->transport, "ERROR: invalid argument\nUsage: %s", lCommand->helpText);
         } else {
-            (void)consoleReply(session->transport, "ERROR: invalid argument");
+            (void)logConsoleReply(session->transport, "ERROR: invalid argument");
         }
     } else if (lResult != CONSOLE_COMMAND_RESULT_OK) {
-        (void)consoleReply(session->transport, "ERROR: command failed");
+        (void)logConsoleReply(session->transport, "ERROR: command failed");
     }
 
     consoleResetSession(session);
@@ -359,17 +360,13 @@ static void consoleProcessSession(stConsoleSession *session)
     }
 }
 
-bool consoleInit(void)
+bool consoleCoreInit(void)
 {
     uint32_t lInputCount = 0U;
     uint32_t lTransportIndex = 0U;
 
     if (gConsoleIsInitialized) {
         return true;
-    }
-
-    if (!logInit()) {
-        return false;
     }
 
     (void)memset(gConsoleSessions, 0, sizeof(gConsoleSessions));
@@ -413,7 +410,7 @@ bool consoleRegisterCommand(const stConsoleCommand *command)
         return false;
     }
 
-    if (!gConsoleIsInitialized && !consoleInit()) {
+    if (!gConsoleIsInitialized && !consoleCoreInit()) {
         return false;
     }
 
@@ -431,22 +428,29 @@ bool consoleRegisterCommand(const stConsoleCommand *command)
     return true;
 }
 
-void consoleProcess(void)
+bool consoleCoreRegisterCommand(const stConsoleCommand *command)
+{
+    return consoleRegisterCommand(command);
+}
+
+void consoleCoreProcess(void)
 {
     uint32_t lIndex = 0U;
 
-    logProcessOutput();
-
-    if (!gConsoleIsInitialized && !consoleInit()) {
+    if (!gConsoleIsInitialized) {
         return;
     }
-    
+
     for (lIndex = 0U; lIndex < gConsoleSessionCount; lIndex++) {
         consoleProcessSession(&gConsoleSessions[lIndex]);
     }
 }
 
-int32_t consoleReply(uint32_t transport, const char *format, ...)
+__attribute__((weak)) void logPlatformConsolePoll(void)
+{
+}
+
+int32_t logConsoleReply(uint32_t transport, const char *format, ...)
 {
     int lLength = 0;
     int32_t lTotalWritten = 0;

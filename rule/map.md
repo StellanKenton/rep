@@ -38,7 +38,7 @@ read_next:
 | `driver/` | 公共驱动层与 BSP hook 契约 | `driver/drvrule.md` |
 | `module/` | passive module 与 assembly 契约 | `module/module.md` |
 | `service/` | 通用服务型状态机、生命周期与项目绑定 hook | `service/service.md` |
-| `console/` | console 与 log 公共 contract | `console/console.md`、`console/log.md` |
+| `service/log/` | console 与 log 公共 contract | `service/log/console.md`、`service/log/log.md` |
 | `comm/` | 流解析、帧解析、帧流程编排 | `comm/comm.md` |
 | `tools/` | 算法与基础容器工具 | `tools/tools.md` |
 | `example/` | 项目绑定示例入口，承载 `manager/`、`system/` 等项目相关参考结构 | `example/example.md` |
@@ -58,7 +58,7 @@ read_next:
 | 新增或修改功能模块 | `rule/rule.md`、`module/module.md` | 对应模块主文档、assembly 头、`.h/.c` |
 | 新增或修改公共服务 | `rule/rule.md`、`service/service.md` | 对应 service 主文档、`*_port.h`、`.h/.c` |
 | 修改服务生命周期或系统编排 | `example/example.md` | `example/manager/manager.md`、`example/system/system.md`、对应 service 文档 |
-| 修改 console / log | `console/console.md`、`console/log.md` | 对应头文件和实现 |
+| 修改 console / log | `service/log/console.md`、`service/log/log.md` | 对应头文件和实现 |
 | 修改协议解析或链路流程 | `comm/comm.md` | `flowparser.md`、`frameparser.md`、`frameprocess.md` |
 | 修改基础算法或容器 | `tools/tools.md` | 对应工具目录主文档与 `.h/.c` |
 | 新建文档或套模板 | `example/example.md` | 对应父目录总文档 |

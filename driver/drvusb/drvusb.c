@@ -12,7 +12,7 @@
 #include "drvusb.h"
 
 #if (DRVUSB_LOG_SUPPORT == 1)
-#include "../../service/console/log.h"
+#include "../../service/log/log.h"
 #endif
 
 #include <stdbool.h>

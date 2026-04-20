@@ -11,7 +11,7 @@
 
 #include <string.h>
 
-#include "../../service/console/log.h"
+#include "../../service/log/log.h"
 
 #define FRM_PSR_LOG_TAG  "FrmPsr"
 

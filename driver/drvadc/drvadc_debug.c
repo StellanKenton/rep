@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../service/console/console.h"
+#include "../../service/log/console.h"
 
 static const char *drvAdcDebugGetChannelName(uint8_t adc);
 static const char *drvAdcDebugGetStatusText(eDrvStatus status);

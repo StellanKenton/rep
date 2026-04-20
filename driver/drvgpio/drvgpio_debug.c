@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "console.h"
+#include "../../service/log/console.h"
 
 static bool drvGpioDebugFindPinByName(const char *pinName, eDrvGpioPinMap *pin);
 static const char *drvGpioDebugGetPinName(eDrvGpioPinMap pin);

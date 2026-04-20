@@ -13,6 +13,8 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#define LOG_CONSOLE_INTERNAL_BUILD 1
+#include "console.h"
 #include "../rtos/rtos.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_NONE) && (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
@@ -67,6 +69,7 @@ static uint16_t logDecodeFrameLength(const uint8_t header[LOG_OUTPUT_FRAME_HEADE
 static int32_t logQueueOutput(stLogOutputState *state, const uint8_t *buffer, uint16_t length);
 static bool logLoadNextFrame(stLogOutputState *state);
 static void logProcessInterface(const stLogInterface *interface, stLogOutputState *state);
+static void logProcessOutputCore(void);
 
 __attribute__((weak)) const stLogInterface *logGetPlatformInterfaces(void)
 {
@@ -449,7 +452,22 @@ bool logInit(void)
     }
 
     gLogIsInitialized = true;
+
+    if (!consoleCoreInit()) {
+        gLogIsInitialized = false;
+        return false;
+    }
+
     return true;
+}
+
+bool logRegisterConsole(const stConsoleCommand *command)
+{
+    if (!logInit()) {
+        return false;
+    }
+
+    return consoleCoreRegisterCommand(command);
 }
 
 uint32_t logGetInputCount(void)
@@ -626,7 +644,7 @@ static void logProcessInterface(const stLogInterface *interface, stLogOutputStat
     }
 }
 
-void logProcessOutput(void)
+static void logProcessOutputCore(void)
 {
     const stLogInterface *lInterfaces = logGetInterfaces();
     uint32_t lIndex = 0U;
@@ -646,6 +664,17 @@ void logProcessOutput(void)
 
         logProcessInterface(&lInterfaces[lIndex], &gLogOutputStates[lIndex]);
     }
+}
+
+void ConsoleBackGournd(void)
+{
+    if (!logInit()) {
+        return;
+    }
+
+    logProcessOutputCore();
+    logPlatformConsolePoll();
+    consoleCoreProcess();
 }
 
 bool logGetStats(uint32_t transport, stLogOutputStats *stats)

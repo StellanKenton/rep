@@ -17,12 +17,12 @@ forbidden_depends_on:
 required_hooks: []
 optional_hooks: []
 common_utils:
-    - console/log
+    - log
     - driver/drvmcuflash
 copy_minimal_set:
     - service/
 read_next:
-    - console/log.md
+    - log/log.md
     - rtos/rtos.md
     - update/update.md
 ---
@@ -50,7 +50,7 @@ read_next:
 
 | 子目录 | 作用 | 权威入口 |
 | --- | --- | --- |
-| `console/` | 统一 log/console 输入输出抽象 | `console/log.md` |
+| `log/` | 统一 log/console 输入输出抽象 | `log/log.md` |
 | `rtos/` | RTOS 适配和最小并发抽象 | `rtos/rtos.md` |
 | `update/` | 通用升级状态机与逻辑区域编排 | `update/update.md` |
 
@@ -70,7 +70,7 @@ read_next:
 
 - `driver/` 公共驱动接口。
 - `module/` 公共模块接口。
-- `console/log` 统一日志。
+- `log` 统一日志。
 - `rtos` 最小互斥、tick 和临界区抽象。
 
 禁止依赖：

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "console.h"
+#include "../../service/log/console.h"
 
 #define GD25QXXX_DEBUG_MAX_DATA_LENGTH    16U
 #define GD25QXXX_DEBUG_MAX_REPLY_LENGTH   96U

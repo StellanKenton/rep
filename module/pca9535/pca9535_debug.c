@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "console.h"
+#include "../../service/log/console.h"
 
 static bool pca9535DebugParseDevice(const char *name, ePca9535MapType *device);
 static bool pca9535DebugParseUint32(const char *text, uint32_t *value);

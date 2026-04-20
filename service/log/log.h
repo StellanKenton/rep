@@ -79,15 +79,25 @@ typedef struct stLogOutputStats {
     bool hasPendingFrame;
 } stLogOutputStats;
 
+typedef enum eConsoleCommandResult {
+    CONSOLE_COMMAND_RESULT_OK = 0,
+    CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT,
+    CONSOLE_COMMAND_RESULT_ERROR,
+} eConsoleCommandResult;
+
+typedef eConsoleCommandResult (*consoleCommandHandler)(uint32_t transport, int argc, char *argv[]);
+
+typedef struct stConsoleCommand {
+    const char *commandName;
+    const char *helpText;
+    const char *ownerTag;
+    consoleCommandHandler handler;
+} stConsoleCommand;
+
 bool logInit(void);
-uint32_t logGetInputCount(void);
-uint32_t logGetInputTransport(uint32_t index);
-stRingBuffer *logGetInputBuffer(uint32_t transport);
-int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
-void logProcessOutput(void);
-bool logGetStats(uint32_t transport, stLogOutputStats *stats);
-void logSetTimestampProvider(logTimestampProvider provider);
+bool logRegisterConsole(const stConsoleCommand *command);
+void ConsoleBackGournd(void);
 
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
 void logVWrite(eLogLevel level, const char *tag, const char *format, va_list args);
