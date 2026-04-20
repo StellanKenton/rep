@@ -19,12 +19,6 @@
 extern "C" {
 #endif
 
-typedef enum eFrameParMap {
-    FRAME_PROTOCOL0 = 0,
-    FRAME_PROTOCOL1,
-    FRAME_PROTOCOL_MAX,
-} eFrameParMapType;
-
 typedef enum eFrmPsrSta {
     FRM_PSR_OK = 0,
     FRM_PSR_EMPTY,
@@ -168,6 +162,14 @@ typedef struct stFrmPsr {
     bool hasReadyPkt;
     bool isInit;
 } stFrmPsr;
+
+uint32_t frmPsrGetPlatformTickMs(void);
+void frmPsrLoadPlatformDefaultCfg(stFrmPsrCfg *cfg);
+void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCfg);
+void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg);
+uint32_t frmPsrGetPlatformFmtCount(void);
+bool frmPsrSetPlatformFmt(uint32_t protocolId, const stFrmPsrFmt *fmt);
+const stFrmPsrFmt *frmPsrGetPlatformFmt(uint32_t protocolId);
 
 bool frmPsrIsRunCfgValid(const stFrmPsrRunCfg *runCfg);
 bool frmPsrIsRxFmtValid(const stFrmPsrRxFmt *rxFmt);

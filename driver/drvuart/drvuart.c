@@ -10,7 +10,7 @@
 #include "drvuart.h"
 
 #if (DRVUART_LOG_SUPPORT == 1)
-#include "../../Console/log.h"
+#include "../../service/log/log.h"
 #endif
 
 #include <stdbool.h>

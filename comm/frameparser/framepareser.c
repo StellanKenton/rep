@@ -44,9 +44,9 @@ __attribute__((weak)) void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCf
     runCfg->getTick = frmPsrGetPlatformTickMs;
 }
 
-__attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(eFrameParMapType protocol, stFrmPsrProtoCfg *protoCfg)
+__attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg)
 {
-    (void)protocol;
+    (void)protocolId;
 
     if (protoCfg != NULL) {
         (void)memset(protoCfg, 0, sizeof(*protoCfg));
@@ -58,16 +58,16 @@ __attribute__((weak)) uint32_t frmPsrGetPlatformFmtCount(void)
     return 0U;
 }
 
-__attribute__((weak)) bool frmPsrSetPlatformFmt(eFrameParMapType protocol, const stFrmPsrFmt *fmt)
+__attribute__((weak)) bool frmPsrSetPlatformFmt(uint32_t protocolId, const stFrmPsrFmt *fmt)
 {
-    (void)protocol;
+    (void)protocolId;
     (void)fmt;
     return false;
 }
 
-__attribute__((weak)) const stFrmPsrFmt *frmPsrGetPlatformFmt(eFrameParMapType protocol)
+__attribute__((weak)) const stFrmPsrFmt *frmPsrGetPlatformFmt(uint32_t protocolId)
 {
-    (void)protocol;
+    (void)protocolId;
     return NULL;
 }
 

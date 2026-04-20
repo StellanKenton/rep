@@ -41,6 +41,8 @@ read_next:
 
 `frameparser` 负责从字节流 ring buffer 中重组一帧完整协议包，并在发送侧按格式对象生成完整数据包。它不解释业务命令，也不直接管理链路驱动。
 
+`frameparser` core 只接受通用 `protocolId` 作为平台默认协议查询键，不在 `rep/` 内定义任何项目私有协议枚举；具体协议编号由外部工程的 port/provider 层定义。
+
 ## 2. 目录内文件职责
 
 | 文件 | 职责 |
