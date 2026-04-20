@@ -15,33 +15,12 @@
 
 #define FRM_PSR_LOG_TAG  "FrmPsr"
 
+uint32_t frmPsrGetPlatformTickMs(void);
+void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg);
+
 __attribute__((weak)) uint32_t frmPsrGetPlatformTickMs(void)
 {
     return 0U;
-}
-
-__attribute__((weak)) void frmPsrLoadPlatformDefaultCfg(stFrmPsrCfg *cfg)
-{
-    if (cfg == NULL) {
-        return;
-    }
-
-    if (cfg->minHeadLen == 0U) {
-        cfg->minHeadLen = cfg->headPatLen;
-    }
-
-    if (cfg->getTick == NULL) {
-        cfg->getTick = frmPsrGetPlatformTickMs;
-    }
-}
-
-__attribute__((weak)) void frmPsrLoadPlatformDefaultRunCfg(stFrmPsrRunCfg *runCfg)
-{
-    if ((runCfg == NULL) || (runCfg->getTick != NULL)) {
-        return;
-    }
-
-    runCfg->getTick = frmPsrGetPlatformTickMs;
 }
 
 __attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg)
@@ -53,41 +32,24 @@ __attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId
     }
 }
 
-__attribute__((weak)) uint32_t frmPsrGetPlatformFmtCount(void)
-{
-    return 0U;
-}
-
-__attribute__((weak)) bool frmPsrSetPlatformFmt(uint32_t protocolId, const stFrmPsrFmt *fmt)
-{
-    (void)protocolId;
-    (void)fmt;
-    return false;
-}
-
-__attribute__((weak)) const stFrmPsrFmt *frmPsrGetPlatformFmt(uint32_t protocolId)
-{
-    (void)protocolId;
-    return NULL;
-}
-
 static uint32_t frmPsrMinU32(uint32_t left, uint32_t right);
 static uint32_t frmPsrToPhyIdx(const stRingBuffer *ringBuf, uint32_t logIdx);
 static uint32_t frmPsrPeekOff(const stRingBuffer *ringBuf, uint32_t off, uint8_t *buf, uint32_t len);
 static bool frmPsrPeekByte(const stRingBuffer *ringBuf, uint32_t off, uint8_t *val);
-static bool frmPsrIsHeadAt(const stFrmPsr *psr, uint32_t off);
+static bool frmPsrGetHeadPatLenAt(const stFrmPsr *psr, uint32_t off, uint16_t *headPatLen);
 static uint32_t frmPsrFindPartHeadLen(const stFrmPsr *psr, uint32_t usedLen);
 static stFrmPsrHeadHit frmPsrFindHead(const stFrmPsr *psr, uint32_t usedLen);
+static bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg);
+static bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg);
 static void frmPsrClrPend(stFrmPsr *psr);
+static void frmPsrClrReady(stFrmPsr *psr);
 static uint32_t frmPsrGetTickMs(const stFrmPsr *psr);
 static bool frmPsrIsPktTout(const stFrmPsr *psr);
 static bool frmPsrFixOff(uint32_t pktLen, int32_t off, uint32_t *realOff);
-static bool frmPsrGetPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen, uint32_t *pktCrc);
-static bool frmPsrSetPktCrc(int32_t crcFieldOff, uint8_t crcFieldLen, eFrmPsrCrcEnd crcFieldEnd, uint8_t *pktBuf, uint32_t pktLen, uint32_t pktCrc);
-static bool frmPsrChkPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen);
-static void frmPsrLoadCfgByProtoCfg(stFrmPsrCfg *cfg, const stFrmPsrProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize);
-static void frmPsrLoadCfgByFmt(stFrmPsrCfg *cfg, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg);
-static eFrmPsrSta frmPsrMkPktInner(const stFrmPsrTxFmt *txFmt, const uint8_t *payloadBuf, uint32_t payloadLen, uint8_t *pktBuf, uint32_t pktBufSize, uint32_t *pktLen);
+static bool frmPsrIsFieldCfgValid(uint16_t fieldOff, uint8_t fieldLen, uint16_t headLen);
+static bool frmPsrGetPktCrc(const stFrmPsrProtoCfg *protoCfg, const uint8_t *pktBuf, uint32_t pktLen, uint32_t *pktCrc);
+static bool frmPsrChkPktCrc(const stFrmPsrProtoCfg *protoCfg, const uint8_t *pktBuf, uint32_t pktLen);
+static void frmPsrLoadPktView(stFrmPsr *psr, uint32_t pktLen, uint32_t headLen);
 
 static uint32_t frmPsrMinU32(uint32_t left, uint32_t right)
 {
@@ -146,39 +108,54 @@ static bool frmPsrPeekByte(const stRingBuffer *ringBuf, uint32_t off, uint8_t *v
     return frmPsrPeekOff(ringBuf, off, val, 1U) == 1U;
 }
 
-static bool frmPsrIsHeadAt(const stFrmPsr *psr, uint32_t off)
+static bool frmPsrGetHeadPatLenAt(const stFrmPsr *psr, uint32_t off, uint16_t *headPatLen)
 {
-    uint32_t lIdx;
-    uint8_t lVal;
-
-    for (lIdx = 0U; lIdx < psr->cfg.headPatLen; lIdx++) {
-        if ((!frmPsrPeekByte(psr->ringBuf, off + lIdx, &lVal)) || (lVal != psr->cfg.headPat[lIdx])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static uint32_t frmPsrFindPartHeadLen(const stFrmPsr *psr, uint32_t usedLen)
-{
-    uint32_t lCandLen;
+    uint32_t lPatIdx;
     uint32_t lCmpIdx;
     uint8_t lVal;
 
-    if ((psr->cfg.headPatLen <= 1U) || (usedLen == 0U)) {
-        return 0U;
+    if ((psr == NULL) || (headPatLen == NULL)) {
+        return false;
     }
 
-    for (lCandLen = frmPsrMinU32(usedLen, psr->cfg.headPatLen - 1U); lCandLen > 0U; lCandLen--) {
-        for (lCmpIdx = 0U; lCmpIdx < lCandLen; lCmpIdx++) {
-            if ((!frmPsrPeekByte(psr->ringBuf, usedLen - lCandLen + lCmpIdx, &lVal)) || (lVal != psr->cfg.headPat[lCmpIdx])) {
+    for (lPatIdx = 0U; lPatIdx < psr->protoCfg.headPatCount; lPatIdx++) {
+        for (lCmpIdx = 0U; lCmpIdx < psr->protoCfg.headPatLen; lCmpIdx++) {
+            if ((!frmPsrPeekByte(&psr->ringBuf, off + lCmpIdx, &lVal)) || (lVal != psr->protoCfg.headPatList[lPatIdx][lCmpIdx])) {
                 break;
             }
         }
 
-        if (lCmpIdx == lCandLen) {
-            return lCandLen;
+        if (lCmpIdx == psr->protoCfg.headPatLen) {
+            *headPatLen = psr->protoCfg.headPatLen;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static uint32_t frmPsrFindPartHeadLen(const stFrmPsr *psr, uint32_t usedLen)
+{
+    uint32_t lPatIdx;
+    uint32_t lCandLen;
+    uint32_t lCmpIdx;
+    uint8_t lVal;
+
+    if ((psr->protoCfg.headPatLen <= 1U) || (usedLen == 0U)) {
+        return 0U;
+    }
+
+    for (lCandLen = frmPsrMinU32(usedLen, (uint32_t)psr->protoCfg.headPatLen - 1U); lCandLen > 0U; lCandLen--) {
+        for (lPatIdx = 0U; lPatIdx < psr->protoCfg.headPatCount; lPatIdx++) {
+            for (lCmpIdx = 0U; lCmpIdx < lCandLen; lCmpIdx++) {
+                if ((!frmPsrPeekByte(&psr->ringBuf, usedLen - lCandLen + lCmpIdx, &lVal)) || (lVal != psr->protoCfg.headPatList[lPatIdx][lCmpIdx])) {
+                    break;
+                }
+            }
+
+            if (lCmpIdx == lCandLen) {
+                return lCandLen;
+            }
         }
     }
 
@@ -187,17 +164,11 @@ static uint32_t frmPsrFindPartHeadLen(const stFrmPsr *psr, uint32_t usedLen)
 
 static stFrmPsrHeadHit frmPsrFindHead(const stFrmPsr *psr, uint32_t usedLen)
 {
-    stFrmPsrHeadHit lRes = {0U, 0U, false};
+    stFrmPsrHeadHit lRes = {0U, 0U, 0U, false};
     uint32_t lOff;
 
-    if (usedLen < psr->cfg.headPatLen) {
-        lRes.partHeadLen = frmPsrFindPartHeadLen(psr, usedLen);
-        lRes.discardLen = usedLen - lRes.partHeadLen;
-        return lRes;
-    }
-
-    for (lOff = 0U; lOff <= (usedLen - psr->cfg.headPatLen); lOff++) {
-        if (frmPsrIsHeadAt(psr, lOff)) {
+    for (lOff = 0U; lOff < usedLen; lOff++) {
+        if (frmPsrGetHeadPatLenAt(psr, lOff, &lRes.headPatLen)) {
             lRes.isFound = true;
             lRes.discardLen = lOff;
             return lRes;
@@ -216,29 +187,92 @@ static void frmPsrClrPend(stFrmPsr *psr)
     psr->hasPendPkt = false;
 }
 
+static bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg)
+{
+    uint32_t lIdx;
+
+    if ((protoCfg == NULL) ||
+        (protoCfg->headPatCount == 0U) ||
+        (protoCfg->headPatCount > FRM_PSR_HEAD_PAT_MAX) ||
+        (protoCfg->headPatLen == 0U) ||
+        (protoCfg->minHeadLen < protoCfg->headPatLen) ||
+        (protoCfg->minPktLen < protoCfg->minHeadLen) ||
+        (protoCfg->maxPktLen < protoCfg->minPktLen) ||
+        (protoCfg->pktLenFunc == NULL) ||
+        (protoCfg->crcCalcFunc == NULL) ||
+        (!frmPsrIsFieldCfgValid(protoCfg->cmdindex, protoCfg->cmdLen, protoCfg->minHeadLen)) ||
+        (!frmPsrIsFieldCfgValid(protoCfg->packlenindex, protoCfg->packlenLen, protoCfg->minHeadLen)) ||
+        (protoCfg->crcFieldLen == 0U) ||
+        (protoCfg->crcFieldLen > sizeof(uint32_t))) {
+        return false;
+    }
+
+    for (lIdx = 0U; lIdx < protoCfg->headPatCount; lIdx++) {
+        if (protoCfg->headPatList[lIdx] == NULL) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg)
+{
+    if ((cfg == NULL) ||
+        (cfg->streamBuf == NULL) ||
+        (cfg->streamBufSize == 0U) ||
+        (cfg->frameBuf == NULL) ||
+        (cfg->frameBufSize == 0U)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void frmPsrClrReady(stFrmPsr *psr)
+{
+    psr->pkt.buf = NULL;
+    psr->pkt.headBuf = NULL;
+    psr->pkt.dataBuf = NULL;
+    psr->pkt.crcBuf = NULL;
+    psr->pkt.cmdBuf = NULL;
+    psr->pkt.pktLenBuf = NULL;
+    psr->pkt.len = 0U;
+    psr->pkt.headLen = 0U;
+    psr->pkt.dataLen = 0U;
+    psr->pkt.crcLen = 0U;
+    psr->pkt.cmdFieldOff = 0U;
+    psr->pkt.pktLenFieldOff = 0U;
+    psr->pkt.crcFieldOff = 0U;
+    psr->pkt.cmdFieldLen = 0U;
+    psr->pkt.pktLenFieldLen = 0U;
+    psr->pkt.crcVal = 0U;
+    psr->hasReadyPkt = false;
+}
+
 static uint32_t frmPsrGetTickMs(const stFrmPsr *psr)
 {
-    if ((psr == NULL) || (psr->cfg.getTick == NULL)) {
+    if ((psr == NULL) || (psr->protoCfg.getTick == NULL)) {
         return 0U;
     }
 
-    return psr->cfg.getTick();
+    return psr->protoCfg.getTick();
 }
 
 static bool frmPsrIsPktTout(const stFrmPsr *psr)
 {
     uint32_t lNowTick;
 
-    if ((psr == NULL) || (psr->hasPendPkt == false) || (psr->cfg.waitPktToutMs == 0U)) {
+    if ((psr == NULL) || (psr->hasPendPkt == false) || (psr->protoCfg.waitPktToutMs == 0U)) {
         return false;
     }
 
-    if (psr->cfg.getTick == NULL) {
+    if (psr->protoCfg.getTick == NULL) {
         return false;
     }
 
     lNowTick = frmPsrGetTickMs(psr);
-    return (uint32_t)(lNowTick - psr->pendPktTick) >= psr->cfg.waitPktToutMs;
+    return (uint32_t)(lNowTick - psr->pendPktTick) >= psr->protoCfg.waitPktToutMs;
 }
 
 static bool frmPsrFixOff(uint32_t pktLen, int32_t off, uint32_t *realOff)
@@ -263,29 +297,38 @@ static bool frmPsrFixOff(uint32_t pktLen, int32_t off, uint32_t *realOff)
     return true;
 }
 
-static bool frmPsrGetPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen, uint32_t *pktCrc)
+static bool frmPsrIsFieldCfgValid(uint16_t fieldOff, uint8_t fieldLen, uint16_t headLen)
+{
+    if (fieldLen == 0U) {
+        return true;
+    }
+
+    return ((uint32_t)fieldOff + (uint32_t)fieldLen) <= headLen;
+}
+
+static bool frmPsrGetPktCrc(const stFrmPsrProtoCfg *protoCfg, const uint8_t *pktBuf, uint32_t pktLen, uint32_t *pktCrc)
 {
     uint32_t lFieldOff;
     uint32_t lIdx;
     uint32_t lVal = 0U;
 
-    if ((cfg == NULL) || (pktBuf == NULL) || (pktCrc == NULL)) {
+    if ((protoCfg == NULL) || (pktBuf == NULL) || (pktCrc == NULL)) {
         return false;
     }
 
-    if ((!frmPsrFixOff(pktLen, cfg->crcFieldOff, &lFieldOff)) ||
-        (cfg->crcFieldLen == 0U) ||
-        (cfg->crcFieldLen > sizeof(uint32_t)) ||
-        ((lFieldOff + cfg->crcFieldLen) > pktLen)) {
+    if ((!frmPsrFixOff(pktLen, protoCfg->crcFieldOff, &lFieldOff)) ||
+        (protoCfg->crcFieldLen == 0U) ||
+        (protoCfg->crcFieldLen > sizeof(uint32_t)) ||
+        ((lFieldOff + protoCfg->crcFieldLen) > pktLen)) {
         return false;
     }
 
-    if (cfg->crcFieldEnd == FRM_PSR_CRC_END_BIG) {
-        for (lIdx = 0U; lIdx < cfg->crcFieldLen; lIdx++) {
+    if (protoCfg->crcFieldEnd == FRM_PSR_CRC_END_BIG) {
+        for (lIdx = 0U; lIdx < protoCfg->crcFieldLen; lIdx++) {
             lVal = (lVal << 8U) | pktBuf[lFieldOff + lIdx];
         }
     } else {
-        for (lIdx = 0U; lIdx < cfg->crcFieldLen; lIdx++) {
+        for (lIdx = 0U; lIdx < protoCfg->crcFieldLen; lIdx++) {
             lVal |= ((uint32_t)pktBuf[lFieldOff + lIdx]) << (8U * lIdx);
         }
     }
@@ -294,415 +337,139 @@ static bool frmPsrGetPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint3
     return true;
 }
 
-static bool frmPsrSetPktCrc(int32_t crcFieldOff, uint8_t crcFieldLen, eFrmPsrCrcEnd crcFieldEnd, uint8_t *pktBuf, uint32_t pktLen, uint32_t pktCrc)
-{
-    uint32_t lFieldOff;
-    uint32_t lIdx;
-
-    if ((pktBuf == NULL) || (crcFieldLen == 0U) || (crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    if ((!frmPsrFixOff(pktLen, crcFieldOff, &lFieldOff)) || ((lFieldOff + crcFieldLen) > pktLen)) {
-        return false;
-    }
-
-    if (crcFieldEnd == FRM_PSR_CRC_END_BIG) {
-        for (lIdx = 0U; lIdx < crcFieldLen; lIdx++) {
-            pktBuf[lFieldOff + lIdx] = (uint8_t)((pktCrc >> (8U * (crcFieldLen - lIdx - 1U))) & 0xFFU);
-        }
-    } else {
-        for (lIdx = 0U; lIdx < crcFieldLen; lIdx++) {
-            pktBuf[lFieldOff + lIdx] = (uint8_t)((pktCrc >> (8U * lIdx)) & 0xFFU);
-        }
-    }
-
-    return true;
-}
-
-static bool frmPsrChkPktCrc(const stFrmPsrCfg *cfg, const uint8_t *pktBuf, uint32_t pktLen)
+static bool frmPsrChkPktCrc(const stFrmPsrProtoCfg *protoCfg, const uint8_t *pktBuf, uint32_t pktLen)
 {
     uint32_t lRangeStart;
     uint32_t lRangeEnd;
     uint32_t lPktCrc;
     uint32_t lCalcCrc;
 
-    if ((cfg == NULL) || (pktBuf == NULL) || (cfg->crcCalcFunc == NULL)) {
+    if ((protoCfg == NULL) || (pktBuf == NULL) || (protoCfg->crcCalcFunc == NULL)) {
         return false;
     }
 
-    if ((!frmPsrFixOff(pktLen, cfg->crcRangeStartOff, &lRangeStart)) || (!frmPsrFixOff(pktLen, cfg->crcRangeEndOff, &lRangeEnd)) || (lRangeEnd < lRangeStart)) {
+    if ((!frmPsrFixOff(pktLen, protoCfg->crcRangeStartOff, &lRangeStart)) || (!frmPsrFixOff(pktLen, protoCfg->crcRangeEndOff, &lRangeEnd)) || (lRangeEnd < lRangeStart)) {
         return false;
     }
 
-    if (!frmPsrGetPktCrc(cfg, pktBuf, pktLen, &lPktCrc)) {
+    if (!frmPsrGetPktCrc(protoCfg, pktBuf, pktLen, &lPktCrc)) {
         return false;
     }
 
-    lCalcCrc = cfg->crcCalcFunc(&pktBuf[lRangeStart], (lRangeEnd - lRangeStart) + 1U, cfg->userCtx);
+    lCalcCrc = protoCfg->crcCalcFunc(&pktBuf[lRangeStart], (lRangeEnd - lRangeStart) + 1U, protoCfg->userCtx);
     return lCalcCrc == lPktCrc;
 }
 
-static void frmPsrLoadCfgByProtoCfg(stFrmPsrCfg *cfg, const stFrmPsrProtoCfg *protoCfg, uint8_t *outBuf, uint16_t outBufSize)
+static void frmPsrLoadPktView(stFrmPsr *psr, uint32_t pktLen, uint32_t headLen)
 {
-    if ((cfg == NULL) || (protoCfg == NULL)) {
+    uint32_t lCrcFieldOff;
+
+    if ((psr == NULL) || (psr->frameBuf == NULL)) {
         return;
     }
 
-    (void)memset(cfg, 0, sizeof(*cfg));
-    cfg->headPat = protoCfg->rxHeadPat;
-    cfg->headPatLen = protoCfg->rxHeadPatLen;
-    cfg->minHeadLen = protoCfg->minHeadLen;
-    cfg->minPktLen = protoCfg->minPktLen;
-    cfg->maxPktLen = protoCfg->maxPktLen;
-    cfg->waitPktToutMs = protoCfg->waitPktToutMs;
-    cfg->crcRangeStartOff = protoCfg->crcRangeStartOff;
-    cfg->crcRangeEndOff = protoCfg->crcRangeEndOff;
-    cfg->crcFieldOff = protoCfg->crcFieldOff;
-    cfg->crcFieldLen = protoCfg->crcFieldLen;
-    cfg->crcFieldEnd = protoCfg->crcFieldEnd;
-    cfg->outBuf = outBuf;
-    cfg->outBufSize = outBufSize;
-    cfg->headLenFunc = protoCfg->headLenFunc;
-    cfg->pktLenFunc = protoCfg->pktLenFunc;
-    cfg->crcCalcFunc = protoCfg->crcCalcFunc;
-    cfg->getTick = protoCfg->getTick;
-    cfg->userCtx = protoCfg->userCtx;
-}
+    frmPsrClrReady(psr);
+    psr->pkt.buf = psr->frameBuf;
+    psr->pkt.headBuf = psr->frameBuf;
+    psr->pkt.len = (uint16_t)pktLen;
+    psr->pkt.headLen = (uint16_t)headLen;
 
-static void frmPsrLoadCfgByFmt(stFrmPsrCfg *cfg, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg)
-{
-    if ((cfg == NULL) || (fmt == NULL) || (runCfg == NULL)) {
-        return;
-    }
-
-    (void)memset(cfg, 0, sizeof(*cfg));
-    cfg->headPat = fmt->rxFmt.headPat;
-    cfg->headPatLen = fmt->rxFmt.headPatLen;
-    cfg->minHeadLen = fmt->rxFmt.minHeadLen;
-    cfg->minPktLen = fmt->rxFmt.minPktLen;
-    cfg->maxPktLen = fmt->rxFmt.maxPktLen;
-    cfg->waitPktToutMs = runCfg->waitPktToutMs;
-    cfg->crcRangeStartOff = fmt->rxFmt.crcRangeStartOff;
-    cfg->crcRangeEndOff = fmt->rxFmt.crcRangeEndOff;
-    cfg->crcFieldOff = fmt->rxFmt.crcFieldOff;
-    cfg->crcFieldLen = fmt->rxFmt.crcFieldLen;
-    cfg->crcFieldEnd = fmt->rxFmt.crcFieldEnd;
-    cfg->outBuf = runCfg->outBuf;
-    cfg->outBufSize = runCfg->outBufSize;
-    cfg->headLenFunc = fmt->rxFmt.headLenFunc;
-    cfg->pktLenFunc = fmt->rxFmt.pktLenFunc;
-    cfg->crcCalcFunc = fmt->rxFmt.crcCalcFunc;
-    cfg->getTick = runCfg->getTick;
-    cfg->userCtx = fmt->rxFmt.userCtx;
-}
-
-static eFrmPsrSta frmPsrMkPktInner(const stFrmPsrTxFmt *txFmt, const uint8_t *payloadBuf, uint32_t payloadLen, uint8_t *pktBuf, uint32_t pktBufSize, uint32_t *pktLen)
-{
-    uint32_t lHeadLen;
-    uint32_t lPktLen;
-    uint32_t lRangeStart;
-    uint32_t lRangeEnd;
-    uint32_t lCalcCrc;
-
-    if ((!frmPsrIsTxFmtValid(txFmt)) || (pktBuf == NULL) || (pktLen == NULL) || ((payloadBuf == NULL) && (payloadLen != 0U))) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    if (txFmt->headBuildFunc != NULL) {
-        lHeadLen = txFmt->headBuildFunc(pktBuf, pktBufSize, payloadLen, txFmt->userCtx);
-    } else {
-        lHeadLen = txFmt->headPatLen;
-        if (lHeadLen > pktBufSize) {
-            return FRM_PSR_OUT_BUF_SMALL;
+    if (frmPsrIsFieldCfgValid(psr->protoCfg.cmdindex, psr->protoCfg.cmdLen, psr->pkt.headLen)) {
+        psr->pkt.cmdFieldOff = psr->protoCfg.cmdindex;
+        psr->pkt.cmdFieldLen = psr->protoCfg.cmdLen;
+        if (psr->pkt.cmdFieldLen > 0U) {
+            psr->pkt.cmdBuf = &psr->frameBuf[psr->pkt.cmdFieldOff];
         }
-        (void)memcpy(pktBuf, txFmt->headPat, lHeadLen);
     }
 
-    if (lHeadLen == 0U) {
-        return FRM_PSR_HEAD_INVALID;
+    if (frmPsrIsFieldCfgValid(psr->protoCfg.packlenindex, psr->protoCfg.packlenLen, psr->pkt.headLen)) {
+        psr->pkt.pktLenFieldOff = psr->protoCfg.packlenindex;
+        psr->pkt.pktLenFieldLen = psr->protoCfg.packlenLen;
+        if (psr->pkt.pktLenFieldLen > 0U) {
+            psr->pkt.pktLenBuf = &psr->frameBuf[psr->pkt.pktLenFieldOff];
+        }
     }
 
-    if (txFmt->pktLenFunc != NULL) {
-        lPktLen = txFmt->pktLenFunc(lHeadLen, payloadLen, txFmt->userCtx);
-    } else {
-        lPktLen = lHeadLen + payloadLen + txFmt->crcFieldLen;
+    if (headLen < pktLen) {
+        psr->pkt.dataBuf = &psr->frameBuf[headLen];
+        psr->pkt.dataLen = (uint16_t)(pktLen - headLen);
     }
 
-    if ((lPktLen < lHeadLen) || ((lHeadLen + payloadLen) > lPktLen) || (lPktLen < txFmt->minPktLen) || (lPktLen > txFmt->maxPktLen)) {
-        return FRM_PSR_LEN_INVALID;
+    if ((!frmPsrFixOff(pktLen, psr->protoCfg.crcFieldOff, &lCrcFieldOff)) ||
+        (psr->protoCfg.crcFieldLen == 0U) ||
+        ((lCrcFieldOff + psr->protoCfg.crcFieldLen) > pktLen)) {
+        return;
     }
 
-    if (pktBufSize < lPktLen) {
-        return FRM_PSR_OUT_BUF_SMALL;
-    }
+    psr->pkt.crcBuf = &psr->frameBuf[lCrcFieldOff];
+    psr->pkt.crcLen = psr->protoCfg.crcFieldLen;
+    psr->pkt.crcFieldOff = (uint16_t)lCrcFieldOff;
+    (void)frmPsrGetPktCrc(&psr->protoCfg, psr->frameBuf, pktLen, &psr->pkt.crcVal);
 
-    if (lPktLen > lHeadLen) {
-        (void)memset(&pktBuf[lHeadLen], 0, lPktLen - lHeadLen);
+    if (lCrcFieldOff >= headLen) {
+        psr->pkt.dataLen = (uint16_t)(lCrcFieldOff - headLen);
     }
-
-    if (payloadLen > 0U) {
-        (void)memcpy(&pktBuf[lHeadLen], payloadBuf, payloadLen);
-    }
-
-    if ((txFmt->pktFinFunc != NULL) && (!txFmt->pktFinFunc(pktBuf, lPktLen, lHeadLen, payloadBuf, payloadLen, txFmt->userCtx))) {
-        return FRM_PSR_BUILD_FAIL;
-    }
-
-    if ((!frmPsrFixOff(lPktLen, txFmt->crcRangeStartOff, &lRangeStart)) || (!frmPsrFixOff(lPktLen, txFmt->crcRangeEndOff, &lRangeEnd)) || (lRangeEnd < lRangeStart)) {
-        return FRM_PSR_CRC_FAIL;
-    }
-
-    lCalcCrc = txFmt->crcCalcFunc(&pktBuf[lRangeStart], (lRangeEnd - lRangeStart) + 1U, txFmt->userCtx);
-    if (!frmPsrSetPktCrc(txFmt->crcFieldOff, txFmt->crcFieldLen, txFmt->crcFieldEnd, pktBuf, lPktLen, lCalcCrc)) {
-        return FRM_PSR_CRC_FAIL;
-    }
-
-    *pktLen = lPktLen;
-    return FRM_PSR_OK;
 }
 
-bool frmPsrIsRunCfgValid(const stFrmPsrRunCfg *runCfg)
+eFrmPsrSta frmPsrInit(stFrmPsr *psr, const stFrmPsrCfg *cfg)
 {
-    if ((runCfg == NULL) || (runCfg->outBuf == NULL) || (runCfg->outBufSize == 0U)) {
-        return false;
-    }
+    eRingBufferStatus lRbSta;
 
-    return true;
-}
-
-bool frmPsrIsRxFmtValid(const stFrmPsrRxFmt *rxFmt)
-{
-    if ((rxFmt == NULL) ||
-        (rxFmt->headPat == NULL) ||
-        (rxFmt->headPatLen == 0U) ||
-        (rxFmt->minHeadLen < rxFmt->headPatLen) ||
-        (rxFmt->minPktLen < rxFmt->minHeadLen) ||
-        (rxFmt->maxPktLen < rxFmt->minPktLen) ||
-        (rxFmt->pktLenFunc == NULL) ||
-        (rxFmt->crcCalcFunc == NULL) ||
-        (rxFmt->crcFieldLen == 0U) ||
-        (rxFmt->crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    return true;
-}
-
-bool frmPsrIsTxFmtValid(const stFrmPsrTxFmt *txFmt)
-{
-    if ((txFmt == NULL) ||
-        ((txFmt->headBuildFunc == NULL) && ((txFmt->headPat == NULL) || (txFmt->headPatLen == 0U))) ||
-        (txFmt->minPktLen == 0U) ||
-        (txFmt->maxPktLen < txFmt->minPktLen) ||
-        (txFmt->crcCalcFunc == NULL) ||
-        (txFmt->crcFieldLen == 0U) ||
-        (txFmt->crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    return true;
-}
-
-bool frmPsrIsFmtValid(const stFrmPsrFmt *fmt)
-{
-    if (fmt == NULL) {
-        return false;
-    }
-
-    return frmPsrIsRxFmtValid(&fmt->rxFmt) && frmPsrIsTxFmtValid(&fmt->txFmt);
-}
-
-bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg)
-{
-    if ((cfg == NULL) ||
-        (cfg->headPat == NULL) ||
-        (cfg->headPatLen == 0U) ||
-        (cfg->minHeadLen < cfg->headPatLen) ||
-        (cfg->minPktLen < cfg->minHeadLen) ||
-        (cfg->maxPktLen < cfg->minPktLen) ||
-        (cfg->outBuf == NULL) ||
-        (cfg->outBufSize < cfg->minHeadLen) ||
-        (cfg->pktLenFunc == NULL) ||
-        (cfg->crcCalcFunc == NULL) ||
-        (cfg->crcFieldLen == 0U) ||
-        (cfg->crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    return true;
-}
-
-bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg)
-{
-    if ((protoCfg == NULL) ||
-        (protoCfg->rxHeadPat == NULL) ||
-        (protoCfg->rxHeadPatLen == 0U) ||
-        (protoCfg->txHeadPat == NULL) ||
-        (protoCfg->txHeadPatLen == 0U) ||
-        (protoCfg->minPktLen == 0U) ||
-        (protoCfg->maxPktLen < protoCfg->minPktLen) ||
-        (protoCfg->pktLenFunc == NULL) ||
-        (protoCfg->crcCalcFunc == NULL) ||
-        (protoCfg->crcFieldLen == 0U) ||
-        (protoCfg->crcFieldLen > sizeof(uint32_t))) {
-        return false;
-    }
-
-    if (protoCfg->minHeadLen < protoCfg->rxHeadPatLen) {
-        return false;
-    }
-
-    return true;
-}
-
-eFrmPsrSta frmPsrInit(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrCfg *cfg)
-{
-    if ((psr == NULL) || (ringBuf == NULL) || (!frmPsrIsCfgValid(cfg))) {
+    if ((psr == NULL) || (!frmPsrIsCfgValid(cfg))) {
         return FRM_PSR_INVALID_ARG;
     }
 
     (void)memset(psr, 0, sizeof(*psr));
-    psr->ringBuf = ringBuf;
-    psr->cfg = *cfg;
-    psr->fmt = NULL;
+    frmPsrLoadPlatformDefaultProtoCfg(cfg->protocolId, &psr->protoCfg);
+    if (!frmPsrIsProtoCfgValid(&psr->protoCfg)) {
+        return FRM_PSR_PROTO_INVALID;
+    }
+
+    if (psr->protoCfg.getTick == NULL) {
+        psr->protoCfg.getTick = frmPsrGetPlatformTickMs;
+    }
+
+    psr->streamBuf = cfg->streamBuf;
+    psr->streamBufSize = cfg->streamBufSize;
+    psr->frameBuf = cfg->frameBuf;
+    psr->frameBufSize = cfg->frameBufSize;
+    if (psr->frameBufSize < psr->protoCfg.maxPktLen) {
+        return FRM_PSR_OUT_BUF_SMALL;
+    }
+
+    lRbSta = ringBufferInit(&psr->ringBuf, psr->streamBuf, psr->streamBufSize);
+    if (lRbSta != RINGBUFFER_OK) {
+        return FRM_PSR_INVALID_ARG;
+    }
+
+    frmPsrClrReady(psr);
+    frmPsrClrPend(psr);
     psr->isInit = true;
     return FRM_PSR_OK;
 }
 
-eFrmPsrSta frmPsrInitByProtoCfg(stFrmPsr *psr, const stFrmPsrProtoCfg *protoCfg, stRingBuffer *ringBuf, uint8_t *outBuf, uint16_t outBufSize)
+eFrmPsrSta frmPsrFeed(stFrmPsr *psr, const uint8_t *buf, uint16_t len)
 {
-    stFrmPsrCfg lCfg;
-
-    if ((psr == NULL) || (!frmPsrIsProtoCfgValid(protoCfg)) || (outBuf == NULL) || (outBufSize == 0U)) {
+    if ((psr == NULL) || (!psr->isInit) || ((buf == NULL) && (len != 0U))) {
         return FRM_PSR_INVALID_ARG;
     }
 
-    if ((ringBuf == NULL) && (protoCfg->getRingBuf != NULL)) {
-        ringBuf = protoCfg->getRingBuf(protoCfg->ringBufUserCtx);
+    if (len == 0U) {
+        return FRM_PSR_OK;
     }
 
-    if (ringBuf == NULL) {
-        return FRM_PSR_INVALID_ARG;
+    if (ringBufferGetFree(&psr->ringBuf) < len) {
+        return FRM_PSR_OUT_BUF_SMALL;
     }
 
-    frmPsrLoadCfgByProtoCfg(&lCfg, protoCfg, outBuf, outBufSize);
-    if (!frmPsrIsCfgValid(&lCfg)) {
-        return FRM_PSR_INVALID_ARG;
+    if (ringBufferWrite(&psr->ringBuf, buf, len) != len) {
+        return FRM_PSR_OUT_BUF_SMALL;
     }
 
-    return frmPsrInit(psr, ringBuf, &lCfg);
-}
-
-eFrmPsrSta frmPsrInitFmt(stFrmPsr *psr, stRingBuffer *ringBuf, const stFrmPsrFmt *fmt, const stFrmPsrRunCfg *runCfg)
-{
-    stFrmPsrCfg lCfg;
-    eFrmPsrSta lSta;
-
-    if ((!frmPsrIsFmtValid(fmt)) || (!frmPsrIsRunCfgValid(runCfg))) {
-        return FRM_PSR_FMT_INVALID;
-    }
-
-    frmPsrLoadCfgByFmt(&lCfg, fmt, runCfg);
-    if (!frmPsrIsCfgValid(&lCfg)) {
-        return FRM_PSR_FMT_INVALID;
-    }
-
-    lSta = frmPsrInit(psr, ringBuf, &lCfg);
-    if (lSta != FRM_PSR_OK) {
-        return lSta;
-    }
-
-    psr->fmt = fmt;
     return FRM_PSR_OK;
 }
 
-void frmPsrReset(stFrmPsr *psr)
-{
-    if (psr == NULL) {
-        return;
-    }
-
-    psr->pkt.buf = NULL;
-    psr->pkt.len = 0U;
-    psr->hasReadyPkt = false;
-    frmPsrClrPend(psr);
-}
-
-eFrmPsrSta frmPsrSelFmt(stFrmPsr *psr, const stFrmPsrFmt *fmt)
-{
-    stFrmPsrRunCfg lRunCfg;
-
-    if ((psr == NULL) || (!psr->isInit)) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    if (!frmPsrIsFmtValid(fmt)) {
-        return FRM_PSR_FMT_INVALID;
-    }
-
-    lRunCfg.waitPktToutMs = psr->cfg.waitPktToutMs;
-    lRunCfg.outBuf = psr->cfg.outBuf;
-    lRunCfg.outBufSize = psr->cfg.outBufSize;
-    lRunCfg.getTick = psr->cfg.getTick;
-    frmPsrLoadCfgByFmt(&psr->cfg, fmt, &lRunCfg);
-    if (!frmPsrIsCfgValid(&psr->cfg)) {
-        return FRM_PSR_FMT_INVALID;
-    }
-
-    psr->fmt = fmt;
-    frmPsrReset(psr);
-    return FRM_PSR_OK;
-}
-
-const stFrmPsrFmt *frmPsrGetFmt(const stFrmPsr *psr)
-{
-    if ((psr == NULL) || (!psr->isInit)) {
-        return NULL;
-    }
-
-    return psr->fmt;
-}
-
-eFrmPsrSta frmPsrMkPkt(const stFrmPsr *psr, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen)
-{
-    uint32_t lPktLen;
-    eFrmPsrSta lSta;
-
-    if ((psr == NULL) || (!psr->isInit)) {
-        return FRM_PSR_INVALID_ARG;
-    }
-
-    if (psr->fmt == NULL) {
-        return FRM_PSR_FMT_NOT_SEL;
-    }
-
-    lSta = frmPsrMkPktInner(&psr->fmt->txFmt, payloadBuf, payloadLen, pktBuf, pktBufSize, &lPktLen);
-    if ((lSta == FRM_PSR_OK) && (pktLen != NULL)) {
-        *pktLen = (uint16_t)lPktLen;
-    }
-
-    return lSta;
-}
-
-eFrmPsrSta frmPsrMkPktByFmt(const stFrmPsrFmt *fmt, const uint8_t *payloadBuf, uint16_t payloadLen, uint8_t *pktBuf, uint16_t pktBufSize, uint16_t *pktLen)
-{
-    uint32_t lPktLen;
-    eFrmPsrSta lSta;
-
-    if (!frmPsrIsFmtValid(fmt)) {
-        return FRM_PSR_FMT_INVALID;
-    }
-
-    lSta = frmPsrMkPktInner(&fmt->txFmt, payloadBuf, payloadLen, pktBuf, pktBufSize, &lPktLen);
-    if ((lSta == FRM_PSR_OK) && (pktLen != NULL)) {
-        *pktLen = (uint16_t)lPktLen;
-    }
-
-    return lSta;
-}
-
-eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
+eFrmPsrSta frmPsrProcess(stFrmPsr *psr)
 {
     eFrmPsrSta lLastSta = FRM_PSR_OK;
     uint32_t lUsedLen;
@@ -711,19 +478,16 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
     uint32_t lPktLen;
     uint32_t lPeekLen;
 
-    if ((psr == NULL) || (!psr->isInit) || (!frmPsrIsCfgValid(&psr->cfg))) {
+    if ((psr == NULL) || (!psr->isInit) || (!frmPsrIsProtoCfgValid(&psr->protoCfg))) {
         return FRM_PSR_INVALID_ARG;
     }
 
     if (psr->hasReadyPkt) {
-        if (pkt != NULL) {
-            *pkt = psr->pkt;
-        }
         return FRM_PSR_OK;
     }
 
     while (true) {
-        lUsedLen = ringBufferGetUsed(psr->ringBuf);
+        lUsedLen = ringBufferGetUsed(&psr->ringBuf);
         if (lUsedLen == 0U) {
             frmPsrClrPend(psr);
             return (lLastSta != FRM_PSR_OK) ? lLastSta : FRM_PSR_EMPTY;
@@ -732,7 +496,7 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
         lHeadHit = frmPsrFindHead(psr, lUsedLen);
         if (!lHeadHit.isFound) {
             if (lHeadHit.discardLen > 0U) {
-                (void)ringBufferDiscard(psr->ringBuf, lHeadHit.discardLen);
+                (void)ringBufferDiscard(&psr->ringBuf, lHeadHit.discardLen);
                 frmPsrClrPend(psr);
             }
 
@@ -744,16 +508,12 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
         }
 
         if (lHeadHit.discardLen > 0U) {
-            (void)ringBufferDiscard(psr->ringBuf, lHeadHit.discardLen);
+            (void)ringBufferDiscard(&psr->ringBuf, lHeadHit.discardLen);
             frmPsrClrPend(psr);
         }
 
-        lUsedLen = ringBufferGetUsed(psr->ringBuf);
-        if (lUsedLen < psr->cfg.headPatLen) {
-            return (lLastSta != FRM_PSR_OK) ? lLastSta : FRM_PSR_NEED_MORE_DATA;
-        }
-
-        if (lUsedLen < psr->cfg.minHeadLen) {
+        lUsedLen = ringBufferGetUsed(&psr->ringBuf);
+        if (lUsedLen < psr->protoCfg.minHeadLen) {
             if (!psr->hasPendPkt) {
                 psr->hasPendPkt = true;
                 psr->pendPktTick = frmPsrGetTickMs(psr);
@@ -764,8 +524,8 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
                 LOG_W(FRM_PSR_LOG_TAG,
                       "Packet wait timeout before head complete, used=%u discard=%u",
                       (unsigned int)lUsedLen,
-                      (unsigned int)psr->cfg.headPatLen);
-                (void)ringBufferDiscard(psr->ringBuf, psr->cfg.headPatLen);
+                      (unsigned int)lHeadHit.headPatLen);
+                (void)ringBufferDiscard(&psr->ringBuf, lHeadHit.headPatLen);
                 frmPsrClrPend(psr);
                 lLastSta = FRM_PSR_NEED_MORE_DATA;
                 continue;
@@ -774,34 +534,34 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
             return (lLastSta != FRM_PSR_OK) ? lLastSta : FRM_PSR_NEED_MORE_DATA;
         }
 
-        lPeekLen = frmPsrMinU32(lUsedLen, psr->cfg.maxPktLen);
-        lPeekLen = frmPsrMinU32(lPeekLen, psr->cfg.outBufSize);
-        if (frmPsrPeekOff(psr->ringBuf, 0U, psr->cfg.outBuf, lPeekLen) != lPeekLen) {
+        lPeekLen = frmPsrMinU32(lUsedLen, psr->protoCfg.maxPktLen);
+        lPeekLen = frmPsrMinU32(lPeekLen, psr->frameBufSize);
+        if (frmPsrPeekOff(&psr->ringBuf, 0U, psr->frameBuf, lPeekLen) != lPeekLen) {
             return FRM_PSR_INVALID_ARG;
         }
 
-        if (psr->cfg.headLenFunc != NULL) {
-            lHeadLen = psr->cfg.headLenFunc(psr->cfg.outBuf, lPeekLen, psr->cfg.userCtx);
+        if (psr->protoCfg.headLenFunc != NULL) {
+            lHeadLen = psr->protoCfg.headLenFunc(psr->frameBuf, lPeekLen, psr->protoCfg.userCtx);
         } else {
-            lHeadLen = psr->cfg.headPatLen;
+            lHeadLen = lHeadHit.headPatLen;
         }
 
-        if ((lHeadLen < psr->cfg.minHeadLen) || (lHeadLen > psr->cfg.maxPktLen)) {
-            (void)ringBufferDiscard(psr->ringBuf, 1U);
+        if ((lHeadLen < psr->protoCfg.minHeadLen) || (lHeadLen > psr->protoCfg.maxPktLen)) {
+            (void)ringBufferDiscard(&psr->ringBuf, 1U);
             frmPsrClrPend(psr);
             lLastSta = FRM_PSR_HEAD_INVALID;
             continue;
         }
 
-        lPktLen = psr->cfg.pktLenFunc(psr->cfg.outBuf, lHeadLen, lPeekLen, psr->cfg.userCtx);
-        if ((lPktLen < lHeadLen) || (lPktLen < psr->cfg.minPktLen) || (lPktLen > psr->cfg.maxPktLen)) {
-            (void)ringBufferDiscard(psr->ringBuf, 1U);
+        lPktLen = psr->protoCfg.pktLenFunc(psr->frameBuf, lHeadLen, lPeekLen, psr->protoCfg.userCtx);
+        if ((lPktLen < lHeadLen) || (lPktLen < psr->protoCfg.minPktLen) || (lPktLen > psr->protoCfg.maxPktLen)) {
+            (void)ringBufferDiscard(&psr->ringBuf, 1U);
             frmPsrClrPend(psr);
             lLastSta = FRM_PSR_LEN_INVALID;
             continue;
         }
 
-        if (psr->cfg.outBufSize < lPktLen) {
+        if (psr->frameBufSize < lPktLen) {
             return FRM_PSR_OUT_BUF_SMALL;
         }
 
@@ -818,7 +578,7 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
                       (unsigned int)lUsedLen,
                       (unsigned int)lPktLen,
                       (unsigned int)lHeadLen);
-                (void)ringBufferDiscard(psr->ringBuf, lHeadLen);
+                    (void)ringBufferDiscard(&psr->ringBuf, lHeadLen);
                 frmPsrClrPend(psr);
                 lLastSta = FRM_PSR_NEED_MORE_DATA;
                 continue;
@@ -827,54 +587,37 @@ eFrmPsrSta frmPsrProc(stFrmPsr *psr, stFrmPsrPkt *pkt)
             return (lLastSta != FRM_PSR_OK) ? lLastSta : FRM_PSR_NEED_MORE_DATA;
         }
 
-        if (frmPsrPeekOff(psr->ringBuf, 0U, psr->cfg.outBuf, lPktLen) != lPktLen) {
+        if (frmPsrPeekOff(&psr->ringBuf, 0U, psr->frameBuf, lPktLen) != lPktLen) {
             return FRM_PSR_INVALID_ARG;
         }
 
-        if (!frmPsrChkPktCrc(&psr->cfg, psr->cfg.outBuf, lPktLen)) {
-            (void)ringBufferDiscard(psr->ringBuf, 1U);
+        if (!frmPsrChkPktCrc(&psr->protoCfg, psr->frameBuf, lPktLen)) {
+            (void)ringBufferDiscard(&psr->ringBuf, 1U);
             frmPsrClrPend(psr);
             lLastSta = FRM_PSR_CRC_FAIL;
             continue;
         }
 
-        (void)ringBufferDiscard(psr->ringBuf, lPktLen);
+        (void)ringBufferDiscard(&psr->ringBuf, lPktLen);
         frmPsrClrPend(psr);
-        psr->pkt.buf = psr->cfg.outBuf;
-        psr->pkt.len = (uint16_t)lPktLen;
+        frmPsrLoadPktView(psr, lPktLen, lHeadLen);
         psr->hasReadyPkt = true;
-
-        if (pkt != NULL) {
-            *pkt = psr->pkt;
-        }
 
         return FRM_PSR_OK;
     }
 }
 
-bool frmPsrHasPkt(const stFrmPsr *psr)
+const stFrmPsrPkt *frmPsrRelease(stFrmPsr *psr)
 {
-    return (psr != NULL) && psr->hasReadyPkt;
-}
+    const stFrmPsrPkt *lPkt;
 
-const stFrmPsrPkt *frmPsrGetPkt(const stFrmPsr *psr)
-{
     if ((psr == NULL) || (!psr->hasReadyPkt)) {
         return NULL;
     }
 
-    return &psr->pkt;
-}
-
-void frmPsrFreePkt(stFrmPsr *psr)
-{
-    if (psr == NULL) {
-        return;
-    }
-
-    psr->pkt.buf = NULL;
-    psr->pkt.len = 0U;
+    lPkt = &psr->pkt;
     psr->hasReadyPkt = false;
+    return lPkt;
 }
 
 /**************************End of file********************************/
