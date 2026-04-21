@@ -1,30 +1,44 @@
 /************************************************************************************
 * @file     : fc41d_assembly.h
-* @brief    : FC41D core to platform assembly contract.
+* @brief    : FC41D assembly-time contract shared by core and port.
 * @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #ifndef FC41D_ASSEMBLY_H
 #define FC41D_ASSEMBLY_H
 
-#include "fc41d_base.h"
-#include "../../comm/flowparser/flowparser_stream.h"
+#include <stdint.h>
+
+#include "fc41d.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* single-task constraint: platform code should serialize fc41dProcess/exec access from one task context. */
+typedef eDrvStatus (*fc41dTransportInitFunc)(uint8_t linkId);
+typedef eDrvStatus (*fc41dTransportWriteFunc)(uint8_t linkId, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
+typedef uint16_t (*fc41dTransportGetRxLenFunc)(uint8_t linkId);
+typedef eDrvStatus (*fc41dTransportReadFunc)(uint8_t linkId, uint8_t *buffer, uint16_t length);
+typedef uint32_t (*fc41dTransportGetTickMsFunc)(void);
+typedef void (*fc41dControlInitFunc)(void);
+typedef void (*fc41dControlSetResetLevelFunc)(bool isActive);
+
+typedef struct stFc41dTransportInterface {
+    fc41dTransportInitFunc init;
+    fc41dTransportWriteFunc write;
+    fc41dTransportGetRxLenFunc getRxLen;
+    fc41dTransportReadFunc read;
+    fc41dTransportGetTickMsFunc getTickMs;
+} stFc41dTransportInterface;
+
+typedef struct stFc41dControlInterface {
+    fc41dControlInitFunc init;
+    fc41dControlSetResetLevelFunc setResetLevel;
+} stFc41dControlInterface;
 
 void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stFc41dCfg *cfg);
-bool fc41dPlatformIsValidAssemble(eFc41dMapType device);
-uint32_t fc41dPlatformGetTickMs(void);
-eFc41dStatus fc41dPlatformInitTransport(eFc41dMapType device);
-void fc41dPlatformPollRx(eFc41dMapType device);
-eFc41dStatus fc41dPlatformInitRxBuffers(eFc41dMapType device, stRingBuffer *bleRxRb, stRingBuffer *wifiRxRb);
-eFlowParserStrmSta fc41dPlatformInitAtStream(eFc41dMapType device, stFlowParserStream *stream,
-                                             flowparserStreamLineFunc urcHandler, void *urcUserCtx);
-bool fc41dPlatformRouteLine(eFc41dMapType device, const uint8_t *lineBuf, uint16_t lineLen,
-                            eFc41dRxChannel *channel, const uint8_t **payloadBuf, uint16_t *payloadLen);
+const stFc41dTransportInterface *fc41dGetPlatformTransportInterface(const stFc41dCfg *cfg);
+const stFc41dControlInterface *fc41dGetPlatformControlInterface(eFc41dMapType device);
+bool fc41dPlatformIsValidCfg(const stFc41dCfg *cfg);
 
 #ifdef __cplusplus
 }

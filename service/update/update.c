@@ -18,7 +18,7 @@
 #include "update_port.h"
 
 #if (UPDATE_LOG_SUPPORT == 1)
-#include "../console/log.h"
+#include "../log/log.h"
 #endif
 
 #define UPDATE_LOG_TAG                       "update"
@@ -73,6 +73,8 @@ static bool updateLoadImageHeader(uint8_t regionId, stUpdateImageHeader *header,
 static bool updateStoreImageHeader(uint8_t regionId, const stUpdateImageHeader *header, uint32_t *sequenceInOut);
 static void updateLogStateTransition(eUpdateState from, eUpdateState to);
 static void updateLogProgress(const char *stageName);
+static void updateLogProgressTotal(const char *stageName, uint32_t totalSize);
+static void updateLogCrcCheck(const char *stageName, uint32_t actualCrc32, uint32_t expectedCrc32, bool passed);
 static void updateMarkError(eUpdateError error);
 static bool updateShouldUseBackup(void);
 static bool updateShouldRollback(void);
@@ -722,22 +724,56 @@ static void updateLogStateTransition(eUpdateState from, eUpdateState to)
 
 static void updateLogProgress(const char *stageName)
 {
+    updateLogProgressTotal(stageName, gUpdateStatus.totalSize);
+}
+
+static void updateLogProgressTotal(const char *stageName, uint32_t totalSize)
+{
 #if (UPDATE_LOG_SUPPORT == 1)
-    if ((stageName == NULL) || (gUpdateStatus.totalSize == 0U)) {
+    if ((stageName == NULL) || (totalSize == 0U)) {
         return;
     }
 
-    if ((gUpdateStatus.currentOffset == gUpdateStatus.totalSize) ||
+    if ((gUpdateStatus.currentOffset == totalSize) ||
         ((gUpdateStatus.currentOffset - gUpdateContext.lastProgressLogOffset) >= (32UL * 1024UL))) {
         gUpdateContext.lastProgressLogOffset = gUpdateStatus.currentOffset;
         LOG_I(UPDATE_LOG_TAG,
               "%s: %lu / %lu bytes",
               stageName,
               (unsigned long)gUpdateStatus.currentOffset,
-              (unsigned long)gUpdateStatus.totalSize);
+              (unsigned long)totalSize);
     }
 #else
     (void)stageName;
+    (void)totalSize;
+#endif
+}
+
+static void updateLogCrcCheck(const char *stageName, uint32_t actualCrc32, uint32_t expectedCrc32, bool passed)
+{
+#if (UPDATE_LOG_SUPPORT == 1)
+    if (stageName == NULL) {
+        return;
+    }
+
+    if (passed) {
+        LOG_I(UPDATE_LOG_TAG,
+              "%s crc32: actual=0x%08lX expected=0x%08lX result=PASS",
+              stageName,
+              (unsigned long)actualCrc32,
+              (unsigned long)expectedCrc32);
+    } else {
+        LOG_W(UPDATE_LOG_TAG,
+              "%s crc32: actual=0x%08lX expected=0x%08lX result=FAIL",
+              stageName,
+              (unsigned long)actualCrc32,
+              (unsigned long)expectedCrc32);
+    }
+#else
+    (void)stageName;
+    (void)actualCrc32;
+    (void)expectedCrc32;
+    (void)passed;
 #endif
 }
 
@@ -864,6 +900,7 @@ static void updateHandleValidateStaging(void)
 {
     uint32_t lChunkSize;
     uint32_t lRemaining;
+    uint32_t lActualCrc32;
 
     if (gUpdateStatus.currentOffset == 0U) {
         if (!updateLoadImageHeader(E_UPDATE_REGION_STAGING_APP_HEADER,
@@ -902,7 +939,12 @@ static void updateHandleValidateStaging(void)
         return;
     }
 
-    if (updateCrc32Finalize(gUpdateStatus.activeCrc32) != gUpdateContext.stagingHeader.imageCrc32) {
+    lActualCrc32 = updateCrc32Finalize(gUpdateStatus.activeCrc32);
+    updateLogCrcCheck("validate staging",
+                      lActualCrc32,
+                      gUpdateContext.stagingHeader.imageCrc32,
+                      lActualCrc32 == gUpdateContext.stagingHeader.imageCrc32);
+    if (lActualCrc32 != gUpdateContext.stagingHeader.imageCrc32) {
         updateHandleFailure(E_UPDATE_ERROR_IMAGE_CRC_MISMATCH);
         return;
     }
@@ -1011,6 +1053,7 @@ static void updateHandleVerifyBackup(void)
 {
     uint32_t lChunkSize;
     uint32_t lRemaining;
+    uint32_t lActualCrc32;
 
     lRemaining = gUpdateStatus.totalSize - gUpdateStatus.currentOffset;
     lChunkSize = updateGetCopyLimit();
@@ -1032,13 +1075,18 @@ static void updateHandleVerifyBackup(void)
         return;
     }
 
-    if (updateCrc32Finalize(gUpdateStatus.activeCrc32) != gUpdateContext.backupHeader.imageCrc32) {
+    lActualCrc32 = updateCrc32Finalize(gUpdateStatus.activeCrc32);
+    updateLogCrcCheck("verify backup",
+                      lActualCrc32,
+                      gUpdateContext.backupHeader.imageCrc32,
+                      lActualCrc32 == gUpdateContext.backupHeader.imageCrc32);
+    if (lActualCrc32 != gUpdateContext.backupHeader.imageCrc32) {
         updateHandleFailure(E_UPDATE_ERROR_BACKUP_INVALID);
         return;
     }
 
     updateSetState(E_UPDATE_STATE_ERASE_TARGET,
-                   gUpdateContext.stagingHeader.imageSize,
+                   gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size,
                    gUpdateContext.stagingHeader.imageCrc32);
 }
 
@@ -1066,7 +1114,7 @@ static void updateHandleEraseTarget(void)
 
     gUpdateStatus.currentOffset += lEraseChunk;
     gUpdateContext.targetWasErased = true;
-    updateLogProgress("erase target");
+    updateLogProgressTotal("erase target", lCfg.size);
     updatePortFeedWatchdog();
 
     if (gUpdateStatus.currentOffset < lCfg.size) {
@@ -1119,6 +1167,7 @@ static void updateHandleVerifyTarget(void)
 {
     uint32_t lChunkSize;
     uint32_t lRemaining;
+    uint32_t lActualCrc32;
 
     lRemaining = gUpdateStatus.totalSize - gUpdateStatus.currentOffset;
     lChunkSize = updateGetCopyLimit();
@@ -1140,7 +1189,12 @@ static void updateHandleVerifyTarget(void)
         return;
     }
 
-    if (updateCrc32Finalize(gUpdateStatus.activeCrc32) != gUpdateContext.stagingHeader.imageCrc32) {
+    lActualCrc32 = updateCrc32Finalize(gUpdateStatus.activeCrc32);
+    updateLogCrcCheck("verify target",
+                      lActualCrc32,
+                      gUpdateContext.stagingHeader.imageCrc32,
+                      lActualCrc32 == gUpdateContext.stagingHeader.imageCrc32);
+    if (lActualCrc32 != gUpdateContext.stagingHeader.imageCrc32) {
         updateHandleFailure(E_UPDATE_ERROR_VERIFY_FAILED);
         return;
     }
@@ -1195,7 +1249,7 @@ static void updateHandleRollbackEraseTarget(void)
     }
 
     gUpdateStatus.currentOffset += lEraseChunk;
-    updateLogProgress("rollback erase target");
+    updateLogProgressTotal("rollback erase target", lCfg.size);
     updatePortFeedWatchdog();
 
     if (gUpdateStatus.currentOffset < lCfg.size) {
@@ -1241,6 +1295,7 @@ static void updateHandleVerifyRollback(void)
 {
     uint32_t lChunkSize;
     uint32_t lRemaining;
+    uint32_t lActualCrc32;
 
     lRemaining = gUpdateStatus.totalSize - gUpdateStatus.currentOffset;
     lChunkSize = updateGetCopyLimit();
@@ -1262,7 +1317,12 @@ static void updateHandleVerifyRollback(void)
         return;
     }
 
-    if (updateCrc32Finalize(gUpdateStatus.activeCrc32) != gUpdateContext.backupHeader.imageCrc32) {
+    lActualCrc32 = updateCrc32Finalize(gUpdateStatus.activeCrc32);
+    updateLogCrcCheck("verify rollback",
+                      lActualCrc32,
+                      gUpdateContext.backupHeader.imageCrc32,
+                      lActualCrc32 == gUpdateContext.backupHeader.imageCrc32);
+    if (lActualCrc32 != gUpdateContext.backupHeader.imageCrc32) {
         updateHandleFailure(E_UPDATE_ERROR_ROLLBACK_FAILED);
         return;
     }

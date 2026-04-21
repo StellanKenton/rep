@@ -1,934 +1,612 @@
-/***********************************************************************************
+/************************************************************************************
 * @file     : fc41d.c
-* @brief    : 
-* @details  : 
-* @author   : 
-* @date     : 
-* @version  : 
+* @brief    : FC41D module top-level implementation.
+* @details  : This file owns device instance management, public API entry points,
+*             and the unified background pump that bridges transport, control, and
+*             data planes.
+* @author   : GitHub Copilot
+* @date     : 2026-04-21
+* @version  : V1.0.0
 * @copyright: Copyright (c) 2050
-**********************************************************************************/
-#include <ctype.h>
-#include <stddef.h>
+***********************************************************************************/
+#include "fc41d.h"
+
 #include <string.h>
 
-#include "fc41d_priv.h"
+#include "fc41d_ctrl.h"
 
-static stFc41dCtx gFc41dCtx[FC41D_DEV_MAX];
+static stFc41dDevice gFc41dDevices[FC41D_DEV_MAX];
+static bool gFc41dDefCfgDone[FC41D_DEV_MAX] = {false};
 
 __attribute__((weak)) void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
-	(void)device;
+    (void)device;
 
-	if (cfg == NULL) {
-		return;
-	}
+    if (cfg == NULL) {
+        return;
+    }
 
-	cfg->ble.enableRx = true;
-	cfg->wifi.enableRx = true;
-	cfg->ble.rxOverwriteOnFull = true;
-	cfg->wifi.rxOverwriteOnFull = true;
-	cfg->ble.workMode = FC41D_BLE_WORK_MODE_DISABLED;
-	cfg->ble.initCmdSeq = NULL;
-	cfg->ble.initCmdSeqLen = 0U;
-	cfg->ble.startCmdSeq = NULL;
-	cfg->ble.startCmdSeqLen = 0U;
-	cfg->ble.stopCmdSeq = NULL;
-	cfg->ble.stopCmdSeqLen = 0U;
-	cfg->wifi.workMode = FC41D_WIFI_WORK_MODE_DISABLED;
-	cfg->wifi.initCmdSeq = NULL;
-	cfg->wifi.initCmdSeqLen = 0U;
-	cfg->wifi.startCmdSeq = NULL;
-	cfg->wifi.startCmdSeqLen = 0U;
-	cfg->wifi.stopCmdSeq = NULL;
-	cfg->wifi.stopCmdSeqLen = 0U;
-	cfg->wifi.autoReconnect = false;
-	cfg->wifi.reconnectIntervalMs = 3000U;
-	cfg->wifi.reconnectMaxRetries = 0U;
-	cfg->execGuardMs = 5000U;
-	cfg->bootMode = FC41D_MODE_COMMAND;
+    cfg->linkId = 0U;
+    cfg->rxPollChunkSize = FC41D_RX_POLL_CHUNK_SIZE;
+    cfg->txTimeoutMs = FC41D_DEFAULT_TX_TIMEOUT_MS;
+    cfg->bootWaitMs = FC41D_DEFAULT_BOOT_WAIT_MS;
+    cfg->resetPulseMs = FC41D_DEFAULT_RESET_PULSE_MS;
+    cfg->resetWaitMs = FC41D_DEFAULT_RESET_WAIT_MS;
+    cfg->readyTimeoutMs = FC41D_DEFAULT_READY_TIMEOUT_MS;
+    cfg->readySettleMs = FC41D_DEFAULT_READY_SETTLE_MS;
+    cfg->retryIntervalMs = FC41D_DEFAULT_RETRY_INTERVAL_MS;
 }
 
-__attribute__((weak)) bool fc41dPlatformIsValidAssemble(eFc41dMapType device)
+__attribute__((weak)) const stFc41dTransportInterface *fc41dGetPlatformTransportInterface(const stFc41dCfg *cfg)
 {
-	(void)device;
-	return false;
+    (void)cfg;
+    return NULL;
 }
 
-__attribute__((weak)) uint32_t fc41dPlatformGetTickMs(void)
+__attribute__((weak)) const stFc41dControlInterface *fc41dGetPlatformControlInterface(eFc41dMapType device)
 {
-	return 0U;
+    (void)device;
+    return NULL;
 }
 
-__attribute__((weak)) eFc41dStatus fc41dPlatformInitTransport(eFc41dMapType device)
+__attribute__((weak)) bool fc41dPlatformIsValidCfg(const stFc41dCfg *cfg)
 {
-	(void)device;
-	return FC41D_STATUS_NOT_READY;
+    (void)cfg;
+    return false;
 }
 
-__attribute__((weak)) void fc41dPlatformPollRx(eFc41dMapType device)
-{
-	(void)device;
-}
-
-__attribute__((weak)) eFc41dStatus fc41dPlatformInitRxBuffers(eFc41dMapType device, stRingBuffer *bleRxRb, stRingBuffer *wifiRxRb)
-{
-	(void)device;
-	(void)bleRxRb;
-	(void)wifiRxRb;
-	return FC41D_STATUS_NOT_READY;
-}
-
-__attribute__((weak)) eFlowParserStrmSta fc41dPlatformInitAtStream(eFc41dMapType device, stFlowParserStream *stream,
-																	flowparserStreamLineFunc urcHandler, void *urcUserCtx)
-{
-	(void)device;
-	(void)stream;
-	(void)urcHandler;
-	(void)urcUserCtx;
-	return FLOWPARSER_STREAM_NOT_INIT;
-}
-
-__attribute__((weak)) bool fc41dPlatformRouteLine(eFc41dMapType device, const uint8_t *lineBuf, uint16_t lineLen,
-												   eFc41dRxChannel *channel, const uint8_t **payloadBuf, uint16_t *payloadLen)
-{
-	(void)device;
-	(void)lineBuf;
-	(void)lineLen;
-	(void)channel;
-	(void)payloadBuf;
-	(void)payloadLen;
-	return false;
-}
-
-static bool fc41dIsValidCfg(const stFc41dCfg *cfg);
-static void fc41dSyncInfoFromCfg(stFc41dCtx *ctx);
-static void fc41dEnsureDefCfgLoaded(stFc41dCtx *ctx, eFc41dMapType device);
-static eFc41dStatus fc41dMapExecResult(eFc41dAtExecResult result);
-static void fc41dClearExecState(stFc41dCtx *ctx);
-static void fc41dAbortExec(stFc41dCtx *ctx, eFc41dAtExecResult result);
-static eFc41dStatus fc41dSubmitExec(stFc41dCtx *ctx, eFc41dExecOwner owner, const uint8_t *cmdBuf, uint16_t cmdLen,
-									 const uint8_t *payloadBuf, uint16_t payloadLen,
-									 const stFc41dAtOpt *opt, stFc41dAtResp *resp);
-static void fc41dBuildAtSpec(const stFc41dAtOpt *opt, stFlowParserSpec *spec);
-static void fc41dExecLineHandler(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
-static void fc41dExecDoneHandler(void *userData, eFlowParserResult result);
-static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
-static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const uint8_t *payloadBuf, uint16_t payloadLen);
-static eFc41dStatus fc41dServiceFlowParser(stFc41dCtx *ctx, eFc41dMapType device);
-static eFc41dTxnOwner fc41dMapTxnOwner(uint8_t owner);
-static eFc41dTxnStage fc41dMapTxnStage(eFlowParserStage stage);
-static eFc41dMode fc41dResolveDataModeFromLinks(const stFc41dCtx *ctx);
-static void fc41dPrepareModeSwitch(stFc41dCtx *ctx, const uint8_t *cmdBuf, uint16_t cmdLen);
-
-bool fc41dIsValidDevMap(eFc41dMapType device)
-{
-	return ((uint32_t)device < (uint32_t)FC41D_DEV_MAX);
-}
-
-stFc41dCtx *fc41dGetCtx(eFc41dMapType device)
-{
-	stFc41dCtx *ctx;
-
-	if (!fc41dIsValidDevMap(device)) {
-		return NULL;
-	}
-
-	ctx = &gFc41dCtx[device];
-	fc41dEnsureDefCfgLoaded(ctx, device);
-	return ctx;
-}
-
-bool fc41dIsReadyCtx(const stFc41dCtx *ctx)
-{
-	return (ctx != NULL) && ctx->info.isReady;
-}
-
-stRingBuffer *fc41dGetRxRbByChannel(stFc41dCtx *ctx, eFc41dRxChannel channel)
-{
-	if (ctx == NULL) {
-		return NULL;
-	}
-
-	if (channel == FC41D_RX_CHANNEL_BLE) {
-		return &ctx->bleRxRb;
-	}
-	if (channel == FC41D_RX_CHANNEL_WIFI) {
-		return &ctx->wifiRxRb;
-	}
-
-	return NULL;
-}
-
-static bool fc41dIsValidCfg(const stFc41dCfg *cfg)
-{
-	return (cfg != NULL) &&
-		   (cfg->bootMode <= FC41D_MODE_WIFI_DATA) &&
-		   (cfg->ble.workMode <= FC41D_BLE_WORK_MODE_CENTRAL) &&
-		   (cfg->wifi.workMode <= FC41D_WIFI_WORK_MODE_AP);
-}
-
-static void fc41dSyncInfoFromCfg(stFc41dCtx *ctx)
-{
-	if (ctx == NULL) {
-		return;
-	}
-
-	fc41dBleSyncInfoFromCfg(ctx);
-	fc41dWifiSyncInfoFromCfg(ctx);
-}
-
-static void fc41dEnsureDefCfgLoaded(stFc41dCtx *ctx, eFc41dMapType device)
-{
-	if ((ctx == NULL) || ctx->defCfgLoaded) {
-		return;
-	}
-
-	(void)memset(ctx, 0, sizeof(*ctx));
-	ctx->device = device;
-	fc41dLoadPlatformDefaultCfg(device, &ctx->cfg);
-	fc41dSyncInfoFromCfg(ctx);
-	ctx->info.mode = ctx->cfg.bootMode;
-	ctx->execResult = FC41D_AT_RESULT_NONE;
-	ctx->lastExecResult = FC41D_AT_RESULT_NONE;
-	ctx->defCfgLoaded = true;
-}
+static bool fc41dIsValidDevice(eFc41dMapType device);
+static stFc41dDevice *fc41dGetDevice(eFc41dMapType device);
+static void fc41dLoadDefCfg(eFc41dMapType device, stFc41dCfg *cfg);
+static eFc41dStatus fc41dBackGround(stFc41dDevice *device);
+static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, uint16_t len);
+static uint32_t fc41dStreamGetTickMs(void *userData);
+static bool fc41dStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
+static void fc41dStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 
 eFc41dStatus fc41dGetDefCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
-	if ((cfg == NULL) || !fc41dIsValidDevMap(device)) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    if ((cfg == NULL) || !fc41dIsValidDevice(device)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	fc41dLoadPlatformDefaultCfg(device, cfg);
-	return FC41D_STATUS_OK;
+    fc41dLoadDefCfg(device, cfg);
+    return FC41D_STATUS_OK;
 }
 
 eFc41dStatus fc41dGetCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
-	stFc41dCtx *ctx;
+    stFc41dDevice *lDevice;
 
-	if (cfg == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    if (cfg == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	ctx = fc41dGetCtx(device);
-	if (ctx == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	*cfg = ctx->cfg;
-	return FC41D_STATUS_OK;
+    *cfg = lDevice->cfg;
+    return FC41D_STATUS_OK;
 }
 
 eFc41dStatus fc41dSetCfg(eFc41dMapType device, const stFc41dCfg *cfg)
 {
-	stFc41dCtx *ctx;
+    stFc41dDevice *lDevice;
 
-	if (!fc41dIsValidCfg(cfg)) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    if ((cfg == NULL) || !fc41dPlatformIsValidCfg(cfg)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	ctx = fc41dGetCtx(device);
-	if (ctx == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	if (ctx->info.isReady) {
-		flowparserStreamReset(&ctx->atStream);
-	}
-	fc41dAbortExec(ctx, FC41D_AT_RESULT_NONE);
-	ctx->cfg = *cfg;
-	fc41dSyncInfoFromCfg(ctx);
-	ctx->info.mode = cfg->bootMode;
-	ctx->info.isReady = false;
-	return FC41D_STATUS_OK;
+    lDevice->cfg = *cfg;
+    lDevice->info.isInit = false;
+    lDevice->info.isReady = false;
+    fc41dResetState(lDevice);
+    gFc41dDefCfgDone[device] = true;
+    return FC41D_STATUS_OK;
+}
+
+eFc41dStatus fc41dGetDefBleCfg(eFc41dMapType device, stFc41dBleCfg *cfg)
+{
+    (void)device;
+
+    if (cfg == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    fc41dLoadDefBleCfg(cfg);
+    return FC41D_STATUS_OK;
+}
+
+eFc41dStatus fc41dSetBleCfg(eFc41dMapType device, const stFc41dBleCfg *cfg)
+{
+    stFc41dDevice *lDevice;
+
+    if ((cfg == NULL) || !fc41dIsValidText(cfg->name, FC41D_BLE_NAME_MAX_LENGTH, true) ||
+        !fc41dIsValidText(cfg->serviceUuid, FC41D_BLE_UUID_MAX_LENGTH, true) ||
+        !fc41dIsValidText(cfg->rxCharUuid, FC41D_BLE_UUID_MAX_LENGTH, true) ||
+        !fc41dIsValidText(cfg->txCharUuid, FC41D_BLE_UUID_MAX_LENGTH, true)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice->bleCfg = *cfg;
+    lDevice->state.hasMacAddress = false;
+    lDevice->state.macAddress[0] = '\0';
+    return FC41D_STATUS_OK;
 }
 
 eFc41dStatus fc41dInit(eFc41dMapType device)
 {
-	stFc41dCtx *ctx;
-	eFlowParserStrmSta fpStatus;
-	eFc41dStatus status;
+    stFc41dDevice *lDevice;
+    const stFc41dControlInterface *lControl;
+    const stFc41dTransportInterface *lTransport;
+    stFlowParserStreamCfg lStreamCfg;
+    eDrvStatus lDrvStatus;
+    eFlowParserStrmSta lStreamStatus;
 
-	ctx = fc41dGetCtx(device);
-	if ((ctx == NULL) || !fc41dIsValidCfg(&ctx->cfg)) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	if (!fc41dPlatformIsValidAssemble(device)) {
-		return FC41D_STATUS_NOT_READY;
-	}
+    if (!fc41dPlatformIsValidCfg(&lDevice->cfg)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	status = fc41dPlatformInitTransport(device);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
+    lTransport = fc41dGetTransport(lDevice);
+    if ((lTransport == NULL) || (lTransport->init == NULL) || (lTransport->write == NULL) ||
+        (lTransport->getRxLen == NULL) || (lTransport->read == NULL) || (lTransport->getTickMs == NULL)) {
+        return FC41D_STATUS_NOT_READY;
+    }
 
-	status = fc41dPlatformInitRxBuffers(device, &ctx->bleRxRb, &ctx->wifiRxRb);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
+    lDrvStatus = lTransport->init(lDevice->cfg.linkId);
+    if (lDrvStatus != DRV_STATUS_OK) {
+        return fc41dMapDrvStatus(lDrvStatus);
+    }
 
-	fpStatus = fc41dPlatformInitAtStream(device, &ctx->atStream, fc41dHandleUrcLine, ctx);
-	if (fpStatus != FLOWPARSER_STREAM_OK) {
-		return FC41D_STATUS_ERROR;
-	}
+    lControl = fc41dGetControl(device);
+    if ((lControl != NULL) && (lControl->init != NULL)) {
+        lControl->init();
+    }
 
-	ctx->execDone = false;
-	ctx->execResult = FC41D_AT_RESULT_NONE;
-	ctx->lastExecResult = FC41D_AT_RESULT_NONE;
-	ctx->activeResp = NULL;
-	ctx->execOwner = FC41D_EXEC_OWNER_NONE;
-	fc41dSyncInfoFromCfg(ctx);
-	ctx->info.isReady = true;
-	ctx->info.mode = ctx->cfg.bootMode;
-	return FC41D_STATUS_OK;
+    (void)memset(&lStreamCfg, 0, sizeof(lStreamCfg));
+    lStreamCfg.rxStorage = lDevice->rxStorage;
+    lStreamCfg.rxStorageSize = sizeof(lDevice->rxStorage);
+    lStreamCfg.lineBuf = lDevice->lineBuf;
+    lStreamCfg.lineBufSize = sizeof(lDevice->lineBuf);
+    lStreamCfg.pfSend = fc41dStreamSend;
+    lStreamCfg.sendUserData = lDevice;
+    lStreamCfg.pfGetTickMs = fc41dStreamGetTickMs;
+    lStreamCfg.tickUserData = lDevice;
+    lStreamCfg.pfUrcHandler = fc41dStreamDispatchUrc;
+    lStreamCfg.urcUserData = lDevice;
+    lStreamCfg.pfIsUrc = fc41dStreamIsUrc;
+    lStreamCfg.isUrcUserData = lDevice;
+
+    lStreamStatus = flowparserStreamInit(&lDevice->stream, &lStreamCfg);
+    if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+        return fc41dMapStreamStatus(lStreamStatus);
+    }
+
+    lDevice->info.isInit = true;
+    lDevice->info.isReady = true;
+    lDevice->info.isBusy = false;
+    lDevice->info.hasLastResult = false;
+    lDevice->info.lastResult = FLOWPARSER_RESULT_OK;
+    lDevice->info.stage = FLOWPARSER_STAGE_IDLE;
+    lDevice->info.rxBytes = 0U;
+    lDevice->info.urcCount = 0U;
+    fc41dResetState(lDevice);
+    return FC41D_STATUS_OK;
+}
+
+void fc41dReset(eFc41dMapType device)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return;
+    }
+
+    flowparserStreamReset(&lDevice->stream);
+    fc41dResetState(lDevice);
+}
+
+eFc41dStatus fc41dStart(eFc41dMapType device, eFc41dRole role)
+{
+    stFc41dDevice *lDevice;
+    const stFc41dControlInterface *lControl;
+    eFc41dStatus lStatus;
+
+    if (!fc41dIsValidRole(role)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    lControl = fc41dGetControl(device);
+    if ((lControl == NULL) || (lControl->setResetLevel == NULL)) {
+        return FC41D_STATUS_UNSUPPORTED;
+    }
+
+    flowparserStreamReset(&lDevice->stream);
+    lStatus = fc41dCtrlStart(lDevice, role);
+    if (lStatus != FC41D_STATUS_OK) {
+        return lStatus;
+    }
+
+    lControl->setResetLevel(false);
+    return FC41D_STATUS_OK;
+}
+
+void fc41dStop(eFc41dMapType device)
+{
+    stFc41dDevice *lDevice;
+    const stFc41dControlInterface *lControl;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return;
+    }
+
+    lControl = fc41dGetControl(device);
+    if ((lControl != NULL) && (lControl->setResetLevel != NULL)) {
+        lControl->setResetLevel(false);
+    }
+
+    flowparserStreamReset(&lDevice->stream);
+    fc41dCtrlStop(lDevice);
+}
+
+eFc41dStatus fc41dProcess(eFc41dMapType device, uint32_t nowTickMs)
+{
+    stFc41dDevice *lDevice;
+    eFc41dStatus lStatus;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    lStatus = fc41dBackGround(lDevice);
+    if (lStatus != FC41D_STATUS_OK) {
+        if (lDevice->state.role != FC41D_ROLE_NONE) {
+            fc41dCtrlScheduleRetry(lDevice, device, nowTickMs, lStatus);
+        }
+        return lStatus;
+    }
+
+    return fc41dCtrlProcess(lDevice, device, nowTickMs);
 }
 
 bool fc41dIsReady(eFc41dMapType device)
 {
-	return fc41dIsReadyCtx(fc41dGetCtx(device));
+    const stFc41dState *lpState;
+
+    lpState = fc41dGetState(device);
+    return (lpState != NULL) && lpState->isReady;
 }
 
-eFc41dStatus fc41dProcess(eFc41dMapType device)
+const stFc41dInfo *fc41dGetInfo(eFc41dMapType device)
 {
-	stFc41dCtx *ctx;
-	eFc41dStatus status;
+    stFc41dDevice *lDevice;
 
-	ctx = fc41dGetCtx(device);
-	if (!fc41dIsReadyCtx(ctx)) {
-		return FC41D_STATUS_NOT_READY;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return NULL;
+    }
 
-	status = fc41dServiceFlowParser(ctx, device);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
-
-	if (flowparserStreamIsBusy(&ctx->atStream)) {
-		return FC41D_STATUS_OK;
-	}
-
-	if ((ctx->execOwner == FC41D_EXEC_OWNER_API) && ctx->execDone) {
-		fc41dReleaseExecOwner(ctx, FC41D_EXEC_OWNER_API);
-	}
-
-	status = fc41dBleProcessStateMachine(ctx, device);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
-
-	status = fc41dWifiProcessStateMachine(ctx, device);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
-	return FC41D_STATUS_OK;
+    fc41dSyncInfo(lDevice);
+    return &lDevice->info;
 }
 
-eFc41dStatus fc41dGetInfo(eFc41dMapType device, stFc41dInfo *info)
+const stFc41dState *fc41dGetState(eFc41dMapType device)
 {
-	stFc41dCtx *ctx;
+    stFc41dDevice *lDevice;
 
-	if (info == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return NULL;
+    }
 
-	ctx = fc41dGetCtx(device);
-	if (ctx == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	*info = ctx->info;
-	return FC41D_STATUS_OK;
+    fc41dSyncState(lDevice);
+    return &lDevice->state;
 }
 
-eFc41dStatus fc41dRecover(eFc41dMapType device)
+uint16_t fc41dGetRxLength(eFc41dMapType device)
 {
-	stFc41dCtx *ctx;
+    stFc41dDevice *lDevice;
 
-	ctx = fc41dGetCtx(device);
-	if (!fc41dIsReadyCtx(ctx)) {
-		return FC41D_STATUS_NOT_READY;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return 0U;
+    }
 
-	flowparserStreamReset(&ctx->atStream);
-	fc41dAbortExec(ctx, FC41D_AT_RESULT_ERROR);
-	fc41dBleResetState(ctx);
-	fc41dWifiResetState(ctx);
-	ctx->info.mode = ctx->cfg.bootMode;
-	return FC41D_STATUS_OK;
+    return fc41dDataGetRxLength(&lDevice->dataPlane);
 }
 
-bool fc41dExecAtIsBusy(eFc41dMapType device)
+uint16_t fc41dReadData(eFc41dMapType device, uint8_t *buffer, uint16_t bufferSize)
 {
-	stFc41dCtx *ctx = fc41dGetCtx(device);
+    stFc41dDevice *lDevice;
 
-	if (!fc41dIsReadyCtx(ctx)) {
-		return false;
-	}
+    if ((buffer == NULL) || (bufferSize == 0U)) {
+        return 0U;
+    }
 
-	return (ctx->execOwner != FC41D_EXEC_OWNER_NONE) || flowparserStreamIsBusy(&ctx->atStream);
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return 0U;
+    }
+
+    return fc41dDataRead(&lDevice->dataPlane, buffer, bufferSize);
 }
 
-eFc41dAtExecResult fc41dGetLastExecResult(eFc41dMapType device)
+eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_t length)
 {
-	stFc41dCtx *ctx = fc41dGetCtx(device);
-	return (ctx != NULL) ? ctx->lastExecResult : FC41D_AT_RESULT_NONE;
+    stFc41dDevice *lDevice;
+
+    if ((buffer == NULL) || (length == 0U)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    if ((lDevice->state.role != FC41D_ROLE_BLE_PERIPHERAL) || !lDevice->state.isReady) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    return fc41dDataWrite(&lDevice->dataPlane, buffer, length);
 }
 
-eFc41dStatus fc41dGetTxnStatus(eFc41dMapType device, stFc41dTxnStatus *status)
+bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize)
 {
-	stFc41dCtx *ctx;
+    stFc41dDevice *lDevice;
+    uint16_t lLength;
 
-	if (status == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    if ((buffer == NULL) || (bufferSize == 0U)) {
+        return false;
+    }
 
-	ctx = fc41dGetCtx(device);
-	if (ctx == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->state.hasMacAddress) {
+        return false;
+    }
 
-	status->isBusy = ((ctx->execOwner != FC41D_EXEC_OWNER_NONE) || flowparserStreamIsBusy(&ctx->atStream));
-	status->owner = fc41dMapTxnOwner(ctx->execOwner);
-	status->stage = fc41dMapTxnStage(flowparserStreamGetStage(&ctx->atStream));
-	status->currentResult = ctx->execResult;
-	status->lastResult = ctx->lastExecResult;
-	return FC41D_STATUS_OK;
+    lLength = (uint16_t)strlen(lDevice->state.macAddress);
+    if (bufferSize <= lLength) {
+        return false;
+    }
+
+    (void)memcpy(buffer, lDevice->state.macAddress, lLength + 1U);
+    return true;
 }
 
-void fc41dReleaseExecOwner(stFc41dCtx *ctx, eFc41dExecOwner owner)
+eFc41dStatus fc41dSetUrcHandler(eFc41dMapType device, fc41dLineFunc handler, void *userData)
 {
-	if ((ctx == NULL) || (ctx->execOwner != (uint8_t)owner)) {
-		return;
-	}
+    stFc41dDevice *lDevice;
 
-	fc41dClearExecState(ctx);
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice->urcCb.pfHandler = handler;
+    lDevice->urcCb.handlerUserData = userData;
+    return FC41D_STATUS_OK;
 }
 
-static void fc41dBuildAtSpec(const stFc41dAtOpt *opt, stFlowParserSpec *spec)
+eFc41dStatus fc41dSetUrcMatcher(eFc41dMapType device, fc41dUrcMatchFunc matcher, void *userData)
 {
-	stFc41dAtOpt baseOpt;
+    stFc41dDevice *lDevice;
 
-	if (spec == NULL) {
-		return;
-	}
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
 
-	fc41dAtGetBaseOpt(&baseOpt);
-	(void)memset(spec, 0, sizeof(*spec));
-	spec->responseDonePatterns = baseOpt.responseDonePatterns;
-	spec->responseDonePatternCnt = baseOpt.responseDonePatternCnt;
-	spec->finalDonePatterns = baseOpt.finalDonePatterns;
-	spec->finalDonePatternCnt = baseOpt.finalDonePatternCnt;
-	spec->errorPatterns = baseOpt.errorPatterns;
-	spec->errorPatternCnt = baseOpt.errorPatternCnt;
-	spec->totalToutMs = baseOpt.totalToutMs;
-	spec->responseToutMs = baseOpt.responseToutMs;
-	spec->promptToutMs = baseOpt.promptToutMs;
-	spec->finalToutMs = baseOpt.finalToutMs;
-	spec->needPrompt = baseOpt.needPrompt;
-
-	if (opt == NULL) {
-		return;
-	}
-
-	if ((opt->responseDonePatterns != NULL) && (opt->responseDonePatternCnt > 0U)) {
-		spec->responseDonePatterns = opt->responseDonePatterns;
-		spec->responseDonePatternCnt = opt->responseDonePatternCnt;
-	}
-	if ((opt->finalDonePatterns != NULL) && (opt->finalDonePatternCnt > 0U)) {
-		spec->finalDonePatterns = opt->finalDonePatterns;
-		spec->finalDonePatternCnt = opt->finalDonePatternCnt;
-	}
-	if ((opt->errorPatterns != NULL) && (opt->errorPatternCnt > 0U)) {
-		spec->errorPatterns = opt->errorPatterns;
-		spec->errorPatternCnt = opt->errorPatternCnt;
-	}
-	if (opt->totalToutMs != 0U) {
-		spec->totalToutMs = opt->totalToutMs;
-	}
-	if (opt->responseToutMs != 0U) {
-		spec->responseToutMs = opt->responseToutMs;
-	}
-	if (opt->promptToutMs != 0U) {
-		spec->promptToutMs = opt->promptToutMs;
-	}
-	if (opt->finalToutMs != 0U) {
-		spec->finalToutMs = opt->finalToutMs;
-	}
-	spec->needPrompt = opt->needPrompt;
+    lDevice->urcCb.pfMatcher = matcher;
+    lDevice->urcCb.matcherUserData = userData;
+    return FC41D_STATUS_OK;
 }
 
-static eFc41dTxnOwner fc41dMapTxnOwner(uint8_t owner)
+void fc41dTxnLineThunk(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
-	switch ((eFc41dExecOwner)owner) {
-		case FC41D_EXEC_OWNER_API:
-			return FC41D_TXN_OWNER_API;
-		case FC41D_EXEC_OWNER_BLE:
-			return FC41D_TXN_OWNER_BLE;
-		case FC41D_EXEC_OWNER_WIFI:
-			return FC41D_TXN_OWNER_WIFI;
-		case FC41D_EXEC_OWNER_NONE:
-		default:
-			return FC41D_TXN_OWNER_NONE;
-	}
+    stFc41dDevice *lDevice;
+
+    lDevice = (stFc41dDevice *)userData;
+    fc41dCtrlHandleTxnLine(lDevice, lineBuf, lineLen);
 }
 
-static eFc41dTxnStage fc41dMapTxnStage(eFlowParserStage stage)
+void fc41dTxnDoneThunk(void *userData, eFlowParserResult result)
 {
-	switch (stage) {
-		case FLOWPARSER_STAGE_WAIT_RESPONSE:
-			return FC41D_TXN_STAGE_WAIT_RESPONSE;
-		case FLOWPARSER_STAGE_WAIT_PROMPT:
-			return FC41D_TXN_STAGE_WAIT_PROMPT;
-		case FLOWPARSER_STAGE_WAIT_FINAL:
-			return FC41D_TXN_STAGE_WAIT_FINAL;
-		case FLOWPARSER_STAGE_IDLE:
-		default:
-			return FC41D_TXN_STAGE_IDLE;
-	}
+    stFc41dDevice *lDevice;
+
+    lDevice = (stFc41dDevice *)userData;
+    fc41dCtrlHandleTxnDone(lDevice, result);
 }
 
-static void fc41dClearExecState(stFc41dCtx *ctx)
+static bool fc41dIsValidDevice(eFc41dMapType device)
 {
-	if (ctx == NULL) {
-		return;
-	}
-
-	ctx->activeResp = NULL;
-	ctx->execOwner = FC41D_EXEC_OWNER_NONE;
-	ctx->execDone = false;
-	ctx->execStartTick = 0U;
-	ctx->hasPendingModeSwitch = false;
-	ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
+    return (uint32_t)device < (uint32_t)FC41D_DEV_MAX;
 }
 
-static void fc41dAbortExec(stFc41dCtx *ctx, eFc41dAtExecResult result)
+static stFc41dDevice *fc41dGetDevice(eFc41dMapType device)
 {
-	if (ctx == NULL) {
-		return;
-	}
+    if (!fc41dIsValidDevice(device)) {
+        return NULL;
+    }
 
-	if ((ctx->activeResp != NULL) && (result != FC41D_AT_RESULT_NONE)) {
-		ctx->activeResp->result = result;
-	}
+    if (!gFc41dDefCfgDone[device]) {
+        fc41dLoadDefCfg(device, &gFc41dDevices[device].cfg);
+        fc41dLoadDefBleCfg(&gFc41dDevices[device].bleCfg);
+        fc41dResetState(&gFc41dDevices[device]);
+        gFc41dDefCfgDone[device] = true;
+    }
 
-	if (result != FC41D_AT_RESULT_NONE) {
-		ctx->execResult = result;
-		ctx->lastExecResult = result;
-	}
-
-	fc41dClearExecState(ctx);
+    return &gFc41dDevices[device];
 }
 
-static eFc41dMode fc41dResolveDataModeFromLinks(const stFc41dCtx *ctx)
+static void fc41dLoadDefCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
-	if (ctx == NULL) {
-		return FC41D_MODE_COMMAND;
-	}
+    if (cfg == NULL) {
+        return;
+    }
 
-	if ((ctx->info.wifi.state == FC41D_WIFI_STATE_STA_CONNECTED) ||
-		(ctx->info.wifi.state == FC41D_WIFI_STATE_AP_ACTIVE)) {
-		return FC41D_MODE_WIFI_DATA;
-	}
-
-	if ((ctx->info.ble.state == FC41D_BLE_STATE_PERIPHERAL_CONNECTED) ||
-		(ctx->info.ble.state == FC41D_BLE_STATE_CENTRAL_CONNECTED)) {
-		return FC41D_MODE_BLE_DATA;
-	}
-
-	return FC41D_MODE_COMMAND;
+    fc41dLoadPlatformDefaultCfg(device, cfg);
+    if (cfg->rxPollChunkSize == 0U) {
+        cfg->rxPollChunkSize = FC41D_RX_POLL_CHUNK_SIZE;
+    }
+    if (cfg->txTimeoutMs == 0U) {
+        cfg->txTimeoutMs = FC41D_DEFAULT_TX_TIMEOUT_MS;
+    }
+    if (cfg->bootWaitMs == 0U) {
+        cfg->bootWaitMs = FC41D_DEFAULT_BOOT_WAIT_MS;
+    }
+    if (cfg->resetPulseMs == 0U) {
+        cfg->resetPulseMs = FC41D_DEFAULT_RESET_PULSE_MS;
+    }
+    if (cfg->resetWaitMs == 0U) {
+        cfg->resetWaitMs = FC41D_DEFAULT_RESET_WAIT_MS;
+    }
+    if (cfg->readyTimeoutMs == 0U) {
+        cfg->readyTimeoutMs = FC41D_DEFAULT_READY_TIMEOUT_MS;
+    }
+    if (cfg->readySettleMs == 0U) {
+        cfg->readySettleMs = FC41D_DEFAULT_READY_SETTLE_MS;
+    }
+    if (cfg->retryIntervalMs == 0U) {
+        cfg->retryIntervalMs = FC41D_DEFAULT_RETRY_INTERVAL_MS;
+    }
 }
 
-static void fc41dPrepareModeSwitch(stFc41dCtx *ctx, const uint8_t *cmdBuf, uint16_t cmdLen)
+static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
 {
-	uint16_t trimLen;
+    const stFc41dTransportInterface *lTransport;
+    uint8_t lRxBuffer[FC41D_RX_POLL_CHUNK_SIZE];
+    uint16_t lAvailLen;
+    uint16_t lReadLen;
+    uint16_t lChunkLimit;
+    eDrvStatus lDrvStatus;
+    eFlowParserStrmSta lStreamStatus;
 
-	if ((ctx == NULL) || (cmdBuf == NULL) || (cmdLen == 0U)) {
-		return;
-	}
+    if ((device == NULL) || !device->info.isReady) {
+        return FC41D_STATUS_NOT_READY;
+    }
 
-	trimLen = cmdLen;
-	while ((trimLen > 0U) && ((cmdBuf[trimLen - 1U] == '\r') || (cmdBuf[trimLen - 1U] == '\n'))) {
-		trimLen--;
-	}
+    lTransport = fc41dGetTransport(device);
+    if (lTransport == NULL) {
+        return FC41D_STATUS_NOT_READY;
+    }
 
-	if ((trimLen == 3U) && (memcmp(cmdBuf, "ATO", 3U) == 0)) {
-		ctx->pendingModeOnSuccess = fc41dResolveDataModeFromLinks(ctx);
-		ctx->hasPendingModeSwitch = true;
-		return;
-	}
+    lChunkLimit = device->cfg.rxPollChunkSize;
+    if ((lChunkLimit == 0U) || (lChunkLimit > sizeof(lRxBuffer))) {
+        lChunkLimit = sizeof(lRxBuffer);
+    }
 
-	if ((trimLen == 3U) && (memcmp(cmdBuf, "+++", 3U) == 0)) {
-		ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
-		ctx->hasPendingModeSwitch = true;
-	}
+    lAvailLen = lTransport->getRxLen(device->cfg.linkId);
+    while (lAvailLen > 0U) {
+        lReadLen = (lAvailLen > lChunkLimit) ? lChunkLimit : lAvailLen;
+        lDrvStatus = lTransport->read(device->cfg.linkId, lRxBuffer, lReadLen);
+        if (lDrvStatus != DRV_STATUS_OK) {
+            return fc41dMapDrvStatus(lDrvStatus);
+        }
+
+        lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
+        if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+            return fc41dMapStreamStatus(lStreamStatus);
+        }
+
+        device->info.rxBytes += lReadLen;
+        lAvailLen = lTransport->getRxLen(device->cfg.linkId);
+    }
+
+    lStreamStatus = flowparserStreamProc(&device->stream);
+    fc41dSyncState(device);
+    if ((lStreamStatus == FLOWPARSER_STREAM_OK) || (lStreamStatus == FLOWPARSER_STREAM_EMPTY) ||
+        (lStreamStatus == FLOWPARSER_STREAM_BUSY)) {
+        return FC41D_STATUS_OK;
+    }
+
+    return fc41dMapStreamStatus(lStreamStatus);
 }
 
-static eFc41dStatus fc41dSubmitExec(stFc41dCtx *ctx, eFc41dExecOwner owner, const uint8_t *cmdBuf, uint16_t cmdLen,
-									 const uint8_t *payloadBuf, uint16_t payloadLen,
-									 const stFc41dAtOpt *opt, stFc41dAtResp *resp)
+static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, uint16_t len)
 {
-	stFlowParserReq req;
-	eFlowParserStrmSta fpStatus;
+    stFc41dDevice *lDevice;
+    const stFc41dTransportInterface *lTransport;
 
-	if ((ctx == NULL) || (cmdBuf == NULL) || (cmdLen == 0U)) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = (stFc41dDevice *)userData;
+    if ((lDevice == NULL) || (buf == NULL) || (len == 0U)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
+    }
 
-	if (!fc41dIsReadyCtx(ctx)) {
-		return FC41D_STATUS_NOT_READY;
-	}
+    lTransport = fc41dGetTransport(lDevice);
+    if ((lTransport == NULL) || (lTransport->write == NULL)) {
+        return FLOWPARSER_STREAM_NOT_INIT;
+    }
 
-	if ((ctx->execOwner == FC41D_EXEC_OWNER_API) && ctx->execDone && !flowparserStreamIsBusy(&ctx->atStream)) {
-		fc41dReleaseExecOwner(ctx, FC41D_EXEC_OWNER_API);
-	}
-
-	if ((ctx->execOwner != FC41D_EXEC_OWNER_NONE) || flowparserStreamIsBusy(&ctx->atStream)) {
-		return FC41D_STATUS_BUSY;
-	}
-
-	if (resp != NULL) {
-		resp->lineLen = 0U;
-		resp->lineCount = 0U;
-		resp->result = FC41D_AT_RESULT_NONE;
-		if ((resp->lineBuf != NULL) && (resp->lineBufSize > 0U)) {
-			resp->lineBuf[0] = '\0';
-		}
-	}
-
-	fc41dBuildAtSpec(opt, &ctx->execSpec);
-	if ((ctx->cfg.execGuardMs != 0U) && ((opt == NULL) || (opt->totalToutMs == 0U))) {
-		ctx->execSpec.totalToutMs = ctx->cfg.execGuardMs;
-	}
-
-	(void)memset(&req, 0, sizeof(req));
-	req.spec = &ctx->execSpec;
-	req.cmdBuf = cmdBuf;
-	req.cmdLen = cmdLen;
-	req.payloadBuf = payloadBuf;
-	req.payloadLen = payloadLen;
-	req.lineHandler = fc41dExecLineHandler;
-	req.doneHandler = fc41dExecDoneHandler;
-	req.userData = ctx;
-
-	ctx->activeResp = resp;
-	ctx->execDone = false;
-	ctx->execResult = FC41D_AT_RESULT_NONE;
-	ctx->execOwner = (uint8_t)owner;
-	ctx->execStartTick = fc41dPlatformGetTickMs();
-	ctx->hasPendingModeSwitch = false;
-	ctx->pendingModeOnSuccess = FC41D_MODE_COMMAND;
-	fc41dPrepareModeSwitch(ctx, cmdBuf, cmdLen);
-
-	fpStatus = flowparserStreamSubmit(&ctx->atStream, &req);
-	if (fpStatus == FLOWPARSER_STREAM_BUSY) {
-		fc41dClearExecState(ctx);
-		ctx->execResult = FC41D_AT_RESULT_BUSY;
-		return FC41D_STATUS_BUSY;
-	}
-	if (fpStatus != FLOWPARSER_STREAM_OK) {
-		fc41dAbortExec(ctx, (fpStatus == FLOWPARSER_STREAM_PORT_FAIL) ? FC41D_AT_RESULT_SEND_FAIL : FC41D_AT_RESULT_ERROR);
-		return FC41D_STATUS_ERROR;
-	}
-
-	return FC41D_STATUS_OK;
+    return (lTransport->write(lDevice->cfg.linkId, buf, len, lDevice->cfg.txTimeoutMs) == DRV_STATUS_OK) ?
+           FLOWPARSER_STREAM_OK :
+           FLOWPARSER_STREAM_PORT_FAIL;
 }
 
-eFc41dStatus fc41dExecCmdSeq(eFc41dMapType device, eFc41dExecOwner owner, const char *const *cmdSeq,
-							 uint8_t cmdSeqLen, uint8_t *stepIndex)
+static uint32_t fc41dStreamGetTickMs(void *userData)
 {
-	eFc41dStatus status;
+    stFc41dDevice *lDevice;
+    const stFc41dTransportInterface *lTransport;
 
-	if (stepIndex == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
+    lDevice = (stFc41dDevice *)userData;
+    if (lDevice == NULL) {
+        return 0U;
+    }
 
-	if ((cmdSeq == NULL) || (cmdSeqLen == 0U)) {
-		*stepIndex = 0U;
-		return FC41D_STATUS_OK;
-	}
+    lTransport = fc41dGetTransport(lDevice);
+    if ((lTransport == NULL) || (lTransport->getTickMs == NULL)) {
+        return 0U;
+    }
 
-	if (*stepIndex >= cmdSeqLen) {
-		*stepIndex = 0U;
-	}
-
-	status = fc41dExecOptionalCmdText(device, owner, cmdSeq[*stepIndex]);
-	if (status != FC41D_STATUS_OK) {
-		return status;
-	}
-
-	(*stepIndex)++;
-	if (*stepIndex < cmdSeqLen) {
-		return FC41D_STATUS_BUSY;
-	}
-
-	*stepIndex = 0U;
-	return FC41D_STATUS_OK;
+    return lTransport->getTickMs();
 }
 
-static void fc41dExecLineHandler(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
+static bool fc41dStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
-	stFc41dCtx *ctx = (stFc41dCtx *)userData;
-	uint16_t copyLen;
+    stFc41dDevice *lDevice;
 
-	if ((ctx == NULL) || (ctx->activeResp == NULL)) {
-		return;
-	}
-
-	ctx->activeResp->lineCount++;
-	if (ctx->activeResp->pfLineCallback != NULL) {
-		ctx->activeResp->pfLineCallback(ctx->activeResp->lineCallbackUserData, lineBuf, lineLen);
-	}
-	if ((ctx->activeResp->lineBuf == NULL) || (ctx->activeResp->lineBufSize == 0U)) {
-		return;
-	}
-
-	copyLen = lineLen;
-	if (copyLen >= ctx->activeResp->lineBufSize) {
-		copyLen = (uint16_t)(ctx->activeResp->lineBufSize - 1U);
-	}
-
-	if ((lineBuf != NULL) && (copyLen > 0U)) {
-		(void)memcpy(ctx->activeResp->lineBuf, lineBuf, copyLen);
-	}
-	ctx->activeResp->lineBuf[copyLen] = '\0';
-	ctx->activeResp->lineLen = copyLen;
+    lDevice = (stFc41dDevice *)userData;
+    return fc41dCtrlIsUrc(lDevice, lineBuf, lineLen);
 }
 
-static void fc41dExecDoneHandler(void *userData, eFlowParserResult result)
+static void fc41dStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
-	stFc41dCtx *ctx = (stFc41dCtx *)userData;
+    stFc41dDevice *lDevice;
 
-	if (ctx == NULL) {
-		return;
-	}
+    lDevice = (stFc41dDevice *)userData;
+    if ((lDevice == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
+        return;
+    }
 
-	switch (result) {
-		case FLOWPARSER_RESULT_OK:
-			ctx->execResult = FC41D_AT_RESULT_OK;
-			break;
-		case FLOWPARSER_RESULT_ERROR:
-			ctx->execResult = FC41D_AT_RESULT_ERROR;
-			break;
-		case FLOWPARSER_RESULT_TIMEOUT:
-			ctx->execResult = FC41D_AT_RESULT_TIMEOUT;
-			break;
-		case FLOWPARSER_RESULT_OVERFLOW:
-			ctx->execResult = FC41D_AT_RESULT_OVERFLOW;
-			break;
-		case FLOWPARSER_RESULT_SEND_FAIL:
-			ctx->execResult = FC41D_AT_RESULT_SEND_FAIL;
-			break;
-		default:
-			ctx->execResult = FC41D_AT_RESULT_ERROR;
-			break;
-	}
-
-	if (ctx->activeResp != NULL) {
-		ctx->activeResp->result = ctx->execResult;
-	}
-	if ((ctx->execResult == FC41D_AT_RESULT_OK) && ctx->hasPendingModeSwitch) {
-		ctx->info.mode = ctx->pendingModeOnSuccess;
-	}
-	ctx->execDone = true;
-	ctx->lastExecResult = ctx->execResult;
+    fc41dCtrlHandleUrc(lDevice, lineBuf, lineLen);
+    (void)fc41dDataTryStoreUrcPayload(&lDevice->dataPlane, lineBuf, lineLen);
+    if (lDevice->urcCb.pfHandler != NULL) {
+        lDevice->urcCb.pfHandler(lDevice->urcCb.handlerUserData, lineBuf, lineLen);
+    }
 }
-
-static eFc41dStatus fc41dMapExecResult(eFc41dAtExecResult result)
-{
-	switch (result) {
-		case FC41D_AT_RESULT_OK:
-			return FC41D_STATUS_OK;
-		case FC41D_AT_RESULT_TIMEOUT:
-			return FC41D_STATUS_TIMEOUT;
-		case FC41D_AT_RESULT_BUSY:
-			return FC41D_STATUS_BUSY;
-		default:
-			return FC41D_STATUS_ERROR;
-	}
-}
-
-static eFc41dStatus fc41dServiceFlowParser(stFc41dCtx *ctx, eFc41dMapType device)
-{
-	eFlowParserStrmSta fpStatus;
-
-	if (ctx == NULL) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	fc41dPlatformPollRx(device);
-	fpStatus = flowparserStreamProc(&ctx->atStream);
-	if ((fpStatus == FLOWPARSER_STREAM_OK) || (fpStatus == FLOWPARSER_STREAM_EMPTY) || (fpStatus == FLOWPARSER_STREAM_BUSY)) {
-		return FC41D_STATUS_OK;
-	}
-
-	return FC41D_STATUS_ERROR;
-}
-
-eFc41dStatus fc41dExecOptionalCmdText(eFc41dMapType device, eFc41dExecOwner owner, const char *cmdText)
-{
-	stFc41dCtx *ctx;
-	uint8_t cmdBuf[256U];
-	uint32_t cmdLen;
-	eFc41dStatus status;
-
-	if ((cmdText == NULL) || (cmdText[0] == '\0')) {
-		return FC41D_STATUS_OK;
-	}
-
-	ctx = fc41dGetCtx(device);
-	if (!fc41dIsReadyCtx(ctx)) {
-		return FC41D_STATUS_NOT_READY;
-	}
-
-	if (ctx->execOwner == (uint8_t)owner) {
-		if (flowparserStreamIsBusy(&ctx->atStream) || !ctx->execDone) {
-			return FC41D_STATUS_BUSY;
-		}
-
-		status = fc41dMapExecResult(ctx->execResult);
-		fc41dReleaseExecOwner(ctx, owner);
-		return status;
-	}
-
-	if ((ctx->execOwner != FC41D_EXEC_OWNER_NONE) || flowparserStreamIsBusy(&ctx->atStream)) {
-		return FC41D_STATUS_BUSY;
-	}
-
-	cmdLen = (uint32_t)strlen(cmdText);
-	if ((cmdLen == 0U) || (cmdLen >= (uint32_t)(sizeof(cmdBuf) - 2U))) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	(void)memcpy(cmdBuf, cmdText, cmdLen);
-	if ((cmdLen < 2U) || (cmdBuf[cmdLen - 2U] != '\r') || (cmdBuf[cmdLen - 1U] != '\n')) {
-		cmdBuf[cmdLen++] = '\r';
-		cmdBuf[cmdLen++] = '\n';
-	}
-
-	status = fc41dSubmitExec(ctx, owner, cmdBuf, (uint16_t)cmdLen, NULL, 0U, NULL, NULL);
-	return (status == FC41D_STATUS_OK) ? FC41D_STATUS_BUSY : status;
-}
-
-eFc41dStatus fc41dExecAt(eFc41dMapType device, const uint8_t *cmdBuf, uint16_t cmdLen,
-						 const uint8_t *payloadBuf, uint16_t payloadLen,
-						 const stFc41dAtOpt *opt, stFc41dAtResp *resp)
-{
-	stFc41dCtx *ctx;
-
-	if ((cmdBuf == NULL) || (cmdLen == 0U)) {
-		return FC41D_STATUS_INVALID_PARAM;
-	}
-
-	ctx = fc41dGetCtx(device);
-	return fc41dSubmitExec(ctx, FC41D_EXEC_OWNER_API, cmdBuf, cmdLen, payloadBuf, payloadLen, opt, resp);
-}
-
-bool fc41dLineHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token)
-{
-	uint16_t idx;
-	uint32_t tokenLen;
-	uint32_t matchIdx;
-
-	if ((lineBuf == NULL) || (token == NULL)) {
-		return false;
-	}
-
-	tokenLen = (uint32_t)strlen(token);
-	if ((tokenLen == 0U) || ((uint32_t)lineLen < tokenLen)) {
-		return false;
-	}
-
-	for (idx = 0U; idx <= (uint16_t)(lineLen - tokenLen); idx++) {
-		for (matchIdx = 0U; matchIdx < tokenLen; matchIdx++) {
-			if (toupper((int)lineBuf[idx + matchIdx]) != toupper((int)token[matchIdx])) {
-				break;
-			}
-		}
-
-		if (matchIdx == tokenLen) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static bool fc41dPushRxPayload(stFc41dCtx *ctx, eFc41dRxChannel channel, const uint8_t *payloadBuf, uint16_t payloadLen)
-{
-	stRingBuffer *rb;
-	uint32_t freeLen;
-	uint32_t cap;
-	uint32_t dropped = 0U;
-	bool overwrite;
-	uint32_t written;
-
-	if ((ctx == NULL) || (payloadBuf == NULL) || (payloadLen == 0U)) {
-		return false;
-	}
-
-	rb = fc41dGetRxRbByChannel(ctx, channel);
-	if (rb == NULL) {
-		return false;
-	}
-
-	overwrite = (channel == FC41D_RX_CHANNEL_BLE) ? ctx->cfg.ble.rxOverwriteOnFull : ctx->cfg.wifi.rxOverwriteOnFull;
-	freeLen = ringBufferGetFree(rb);
-	cap = ringBufferGetCapacity(rb);
-
-	if (!overwrite && (freeLen < (uint32_t)payloadLen)) {
-		dropped = payloadLen;
-		written = 0U;
-	} else if (overwrite) {
-		if ((uint32_t)payloadLen > freeLen) {
-			if ((uint32_t)payloadLen >= cap) {
-				dropped = ringBufferGetUsed(rb) + (uint32_t)payloadLen - cap;
-			} else {
-				dropped = (uint32_t)payloadLen - freeLen;
-			}
-		}
-		written = ringBufferWriteOverwrite(rb, payloadBuf, payloadLen);
-	} else {
-		written = ringBufferWrite(rb, payloadBuf, payloadLen);
-	}
-
-	if (channel == FC41D_RX_CHANNEL_BLE) {
-		fc41dBleAccumulateRxStats(ctx, written, dropped);
-	} else if (channel == FC41D_RX_CHANNEL_WIFI) {
-		fc41dWifiAccumulateRxStats(ctx, written, dropped);
-	}
-
-	return written == (uint32_t)payloadLen;
-}
-
-static void fc41dHandleUrcLine(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
-{
-	stFc41dCtx *ctx = (stFc41dCtx *)userData;
-	const uint8_t *payloadBuf = NULL;
-	uint16_t payloadLen = 0U;
-	eFc41dRxChannel channel = FC41D_RX_CHANNEL_NONE;
-
-	if (ctx == NULL) {
-		return;
-	}
-
-	ctx->info.urcLineCount++;
-	fc41dBleUpdateLinkStateByUrc(ctx, lineBuf, lineLen);
-	fc41dWifiUpdateLinkStateByUrc(ctx, lineBuf, lineLen);
-	if (!fc41dPlatformRouteLine(ctx->device, lineBuf, lineLen, &channel, &payloadBuf, &payloadLen)) {
-		ctx->info.unknownUrcLineCount++;
-		return;
-	}
-
-	if (((channel == FC41D_RX_CHANNEL_BLE) && !ctx->cfg.ble.enableRx) ||
-		((channel == FC41D_RX_CHANNEL_WIFI) && !ctx->cfg.wifi.enableRx)) {
-		return;
-	}
-
-	if (fc41dPushRxPayload(ctx, channel, payloadBuf, payloadLen)) {
-		ctx->info.lastRxChannel = channel;
-	}
-}
-
 /**************************End of file********************************/

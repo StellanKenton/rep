@@ -1,387 +1,437 @@
 /***********************************************************************************
 * @file     : flowparser_stream.c
-* @brief    : AT command transaction parser implementation.
-* @details  : Executes single-command flows with prompt wait and URC splitting.
+* @brief    : Transport-bound executor for line-oriented command transactions.
+* @details  : This file manages byte buffering, line splitting, prompt handling, and timeout checks.
 * @author   : GitHub Copilot
-* @date     : 2026-04-02
+* @date     : 2026-04-21
 * @version  : V1.0.0
 * @copyright: Copyright (c) 2050
 **********************************************************************************/
 #include "flowparser_stream.h"
 
+#include <stddef.h>
 #include <string.h>
 
-static uint32_t flowparserStreamGetTick(const stFlowParserStream *stream);
-static bool flowparserStreamMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern);
-static bool flowparserStreamMatchPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt);
-static bool flowparserStreamIsUrc(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
-static bool flowparserStreamIsStageTout(const stFlowParserStream *stream, uint32_t toutMs);
+static void flowparserStreamClearTxn(stFlowParserStream *stream);
 static void flowparserStreamFinish(stFlowParserStream *stream, eFlowParserResult result);
-static void flowparserStreamHandleLine(stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
-static void flowparserStreamHandlePrompt(stFlowParserStream *stream);
-static void flowparserStreamCheckTout(stFlowParserStream *stream);
-
-static uint32_t flowparserStreamGetTick(const stFlowParserStream *stream)
-{
-    if ((stream == NULL) || (stream->cfg.getTick == NULL)) {
-        return 0U;
-    }
-
-    return stream->cfg.getTick();
-}
-
-static bool flowparserStreamMatchPattern(const uint8_t *lineBuf, uint16_t lineLen, const char *pattern)
-{
-    uint32_t lPatLen;
-
-    if ((lineBuf == NULL) || (pattern == NULL)) {
-        return false;
-    }
-
-    lPatLen = (uint32_t)strlen(pattern);
-    if (lPatLen == 0U) {
-        return false;
-    }
-
-    if (pattern[lPatLen - 1U] == '*') {
-        lPatLen--;
-        if ((lPatLen == 0U) || (lineLen < lPatLen)) {
-            return false;
-        }
-
-        return memcmp(lineBuf, pattern, lPatLen) == 0;
-    }
-
-    if (lineLen != lPatLen) {
-        return false;
-    }
-
-    return memcmp(lineBuf, pattern, lPatLen) == 0;
-}
-
-static bool flowparserStreamMatchPatterns(const uint8_t *lineBuf, uint16_t lineLen, const char *const *patterns, uint8_t patternCnt)
-{
-    uint8_t lIdx;
-
-    if ((patterns == NULL) || (patternCnt == 0U)) {
-        return false;
-    }
-
-    for (lIdx = 0U; lIdx < patternCnt; lIdx++) {
-        if (flowparserStreamMatchPattern(lineBuf, lineLen, patterns[lIdx])) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool flowparserStreamIsUrc(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
-{
-    if ((stream == NULL) || (lineBuf == NULL)) {
-        return false;
-    }
-
-    if ((stream->cfg.isUrc != NULL) && (stream->cfg.isUrc(lineBuf, lineLen, stream->cfg.urcMatchUserCtx))) {
-        return true;
-    }
-
-    return flowparserStreamMatchPatterns(lineBuf, lineLen, stream->cfg.urcPatterns, stream->cfg.urcPatternCnt);
-}
-
-static bool flowparserStreamIsStageTout(const stFlowParserStream *stream, uint32_t toutMs)
-{
-    if ((stream == NULL) || (stream->txn.isActive == false) || (toutMs == 0U)) {
-        return false;
-    }
-
-    return (uint32_t)(flowparserStreamGetTick(stream) - stream->txn.stageStartTick) >= toutMs;
-}
-
-static void flowparserStreamFinish(stFlowParserStream *stream, eFlowParserResult result)
-{
-    flowparserStreamDoneFunc lDoneHandler;
-    void *lUserData;
-
-    if (stream == NULL) {
-        return;
-    }
-
-    lDoneHandler = stream->txn.doneHandler;
-    lUserData = stream->txn.userData;
-
-    stream->txn.result = result;
-    stream->txn.stage = FLOWPARSER_STAGE_IDLE;
-    stream->txn.isActive = false;
-    stream->txn.spec = NULL;
-    stream->txn.lineHandler = NULL;
-    stream->txn.doneHandler = NULL;
-    stream->txn.userData = NULL;
-    stream->txn.cmdLen = 0U;
-    stream->txn.payloadLen = 0U;
-    stream->txn.totalStartTick = 0U;
-    stream->txn.stageStartTick = 0U;
-
-    if (lDoneHandler != NULL) {
-        lDoneHandler(lUserData, result);
-    }
-}
-
-static void flowparserStreamHandleLine(stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
-{
-    const stFlowParserSpec *lSpec;
-
-    if ((stream == NULL) || (lineBuf == NULL)) {
-        return;
-    }
-
-    lSpec = stream->txn.spec;
-    if ((stream->txn.isActive == true) && (lSpec != NULL)) {
-        if (flowparserStreamMatchPatterns(lineBuf, lineLen, lSpec->errorPatterns, lSpec->errorPatternCnt)) {
-            flowparserStreamFinish(stream, FLOWPARSER_RESULT_ERROR);
-            return;
-        }
-
-        if ((stream->txn.stage == FLOWPARSER_STAGE_WAIT_RESPONSE) &&
-            flowparserStreamMatchPatterns(lineBuf, lineLen, lSpec->responseDonePatterns, lSpec->responseDonePatternCnt)) {
-            flowparserStreamFinish(stream, FLOWPARSER_RESULT_OK);
-            return;
-        }
-
-        if ((stream->txn.stage == FLOWPARSER_STAGE_WAIT_FINAL) &&
-            flowparserStreamMatchPatterns(lineBuf, lineLen, lSpec->finalDonePatterns, lSpec->finalDonePatternCnt)) {
-            flowparserStreamFinish(stream, FLOWPARSER_RESULT_OK);
-            return;
-        }
-    }
-
-    if (flowparserStreamIsUrc(stream, lineBuf, lineLen)) {
-        if (stream->cfg.urcHandler != NULL) {
-            stream->cfg.urcHandler(stream->cfg.urcUserCtx, lineBuf, lineLen);
-        }
-        return;
-    }
-
-    if ((stream->txn.isActive == true) && (stream->txn.lineHandler != NULL)) {
-        stream->txn.lineHandler(stream->txn.userData, lineBuf, lineLen);
-    }
-}
-
-static void flowparserStreamHandlePrompt(stFlowParserStream *stream)
-{
-    eDrvStatus lDrvStatus;
-
-    if ((stream == NULL) || (stream->txn.isActive == false) || (stream->txn.stage != FLOWPARSER_STAGE_WAIT_PROMPT)) {
-        return;
-    }
-
-    lDrvStatus = DRV_STATUS_OK;
-    if (stream->txn.payloadLen > 0U) {
-        lDrvStatus = stream->cfg.send(stream->cfg.payloadBuf, stream->txn.payloadLen, stream->cfg.portUserCtx);
-    }
-
-    if (lDrvStatus != DRV_STATUS_OK) {
-        flowparserStreamFinish(stream, FLOWPARSER_RESULT_SEND_FAIL);
-        return;
-    }
-
-    stream->txn.stage = FLOWPARSER_STAGE_WAIT_FINAL;
-    stream->txn.stageStartTick = flowparserStreamGetTick(stream);
-}
-
-static void flowparserStreamCheckTout(stFlowParserStream *stream)
-{
-    const stFlowParserSpec *lSpec;
-    uint32_t lTotalToutMs;
-    uint32_t lStageToutMs;
-
-    if ((stream == NULL) || (stream->txn.isActive == false) || (stream->txn.spec == NULL)) {
-        return;
-    }
-
-    lSpec = stream->txn.spec;
-    lTotalToutMs = lSpec->totalToutMs;
-    if ((lTotalToutMs != 0U) && ((uint32_t)(flowparserStreamGetTick(stream) - stream->txn.totalStartTick) >= lTotalToutMs)) {
-        flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
-        return;
-    }
-
-    lStageToutMs = 0U;
-    if (stream->txn.stage == FLOWPARSER_STAGE_WAIT_RESPONSE) {
-        lStageToutMs = lSpec->responseToutMs;
-    } else if (stream->txn.stage == FLOWPARSER_STAGE_WAIT_PROMPT) {
-        lStageToutMs = lSpec->promptToutMs;
-    } else if (stream->txn.stage == FLOWPARSER_STAGE_WAIT_FINAL) {
-        lStageToutMs = lSpec->finalToutMs;
-    }
-
-    if ((lStageToutMs == 0U) && (lTotalToutMs != 0U)) {
-        lStageToutMs = lTotalToutMs;
-    }
-
-    if (flowparserStreamIsStageTout(stream, lStageToutMs)) {
-        flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
-    }
-}
-
-bool flowparserStreamIsCfgValid(const stFlowParserStreamCfg *cfg)
-{
-    if ((cfg == NULL) || (!flowparserTokIsCfgValid(&cfg->tokCfg)) || (cfg->cmdBuf == NULL) || (cfg->cmdBufSize == 0U) ||
-        (cfg->send == NULL) || (cfg->getTick == NULL)) {
-        return false;
-    }
-
-    if ((cfg->payloadBufSize > 0U) && (cfg->payloadBuf == NULL)) {
-        return false;
-    }
-
-    return true;
-}
+static void flowparserStreamSetStage(stFlowParserStream *stream, eFlowParserStage stage);
+static bool flowparserStreamHasTimedOut(const stFlowParserStream *stream, uint32_t limitMs);
+static eFlowParserStrmSta flowparserStreamCheckTimeout(stFlowParserStream *stream);
+static eFlowParserStrmSta flowparserStreamConsumeByte(stFlowParserStream *stream, uint8_t data, bool *hasLine, bool *isPrompt);
+static eFlowParserStrmSta flowparserStreamDispatchLine(stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen, bool isPrompt);
+static bool flowparserStreamIsConfiguredUrc(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
+static bool flowparserStreamMatchError(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
+static bool flowparserStreamMatchResponseDone(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
+static bool flowparserStreamMatchFinalDone(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
 
 eFlowParserStrmSta flowparserStreamInit(stFlowParserStream *stream, const stFlowParserStreamCfg *cfg)
 {
-    if ((stream == NULL) || (!flowparserStreamIsCfgValid(cfg))) {
-        return FLOWPARSER_STREAM_INVALID_ARG;
+    if ((stream == NULL) || (cfg == NULL) || (cfg->rxStorage == NULL) || (cfg->rxStorageSize == 0U) ||
+        (cfg->lineBuf == NULL) || (cfg->lineBufSize < 2U) || (cfg->pfSend == NULL)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
     }
 
     (void)memset(stream, 0, sizeof(*stream));
-    stream->cfg = *cfg;
-    if (stream->cfg.procBudget == 0U) {
-        stream->cfg.procBudget = 8U;
+    if (ringBufferInit(&stream->rxRb, cfg->rxStorage, cfg->rxStorageSize) != RINGBUFFER_OK) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
     }
 
-    if (flowparserTokInit(&stream->tokenizer, &cfg->tokCfg) != FLOWPARSER_TOK_OK) {
-        return FLOWPARSER_STREAM_INVALID_ARG;
-    }
-
-    stream->txn.stage = FLOWPARSER_STAGE_IDLE;
+    stream->lineBuf = cfg->lineBuf;
+    stream->lineBufSize = cfg->lineBufSize;
+    stream->pfSend = cfg->pfSend;
+    stream->sendUserData = cfg->sendUserData;
+    stream->pfGetTickMs = cfg->pfGetTickMs;
+    stream->tickUserData = cfg->tickUserData;
+    stream->pfUrcHandler = cfg->pfUrcHandler;
+    stream->urcUserData = cfg->urcUserData;
+    stream->pfIsUrc = cfg->pfIsUrc;
+    stream->isUrcUserData = cfg->isUrcUserData;
+    stream->stage = FLOWPARSER_STAGE_IDLE;
     stream->isInit = true;
     return FLOWPARSER_STREAM_OK;
 }
 
 void flowparserStreamReset(stFlowParserStream *stream)
 {
-    if ((stream == NULL) || (stream->isInit == false)) {
+    if ((stream == NULL) || !stream->isInit) {
         return;
     }
 
-    flowparserTokReset(&stream->tokenizer);
-    (void)memset(&stream->txn, 0, sizeof(stream->txn));
-    stream->txn.stage = FLOWPARSER_STAGE_IDLE;
+    (void)ringBufferReset(&stream->rxRb);
+    flowparserStreamClearTxn(stream);
+}
+
+eFlowParserStrmSta flowparserStreamFeed(stFlowParserStream *stream, const uint8_t *data, uint16_t len)
+{
+    uint32_t written;
+
+    if ((stream == NULL) || !stream->isInit) {
+        return FLOWPARSER_STREAM_NOT_INIT;
+    }
+
+    if ((data == NULL) || (len == 0U)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
+    }
+
+    written = ringBufferWrite(&stream->rxRb, data, len);
+    if (written != len) {
+        return FLOWPARSER_STREAM_OVERFLOW;
+    }
+
+    return FLOWPARSER_STREAM_OK;
 }
 
 eFlowParserStrmSta flowparserStreamSubmit(stFlowParserStream *stream, const stFlowParserReq *req)
 {
-    eDrvStatus lDrvStatus;
+    eFlowParserStrmSta status;
 
-    if ((stream == NULL) || (req == NULL) || (req->spec == NULL) || (req->cmdBuf == NULL) || (req->cmdLen == 0U)) {
-        return FLOWPARSER_STREAM_INVALID_ARG;
-    }
-
-    if (stream->isInit == false) {
+    if ((stream == NULL) || !stream->isInit) {
         return FLOWPARSER_STREAM_NOT_INIT;
     }
 
-    if (stream->txn.isActive == true) {
+    if ((req == NULL) || (req->spec == NULL) || (req->cmdBuf == NULL) || (req->cmdLen == 0U)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
+    }
+
+    if (flowparserStreamIsBusy(stream)) {
         return FLOWPARSER_STREAM_BUSY;
     }
 
-    if ((req->cmdLen > stream->cfg.cmdBufSize) || (req->payloadLen > stream->cfg.payloadBufSize) ||
-        ((req->payloadLen > 0U) && (req->payloadBuf == NULL))) {
-        return FLOWPARSER_STREAM_INVALID_ARG;
+    status = stream->pfSend(stream->sendUserData, req->cmdBuf, req->cmdLen);
+    if (status != FLOWPARSER_STREAM_OK) {
+        return (status == FLOWPARSER_STREAM_PORT_FAIL) ? FLOWPARSER_STREAM_PORT_FAIL : FLOWPARSER_STREAM_ERROR;
     }
 
-    (void)memcpy(stream->cfg.cmdBuf, req->cmdBuf, req->cmdLen);
-    if (req->payloadLen > 0U) {
-        (void)memcpy(stream->cfg.payloadBuf, req->payloadBuf, req->payloadLen);
+    stream->spec = req->spec;
+    stream->lineHandler = req->lineHandler;
+    stream->doneHandler = req->doneHandler;
+    stream->txnUserData = req->userData;
+    stream->payloadBuf = req->payloadBuf;
+    stream->payloadLen = req->payloadLen;
+    stream->lineLen = 0U;
+
+    if (stream->pfGetTickMs != NULL) {
+        stream->totalStartTick = stream->pfGetTickMs(stream->tickUserData);
+        stream->stageStartTick = stream->totalStartTick;
+    } else {
+        stream->totalStartTick = 0U;
+        stream->stageStartTick = 0U;
     }
 
-    lDrvStatus = stream->cfg.send(stream->cfg.cmdBuf, req->cmdLen, stream->cfg.portUserCtx);
-    if (lDrvStatus != DRV_STATUS_OK) {
-        return FLOWPARSER_STREAM_PORT_FAIL;
-    }
-
-    stream->txn.spec = req->spec;
-    stream->txn.lineHandler = req->lineHandler;
-    stream->txn.doneHandler = req->doneHandler;
-    stream->txn.userData = req->userData;
-    stream->txn.cmdLen = req->cmdLen;
-    stream->txn.payloadLen = req->payloadLen;
-    stream->txn.totalStartTick = flowparserStreamGetTick(stream);
-    stream->txn.stageStartTick = stream->txn.totalStartTick;
-    stream->txn.result = FLOWPARSER_RESULT_NONE;
-    stream->txn.stage = req->spec->needPrompt ? FLOWPARSER_STAGE_WAIT_PROMPT : FLOWPARSER_STAGE_WAIT_RESPONSE;
-    stream->txn.isActive = true;
-
+    flowparserStreamSetStage(stream, req->spec->needPrompt ? FLOWPARSER_STAGE_WAIT_PROMPT : FLOWPARSER_STAGE_WAIT_RESPONSE);
     return FLOWPARSER_STREAM_OK;
 }
 
 eFlowParserStrmSta flowparserStreamProc(stFlowParserStream *stream)
 {
-    stFlowParserTok lToken;
-    eFlowParserTokSta lTokSta;
-    uint8_t lProcCnt;
-    bool lDidWork = false;
+    uint8_t data;
+    bool hasLine;
+    bool isPrompt;
+    bool consumed;
+    eFlowParserStrmSta status;
 
-    if (stream == NULL) {
-        return FLOWPARSER_STREAM_INVALID_ARG;
-    }
-
-    if (stream->isInit == false) {
+    if ((stream == NULL) || !stream->isInit) {
         return FLOWPARSER_STREAM_NOT_INIT;
     }
 
-    lProcCnt = 0U;
-    while (lProcCnt < stream->cfg.procBudget) {
-        lTokSta = flowparserTokGet(&stream->tokenizer, &lToken);
-        if (lTokSta == FLOWPARSER_TOK_EMPTY) {
-            break;
+    status = flowparserStreamCheckTimeout(stream);
+    if (status != FLOWPARSER_STREAM_OK) {
+        return status;
+    }
+
+    consumed = false;
+    while (ringBufferPopByte(&stream->rxRb, &data) == RINGBUFFER_OK) {
+        consumed = true;
+        hasLine = false;
+        isPrompt = false;
+        status = flowparserStreamConsumeByte(stream, data, &hasLine, &isPrompt);
+        if (status != FLOWPARSER_STREAM_OK) {
+            return status;
         }
-
-        if (lTokSta != FLOWPARSER_TOK_OK) {
-            return FLOWPARSER_STREAM_INVALID_ARG;
-        }
-
-        lDidWork = true;
-        lProcCnt++;
-
-        if (lToken.type == FLOWPARSER_TOK_TYPE_LINE) {
-            flowparserStreamHandleLine(stream, lToken.buf, lToken.len);
-        } else if (lToken.type == FLOWPARSER_TOK_TYPE_PROMPT) {
-            flowparserStreamHandlePrompt(stream);
-        } else if (lToken.type == FLOWPARSER_TOK_TYPE_OVERFLOW) {
-            if (stream->txn.isActive == true) {
-                flowparserStreamFinish(stream, FLOWPARSER_RESULT_OVERFLOW);
-            }
-        }
-
-        if (stream->txn.isActive == false) {
+        if (!hasLine) {
             continue;
         }
 
-        flowparserStreamCheckTout(stream);
+        status = flowparserStreamDispatchLine(stream, stream->lineBuf, stream->lineLen, isPrompt);
+        stream->lineLen = 0U;
+        if (status != FLOWPARSER_STREAM_OK) {
+            return status;
+        }
     }
 
-    flowparserStreamCheckTout(stream);
-    return lDidWork ? FLOWPARSER_STREAM_OK : FLOWPARSER_STREAM_EMPTY;
+    if (!consumed) {
+        return flowparserStreamIsBusy(stream) ? FLOWPARSER_STREAM_BUSY : FLOWPARSER_STREAM_EMPTY;
+    }
+
+    return FLOWPARSER_STREAM_OK;
 }
 
 bool flowparserStreamIsBusy(const stFlowParserStream *stream)
 {
-    if ((stream == NULL) || (stream->isInit == false)) {
-        return false;
-    }
-
-    return stream->txn.isActive;
+    return (stream != NULL) && stream->isInit && (stream->stage != FLOWPARSER_STAGE_IDLE);
 }
 
 eFlowParserStage flowparserStreamGetStage(const stFlowParserStream *stream)
 {
-    if ((stream == NULL) || (stream->isInit == false)) {
+    if (stream == NULL) {
         return FLOWPARSER_STAGE_IDLE;
     }
 
-    return stream->txn.stage;
+    return stream->stage;
 }
 
+void flowparserStreamSetUrcHandler(stFlowParserStream *stream, flowparserStreamLineFunc urcHandler, void *userData)
+{
+    if (stream == NULL) {
+        return;
+    }
+
+    stream->pfUrcHandler = urcHandler;
+    stream->urcUserData = userData;
+}
+
+void flowparserStreamSetUrcMatcher(stFlowParserStream *stream, flowparserStreamIsUrcFunc isUrc, void *userData)
+{
+    if (stream == NULL) {
+        return;
+    }
+
+    stream->pfIsUrc = isUrc;
+    stream->isUrcUserData = userData;
+}
+
+static void flowparserStreamClearTxn(stFlowParserStream *stream)
+{
+    stream->spec = NULL;
+    stream->lineHandler = NULL;
+    stream->doneHandler = NULL;
+    stream->txnUserData = NULL;
+    stream->payloadBuf = NULL;
+    stream->payloadLen = 0U;
+    stream->lineLen = 0U;
+    stream->totalStartTick = 0U;
+    stream->stageStartTick = 0U;
+    stream->stage = FLOWPARSER_STAGE_IDLE;
+}
+
+static void flowparserStreamFinish(stFlowParserStream *stream, eFlowParserResult result)
+{
+    flowparserDoneFunc doneHandler;
+    void *userData;
+
+    doneHandler = stream->doneHandler;
+    userData = stream->txnUserData;
+    flowparserStreamClearTxn(stream);
+
+    if (doneHandler != NULL) {
+        doneHandler(userData, result);
+    }
+}
+
+static void flowparserStreamSetStage(stFlowParserStream *stream, eFlowParserStage stage)
+{
+    stream->stage = stage;
+    if (stream->pfGetTickMs != NULL) {
+        stream->stageStartTick = stream->pfGetTickMs(stream->tickUserData);
+    }
+}
+
+static bool flowparserStreamHasTimedOut(const stFlowParserStream *stream, uint32_t limitMs)
+{
+    uint32_t nowTick;
+    uint32_t startTick;
+
+    if ((stream->pfGetTickMs == NULL) || (limitMs == 0U)) {
+        return false;
+    }
+
+    nowTick = stream->pfGetTickMs(stream->tickUserData);
+    startTick = stream->stageStartTick;
+    return (uint32_t)(nowTick - startTick) >= limitMs;
+}
+
+static eFlowParserStrmSta flowparserStreamCheckTimeout(stFlowParserStream *stream)
+{
+    uint32_t totalElapsed;
+
+    if (!flowparserStreamIsBusy(stream) || (stream->spec == NULL) || (stream->pfGetTickMs == NULL)) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (stream->spec->totalToutMs != 0U) {
+        totalElapsed = (uint32_t)(stream->pfGetTickMs(stream->tickUserData) - stream->totalStartTick);
+        if (totalElapsed >= stream->spec->totalToutMs) {
+            flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
+            return FLOWPARSER_STREAM_TIMEOUT;
+        }
+    }
+
+    switch (stream->stage) {
+        case FLOWPARSER_STAGE_WAIT_RESPONSE:
+            if (flowparserStreamHasTimedOut(stream, stream->spec->responseToutMs)) {
+                flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
+                return FLOWPARSER_STREAM_TIMEOUT;
+            }
+            break;
+        case FLOWPARSER_STAGE_WAIT_PROMPT:
+            if (flowparserStreamHasTimedOut(stream, stream->spec->promptToutMs)) {
+                flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
+                return FLOWPARSER_STREAM_TIMEOUT;
+            }
+            break;
+        case FLOWPARSER_STAGE_WAIT_FINAL:
+            if (flowparserStreamHasTimedOut(stream, stream->spec->finalToutMs)) {
+                flowparserStreamFinish(stream, FLOWPARSER_RESULT_TIMEOUT);
+                return FLOWPARSER_STREAM_TIMEOUT;
+            }
+            break;
+        case FLOWPARSER_STAGE_IDLE:
+        default:
+            break;
+    }
+
+    return FLOWPARSER_STREAM_OK;
+}
+
+static eFlowParserStrmSta flowparserStreamConsumeByte(stFlowParserStream *stream, uint8_t data, bool *hasLine, bool *isPrompt)
+{
+    if ((stream == NULL) || (hasLine == NULL) || (isPrompt == NULL)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
+    }
+
+    *hasLine = false;
+    *isPrompt = false;
+
+    if ((stream->lineLen == 0U) && ((data == '\r') || (data == '\n'))) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if ((stream->lineLen == 0U) && (data == '>')) {
+        stream->lineBuf[0] = data;
+        stream->lineLen = 1U;
+        *hasLine = true;
+        *isPrompt = true;
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if ((data == '\r') || (data == '\n')) {
+        if (stream->lineLen > 0U) {
+            *hasLine = true;
+        }
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if ((uint32_t)stream->lineLen >= (uint32_t)(stream->lineBufSize - 1U)) {
+        flowparserStreamFinish(stream, FLOWPARSER_RESULT_OVERFLOW);
+        return FLOWPARSER_STREAM_OVERFLOW;
+    }
+
+    stream->lineBuf[stream->lineLen++] = data;
+    stream->lineBuf[stream->lineLen] = '\0';
+    return FLOWPARSER_STREAM_OK;
+}
+
+static eFlowParserStrmSta flowparserStreamDispatchLine(stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen, bool isPrompt)
+{
+    if ((stream == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (flowparserStreamIsConfiguredUrc(stream, lineBuf, lineLen)) {
+        if (stream->pfUrcHandler != NULL) {
+            stream->pfUrcHandler(stream->urcUserData, lineBuf, lineLen);
+        }
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (!flowparserStreamIsBusy(stream)) {
+        if (stream->pfUrcHandler != NULL) {
+            stream->pfUrcHandler(stream->urcUserData, lineBuf, lineLen);
+        }
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (flowparserStreamMatchError(stream, lineBuf, lineLen)) {
+        flowparserStreamFinish(stream, FLOWPARSER_RESULT_ERROR);
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if ((stream->stage == FLOWPARSER_STAGE_WAIT_PROMPT) && isPrompt) {
+        if ((stream->payloadBuf != NULL) && (stream->payloadLen > 0U)) {
+            if (stream->pfSend(stream->sendUserData, stream->payloadBuf, stream->payloadLen) != FLOWPARSER_STREAM_OK) {
+                flowparserStreamFinish(stream, FLOWPARSER_RESULT_SEND_FAIL);
+                return FLOWPARSER_STREAM_PORT_FAIL;
+            }
+        }
+        flowparserStreamSetStage(stream, FLOWPARSER_STAGE_WAIT_FINAL);
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (stream->lineHandler != NULL) {
+        stream->lineHandler(stream->txnUserData, lineBuf, lineLen);
+    }
+
+    if (stream->stage == FLOWPARSER_STAGE_WAIT_RESPONSE) {
+        if (flowparserStreamMatchFinalDone(stream, lineBuf, lineLen)) {
+            flowparserStreamFinish(stream, FLOWPARSER_RESULT_OK);
+            return FLOWPARSER_STREAM_OK;
+        }
+
+        if (flowparserStreamMatchResponseDone(stream, lineBuf, lineLen)) {
+            if ((stream->spec != NULL) && (stream->spec->finalDonePatternCnt > 0U)) {
+                flowparserStreamSetStage(stream, FLOWPARSER_STAGE_WAIT_FINAL);
+            } else {
+                flowparserStreamFinish(stream, FLOWPARSER_RESULT_OK);
+            }
+            return FLOWPARSER_STREAM_OK;
+        }
+    } else if (stream->stage == FLOWPARSER_STAGE_WAIT_FINAL) {
+        if (flowparserStreamMatchFinalDone(stream, lineBuf, lineLen) || flowparserStreamMatchResponseDone(stream, lineBuf, lineLen)) {
+            flowparserStreamFinish(stream, FLOWPARSER_RESULT_OK);
+            return FLOWPARSER_STREAM_OK;
+        }
+    }
+
+    return FLOWPARSER_STREAM_OK;
+}
+
+static bool flowparserStreamIsConfiguredUrc(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
+{
+    if ((stream == NULL) || (stream->pfIsUrc == NULL)) {
+        return false;
+    }
+
+    return stream->pfIsUrc(stream->isUrcUserData, lineBuf, lineLen);
+}
+
+static bool flowparserStreamMatchError(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
+{
+    if ((stream == NULL) || (stream->spec == NULL)) {
+        return false;
+    }
+
+    return flowparserMatchPatterns(lineBuf, lineLen, stream->spec->errorPatterns, stream->spec->errorPatternCnt);
+}
+
+static bool flowparserStreamMatchResponseDone(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
+{
+    if ((stream == NULL) || (stream->spec == NULL)) {
+        return false;
+    }
+
+    return flowparserMatchPatterns(lineBuf, lineLen,
+                                   stream->spec->responseDonePatterns,
+                                   stream->spec->responseDonePatternCnt);
+}
+
+static bool flowparserStreamMatchFinalDone(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen)
+{
+    if ((stream == NULL) || (stream->spec == NULL)) {
+        return false;
+    }
+
+    return flowparserMatchPatterns(lineBuf, lineLen,
+                                   stream->spec->finalDonePatterns,
+                                   stream->spec->finalDonePatternCnt);
+}
 /**************************End of file********************************/
