@@ -12,10 +12,13 @@
 
 #include <string.h>
 
+#include "../../service/log/log.h"
+
+#define FC41D_CTRL_LOG_TAG              "fc41dCtl"
+
 static const char *const gFc41dCommonDonePatterns[] = {"OK"};
 static const char *const gFc41dCommonErrorPatterns[] = {"ERROR", "FAIL"};
 static const char *const gFc41dDefaultUrcPrefixes[] = {
-    "+QBLE",
     "+IPD,",
     "+CWJAP:",
     "+CWSTATE:",
@@ -50,7 +53,11 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
 static bool fc41dMatchPrefix(const uint8_t *lineBuf, uint16_t lineLen, const char *prefix);
 static bool fc41dHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
 static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
+static bool fc41dTryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
 static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value);
+static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage);
+static const char *fc41dCtrlGetRoleName(eFc41dRole role);
+static void fc41dCtrlSetStage(stFc41dDevice *device, eFc41dCtrlStage stage);
 
 bool fc41dIsValidRole(eFc41dRole role)
 {
@@ -99,6 +106,7 @@ void fc41dResetState(stFc41dDevice *device)
     device->ctrlPlane.nextActionTick = 0U;
     device->ctrlPlane.readyDeadlineTick = 0U;
     device->ctrlPlane.stage = FC41D_CTRL_STAGE_IDLE;
+    device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
     device->ctrlPlane.isTxnDone = false;
     device->ctrlPlane.txnStatus = FC41D_STATUS_OK;
     device->ctrlPlane.cmdBuf[0] = '\0';
@@ -221,13 +229,48 @@ eFc41dStatus fc41dCtrlStart(stFc41dDevice *device, eFc41dRole role)
     device->state.hasMacAddress = false;
     device->state.lastError = FC41D_STATUS_OK;
     device->state.macAddress[0] = '\0';
-    device->ctrlPlane.stage = FC41D_CTRL_STAGE_BOOT_WAIT_ARMED;
+    fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_ASSERT_RESET);
     device->ctrlPlane.nextActionTick = 0U;
     device->ctrlPlane.readyDeadlineTick = 0U;
     device->ctrlPlane.isTxnDone = false;
+    device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
     device->ctrlPlane.txnStatus = FC41D_STATUS_OK;
     device->ctrlPlane.cmdBuf[0] = '\0';
+    LOG_I(FC41D_CTRL_LOG_TAG, "start role=%s", fc41dCtrlGetRoleName(role));
     return FC41D_STATUS_OK;
+}
+
+eFc41dStatus fc41dCtrlDisconnectBle(stFc41dDevice *device)
+{
+    eFc41dStatus lStatus;
+
+    if (device == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    fc41dSyncState(device);
+    if ((device->state.role != FC41D_ROLE_BLE_PERIPHERAL) || !device->state.isReady) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    if (device->ctrlPlane.stage != FC41D_CTRL_STAGE_RUNNING) {
+        return FC41D_STATUS_BUSY;
+    }
+
+    if (device->info.isBusy) {
+        return FC41D_STATUS_BUSY;
+    }
+
+    device->ctrlPlane.txnKind = FC41D_CTRL_TXN_BLE_DISCONNECT;
+    lStatus = fc41dSubmitCtrlText(device, "AT+QBLEDISCONN\r\n");
+    if (lStatus != FC41D_STATUS_OK) {
+        device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+        LOG_W(FC41D_CTRL_LOG_TAG, "submit ble disconnect failed status=%d", (int)lStatus);
+    } else {
+        LOG_I(FC41D_CTRL_LOG_TAG, "submit ble disconnect");
+    }
+
+    return lStatus;
 }
 
 void fc41dCtrlStop(stFc41dDevice *device)
@@ -273,7 +316,7 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
 
     lpControl = fc41dGetControl(deviceId);
     if ((lpControl != NULL) && (lpControl->setResetLevel != NULL)) {
-        lpControl->setResetLevel(false);
+        lpControl->setResetLevel(device->cfg.resetPin, false);
     }
 
     lRole = device->state.role;
@@ -289,12 +332,19 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
     device->state.runState = FC41D_RUN_ERROR;
     device->state.macAddress[0] = '\0';
     device->state.role = lRole;
-    device->ctrlPlane.stage = FC41D_CTRL_STAGE_BOOT_WAIT_ARMED;
+    fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_ASSERT_RESET);
+    device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
     device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.retryIntervalMs;
     device->ctrlPlane.readyDeadlineTick = 0U;
     device->ctrlPlane.isTxnDone = false;
     device->ctrlPlane.txnStatus = FC41D_STATUS_OK;
     device->ctrlPlane.cmdBuf[0] = '\0';
+    LOG_W(FC41D_CTRL_LOG_TAG,
+          "schedule retry role=%s status=%d after=%lu stage=%s",
+          fc41dCtrlGetRoleName(lRole),
+          (int)status,
+          (unsigned long)device->cfg.retryIntervalMs,
+          fc41dCtrlGetStageName(device->ctrlPlane.stage));
 }
 
 bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_t lineLen)
@@ -334,14 +384,17 @@ void fc41dCtrlHandleUrc(stFc41dDevice *device, const uint8_t *lineBuf, uint16_t 
     device->info.urcCount++;
     if ((lineLen == 5U) && (memcmp(lineBuf, "ready", 5U) == 0)) {
         device->state.isReadyUrcSeen = true;
+        LOG_I(FC41D_CTRL_LOG_TAG, "urc ready");
     }
 
     if (fc41dHasToken(lineBuf, lineLen, "BLE") && fc41dHasToken(lineBuf, lineLen, "CONNECT")) {
         device->state.isBleConnected = true;
+        LOG_I(FC41D_CTRL_LOG_TAG, "urc ble connected");
     }
 
     if (fc41dHasToken(lineBuf, lineLen, "BLE") && fc41dHasToken(lineBuf, lineLen, "DISCONNECT")) {
         device->state.isBleConnected = false;
+        LOG_I(FC41D_CTRL_LOG_TAG, "urc ble disconnected");
     }
 }
 
@@ -367,6 +420,13 @@ void fc41dCtrlHandleTxnDone(stFc41dDevice *device, eFlowParserResult result)
     device->info.lastResult = result;
     device->ctrlPlane.isTxnDone = true;
     device->ctrlPlane.txnStatus = fc41dMapResult(result);
+    if (device->ctrlPlane.txnStatus != FC41D_STATUS_OK) {
+        LOG_W(FC41D_CTRL_LOG_TAG,
+              "txn done failed stage=%s result=%d status=%d",
+              fc41dCtrlGetStageName(device->ctrlPlane.stage),
+              (int)result,
+              (int)device->ctrlPlane.txnStatus);
+    }
 }
 
 static bool fc41dContainsForbiddenChar(const char *text)
@@ -402,6 +462,13 @@ static eFc41dStatus fc41dSubmitCtrlText(stFc41dDevice *device, const char *cmdTe
     lReq.userData = device;
 
     lStreamStatus = flowparserStreamSubmit(&device->stream, &lReq);
+    if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+        LOG_W(FC41D_CTRL_LOG_TAG,
+              "submit cmd failed stage=%s status=%d cmd=%s",
+              fc41dCtrlGetStageName(device->ctrlPlane.stage),
+              (int)lStreamStatus,
+              cmdText);
+    }
     return fc41dMapStreamStatus(lStreamStatus);
 }
 
@@ -531,9 +598,11 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
 
     if (lStatus != FC41D_STATUS_OK) {
         if (device->ctrlPlane.stage == FC41D_CTRL_STAGE_QUERY_MAC) {
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_RUNNING;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_RUNNING);
             device->state.runState = FC41D_RUN_READY;
             device->state.isReady = true;
+            LOG_W(FC41D_CTRL_LOG_TAG, "mac query failed, continue without cached mac");
+            LOG_I(FC41D_CTRL_LOG_TAG, "module ready without mac");
             return FC41D_STATUS_OK;
         }
 
@@ -542,41 +611,59 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
     }
 
     switch (device->ctrlPlane.stage) {
-        case FC41D_CTRL_STAGE_PROBE:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_ASSERT_RESET;
-            break;
         case FC41D_CTRL_STAGE_PROBE_AFTER_READY:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_STOP_STA;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_STOP_STA);
             break;
         case FC41D_CTRL_STAGE_STOP_STA:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_INIT;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_INIT);
             break;
         case FC41D_CTRL_STAGE_BLE_INIT:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_NAME;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_NAME);
             break;
         case FC41D_CTRL_STAGE_BLE_SET_NAME:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_SERVICE;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_SERVICE);
             break;
         case FC41D_CTRL_STAGE_BLE_SET_SERVICE:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_CHAR_RX;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_CHAR_RX);
             break;
         case FC41D_CTRL_STAGE_BLE_SET_CHAR_RX:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_CHAR_TX;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_CHAR_TX);
             break;
         case FC41D_CTRL_STAGE_BLE_SET_CHAR_TX:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_ADV_START;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_ADV_START);
             break;
         case FC41D_CTRL_STAGE_BLE_ADV_START:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
             device->state.isBleAdvertising = true;
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_QUERY_MAC;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_QUERY_MAC);
             break;
         case FC41D_CTRL_STAGE_QUERY_MAC:
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_RUNNING;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_RUNNING);
             device->state.runState = FC41D_RUN_READY;
             device->state.isReady = true;
+            if (!device->state.hasMacAddress) {
+                LOG_W(FC41D_CTRL_LOG_TAG, "mac query completed but no mac address was parsed");
+            }
+            LOG_I(FC41D_CTRL_LOG_TAG,
+                  "module ready mac=%s",
+                  device->state.hasMacAddress ? device->state.macAddress : "<unknown>");
             break;
         case FC41D_CTRL_STAGE_RUNNING:
-            fc41dDataConfirmPendingTx(&device->dataPlane);
+            if (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_DATA_TX) {
+                fc41dDataConfirmPendingTx(&device->dataPlane);
+            } else if (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_BLE_DISCONNECT) {
+                device->state.isBleConnected = false;
+                LOG_I(FC41D_CTRL_LOG_TAG, "ble disconnect confirmed");
+            }
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
             break;
         default:
             break;
@@ -597,34 +684,25 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
     switch (device->ctrlPlane.stage) {
         case FC41D_CTRL_STAGE_IDLE:
             return FC41D_STATUS_OK;
-        case FC41D_CTRL_STAGE_BOOT_WAIT_ARMED:
+        case FC41D_CTRL_STAGE_ASSERT_RESET:
             if ((device->ctrlPlane.nextActionTick != 0U) && (nowTickMs < device->ctrlPlane.nextActionTick)) {
                 return FC41D_STATUS_OK;
             }
 
-            device->state.runState = FC41D_RUN_BOOTING;
-            device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.bootWaitMs;
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_BOOT_WAIT;
-            return FC41D_STATUS_OK;
-        case FC41D_CTRL_STAGE_BOOT_WAIT:
-            if (nowTickMs < device->ctrlPlane.nextActionTick) {
-                return FC41D_STATUS_OK;
-            }
-
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_PROBE;
-            return FC41D_STATUS_OK;
-        case FC41D_CTRL_STAGE_PROBE:
-            return fc41dSubmitCtrlText(device, "AT\r\n");
-        case FC41D_CTRL_STAGE_ASSERT_RESET:
             lpControl = fc41dGetControl(deviceId);
             if ((lpControl == NULL) || (lpControl->setResetLevel == NULL)) {
                 fc41dCtrlScheduleRetry(device, deviceId, nowTickMs, FC41D_STATUS_UNSUPPORTED);
                 return FC41D_STATUS_UNSUPPORTED;
             }
 
-            lpControl->setResetLevel(true);
+            device->state.runState = FC41D_RUN_BOOTING;
+            lpControl->setResetLevel(device->cfg.resetPin, true);
             device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.resetPulseMs;
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_RESET_HOLD;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_RESET_HOLD);
+            LOG_I(FC41D_CTRL_LOG_TAG,
+                "assert reset pin=%u pulse=%lu",
+                (unsigned int)device->cfg.resetPin,
+                (unsigned long)device->cfg.resetPulseMs);
             return FC41D_STATUS_OK;
         case FC41D_CTRL_STAGE_RESET_HOLD:
             if (nowTickMs < device->ctrlPlane.nextActionTick) {
@@ -637,11 +715,15 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
                 return FC41D_STATUS_UNSUPPORTED;
             }
 
-            lpControl->setResetLevel(false);
+            lpControl->setResetLevel(device->cfg.resetPin, false);
             device->state.isReadyUrcSeen = false;
             device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.resetWaitMs;
-            device->ctrlPlane.readyDeadlineTick = nowTickMs + device->cfg.readyTimeoutMs;
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_WAIT_READY;
+            device->ctrlPlane.readyDeadlineTick = device->ctrlPlane.nextActionTick + device->cfg.readyTimeoutMs;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_WAIT_READY);
+            LOG_I(FC41D_CTRL_LOG_TAG,
+                "release reset waitReady timeout=%lu settle=%lu",
+                (unsigned long)device->cfg.readyTimeoutMs,
+                (unsigned long)device->cfg.readySettleMs);
             return FC41D_STATUS_OK;
         case FC41D_CTRL_STAGE_WAIT_READY:
             if (nowTickMs < device->ctrlPlane.nextActionTick) {
@@ -651,11 +733,13 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
             if (device->state.isReadyUrcSeen) {
                 device->state.runState = FC41D_RUN_CONFIGURING;
                 device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.readySettleMs;
-                device->ctrlPlane.stage = FC41D_CTRL_STAGE_READY_SETTLE;
+                fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_READY_SETTLE);
+                LOG_I(FC41D_CTRL_LOG_TAG, "ready urc seen, settle start");
                 return FC41D_STATUS_OK;
             }
 
             if (nowTickMs >= device->ctrlPlane.readyDeadlineTick) {
+                LOG_W(FC41D_CTRL_LOG_TAG, "wait ready timeout");
                 fc41dCtrlScheduleRetry(device, deviceId, nowTickMs, FC41D_STATUS_TIMEOUT);
                 return FC41D_STATUS_TIMEOUT;
             }
@@ -667,45 +751,54 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
                 return FC41D_STATUS_OK;
             }
 
-            device->ctrlPlane.stage = FC41D_CTRL_STAGE_PROBE_AFTER_READY;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_PROBE_AFTER_READY);
             return FC41D_STATUS_OK;
         case FC41D_CTRL_STAGE_PROBE_AFTER_READY:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device, "AT\r\n");
         case FC41D_CTRL_STAGE_STOP_STA:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device, "AT+QSTASTOP\r\n");
         case FC41D_CTRL_STAGE_BLE_INIT:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dBuildCtrlU16(device, "AT+QBLEINIT=", device->bleCfg.initMode);
         case FC41D_CTRL_STAGE_BLE_SET_NAME:
             if (device->bleCfg.name[0] == '\0') {
-                device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_SERVICE;
+                fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_SERVICE);
                 return FC41D_STATUS_OK;
             }
 
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dBuildCtrlText(device, "AT+QBLENAME=", device->bleCfg.name);
         case FC41D_CTRL_STAGE_BLE_SET_SERVICE:
             if (device->bleCfg.serviceUuid[0] == '\0') {
-                device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_CHAR_RX;
+                fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_CHAR_RX);
                 return FC41D_STATUS_OK;
             }
 
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dBuildCtrlText(device, "AT+QBLEGATTSSRV=", device->bleCfg.serviceUuid);
         case FC41D_CTRL_STAGE_BLE_SET_CHAR_RX:
             if (device->bleCfg.rxCharUuid[0] == '\0') {
-                device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_SET_CHAR_TX;
+                fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_SET_CHAR_TX);
                 return FC41D_STATUS_OK;
             }
 
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dBuildCtrlText(device, "AT+QBLEGATTSCHAR=", device->bleCfg.rxCharUuid);
         case FC41D_CTRL_STAGE_BLE_SET_CHAR_TX:
             if (device->bleCfg.txCharUuid[0] == '\0') {
-                device->ctrlPlane.stage = FC41D_CTRL_STAGE_BLE_ADV_START;
+                fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_BLE_ADV_START);
                 return FC41D_STATUS_OK;
             }
 
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dBuildCtrlText(device, "AT+QBLEGATTSCHAR=", device->bleCfg.txCharUuid);
         case FC41D_CTRL_STAGE_BLE_ADV_START:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device, "AT+QBLEADVSTART\r\n");
         case FC41D_CTRL_STAGE_QUERY_MAC:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device, "AT+QBLEADDR?\r\n");
         case FC41D_CTRL_STAGE_RUNNING:
             device->state.runState = FC41D_RUN_READY;
@@ -719,9 +812,19 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
                     return FC41D_STATUS_OK;
                 }
                 if (lStatus != FC41D_STATUS_OK) {
-                    return lStatus;
+                    device->state.lastError = lStatus;
+                    LOG_W(FC41D_CTRL_LOG_TAG, "build notify failed status=%d", (int)lStatus);
+                    return FC41D_STATUS_OK;
                 }
-                return fc41dSubmitCtrlText(device, device->ctrlPlane.cmdBuf);
+                device->ctrlPlane.txnKind = FC41D_CTRL_TXN_DATA_TX;
+                lStatus = fc41dSubmitCtrlText(device, device->ctrlPlane.cmdBuf);
+                if (lStatus != FC41D_STATUS_OK) {
+                    device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+                    device->state.lastError = lStatus;
+                    LOG_W(FC41D_CTRL_LOG_TAG, "submit notify failed status=%d", (int)lStatus);
+                    return FC41D_STATUS_OK;
+                }
+                return FC41D_STATUS_OK;
             }
             return FC41D_STATUS_OK;
         default:
@@ -766,48 +869,60 @@ static bool fc41dHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *
 
 static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize)
 {
-    uint16_t lStart;
-    uint16_t lEnd;
-    uint16_t lOutLen;
+    uint16_t lIndex;
     uint16_t lPrefixLen;
-    uint8_t lNibble;
 
-    if ((lineBuf == NULL) || (lineLen == 0U) || (buffer == NULL) || (bufferSize < 13U)) {
+    if ((lineBuf == NULL) || (lineLen == 0U) || (buffer == NULL) || (bufferSize < 18U)) {
         return false;
     }
 
     lPrefixLen = (uint16_t)strlen(FC41D_MAC_QUERY_PREFIX);
-    lStart = 0U;
     if ((lineLen > lPrefixLen) && (memcmp(lineBuf, FC41D_MAC_QUERY_PREFIX, lPrefixLen) == 0)) {
-        lStart = lPrefixLen;
-    }
-
-    while ((lStart < lineLen) && ((lineBuf[lStart] == ' ') || (lineBuf[lStart] == '\t') || (lineBuf[lStart] == '"'))) {
-        lStart++;
-    }
-
-    lEnd = lineLen;
-    while (lEnd > lStart) {
-        uint8_t lCh = lineBuf[lEnd - 1U];
-
-        if ((lCh != ' ') && (lCh != '\t') && (lCh != '"')) {
-            break;
+        for (lIndex = lPrefixLen; lIndex < lineLen; lIndex++) {
+            if (fc41dTryParseMacCandidate(lineBuf, lineLen, lIndex, buffer, bufferSize)) {
+                return true;
+            }
         }
-
-        lEnd--;
     }
 
+    for (lIndex = 0U; lIndex < lineLen; lIndex++) {
+        if (fc41dTryParseMacCandidate(lineBuf, lineLen, lIndex, buffer, bufferSize)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool fc41dTryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize)
+{
+    uint16_t lIndex;
+    uint16_t lOutLen;
+    uint8_t lOctet;
+    uint8_t lSep;
+    uint8_t lNibble;
+    bool lUseSeparator;
+    uint8_t lHigh;
+    uint8_t lLow;
+
+    if ((lineBuf == NULL) || (buffer == NULL) || (bufferSize < 18U) || (start >= lineLen)) {
+        return false;
+    }
+
+    if ((start > 0U) && fc41dTryHexNibble(lineBuf[start - 1U], &lNibble)) {
+        return false;
+    }
+
+    lIndex = start;
     lOutLen = 0U;
-    while (lStart < lEnd) {
-        uint8_t lCh = lineBuf[lStart++];
-
-        if ((lCh >= 'a') && (lCh <= 'f')) {
-            lCh = (uint8_t)(lCh - ('a' - 'A'));
+    lSep = 0U;
+    lUseSeparator = false;
+    for (lOctet = 0U; lOctet < 6U; lOctet++) {
+        if ((lIndex + 1U) >= lineLen) {
+            return false;
         }
 
-        if ((lCh == '-') || (lCh == ':')) {
-            lCh = ':';
-        } else if (!fc41dTryHexNibble(lCh, &lNibble)) {
+        if (!fc41dTryHexNibble(lineBuf[lIndex], &lHigh) || !fc41dTryHexNibble(lineBuf[lIndex + 1U], &lLow)) {
             return false;
         }
 
@@ -815,11 +930,33 @@ static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, ch
             return false;
         }
 
-        buffer[lOutLen++] = (char)lCh;
+        buffer[lOutLen++] = (char)((lHigh < 10U) ? ('0' + lHigh) : ('A' + (lHigh - 10U)));
+        buffer[lOutLen++] = (char)((lLow < 10U) ? ('0' + lLow) : ('A' + (lLow - 10U)));
+        lIndex = (uint16_t)(lIndex + 2U);
+
+        if (lOctet >= 5U) {
+            break;
+        }
+
+        if (lUseSeparator) {
+            if ((lIndex >= lineLen) || (lineBuf[lIndex] != lSep)) {
+                return false;
+            }
+            lIndex++;
+        } else if ((lIndex < lineLen) && ((lineBuf[lIndex] == ':') || (lineBuf[lIndex] == '-'))) {
+            lUseSeparator = true;
+            lSep = lineBuf[lIndex++];
+        }
+
+        buffer[lOutLen++] = ':';
+    }
+
+    if ((lIndex < lineLen) && fc41dTryHexNibble(lineBuf[lIndex], &lNibble)) {
+        return false;
     }
 
     buffer[lOutLen] = '\0';
-    return (lOutLen == 12U) || (lOutLen == 17U);
+    return lOutLen == 17U;
 }
 
 static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value)
@@ -844,5 +981,64 @@ static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value)
     }
 
     return false;
+}
+
+static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage)
+{
+    switch (stage) {
+        case FC41D_CTRL_STAGE_IDLE:
+            return "IDLE";
+        case FC41D_CTRL_STAGE_ASSERT_RESET:
+            return "ASSERT_RESET";
+        case FC41D_CTRL_STAGE_RESET_HOLD:
+            return "RESET_HOLD";
+        case FC41D_CTRL_STAGE_WAIT_READY:
+            return "WAIT_READY";
+        case FC41D_CTRL_STAGE_READY_SETTLE:
+            return "READY_SETTLE";
+        case FC41D_CTRL_STAGE_PROBE_AFTER_READY:
+            return "PROBE_AFTER_READY";
+        case FC41D_CTRL_STAGE_STOP_STA:
+            return "STOP_STA";
+        case FC41D_CTRL_STAGE_BLE_INIT:
+            return "BLE_INIT";
+        case FC41D_CTRL_STAGE_BLE_SET_NAME:
+            return "BLE_SET_NAME";
+        case FC41D_CTRL_STAGE_BLE_SET_SERVICE:
+            return "BLE_SET_SERVICE";
+        case FC41D_CTRL_STAGE_BLE_SET_CHAR_RX:
+            return "BLE_SET_CHAR_RX";
+        case FC41D_CTRL_STAGE_BLE_SET_CHAR_TX:
+            return "BLE_SET_CHAR_TX";
+        case FC41D_CTRL_STAGE_BLE_ADV_START:
+            return "BLE_ADV_START";
+        case FC41D_CTRL_STAGE_QUERY_MAC:
+            return "QUERY_MAC";
+        case FC41D_CTRL_STAGE_RUNNING:
+            return "RUNNING";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static const char *fc41dCtrlGetRoleName(eFc41dRole role)
+{
+    switch (role) {
+        case FC41D_ROLE_NONE:
+            return "NONE";
+        case FC41D_ROLE_BLE_PERIPHERAL:
+            return "BLE_PERIPHERAL";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static void fc41dCtrlSetStage(stFc41dDevice *device, eFc41dCtrlStage stage)
+{
+    if (device == NULL) {
+        return;
+    }
+
+    device->ctrlPlane.stage = stage;
 }
 /**************************End of file********************************/

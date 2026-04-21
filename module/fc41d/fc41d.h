@@ -87,15 +87,15 @@ typedef enum eFc41dRunState {
 #endif
 
 #ifndef FC41D_DEFAULT_BOOT_WAIT_MS
-#define FC41D_DEFAULT_BOOT_WAIT_MS           500U
+#define FC41D_DEFAULT_BOOT_WAIT_MS           0U
 #endif
 
 #ifndef FC41D_DEFAULT_RESET_PULSE_MS
-#define FC41D_DEFAULT_RESET_PULSE_MS         50U
+#define FC41D_DEFAULT_RESET_PULSE_MS         1000U
 #endif
 
 #ifndef FC41D_DEFAULT_RESET_WAIT_MS
-#define FC41D_DEFAULT_RESET_WAIT_MS          1000U
+#define FC41D_DEFAULT_RESET_WAIT_MS          0U
 #endif
 
 #ifndef FC41D_DEFAULT_READY_TIMEOUT_MS
@@ -139,6 +139,7 @@ typedef bool (*fc41dUrcMatchFunc)(void *userData, const uint8_t *lineBuf, uint16
 
 typedef struct stFc41dCfg {
     uint8_t linkId;
+    uint8_t resetPin;
     uint16_t rxPollChunkSize;
     uint32_t txTimeoutMs;
     uint32_t bootWaitMs;
@@ -189,6 +190,7 @@ eFc41dStatus fc41dSetBleCfg(eFc41dMapType device, const stFc41dBleCfg *cfg);
 eFc41dStatus fc41dInit(eFc41dMapType device);
 void fc41dReset(eFc41dMapType device);
 eFc41dStatus fc41dStart(eFc41dMapType device, eFc41dRole role);
+eFc41dStatus fc41dDisconnectBle(eFc41dMapType device);
 void fc41dStop(eFc41dMapType device);
 eFc41dStatus fc41dProcess(eFc41dMapType device, uint32_t nowTickMs);
 bool fc41dIsReady(eFc41dMapType device);

@@ -52,6 +52,7 @@ read_next:
 - `fc41d.c` 负责 FC41D 的对外总入口、设备实例管理和后台主循环。
 - `fc41d_ctrl.c` 负责启动状态机、控制事务提交、URC 状态映射和重试策略。
 - `fc41d_data.c` 负责 BLE payload 提取、RX/TX ring 管理和通知组包。
+- `stFc41dCfg` 同时持有 transport linkId 和 reset pin 这类板级绑定，由项目侧 `User/port` 注入默认值。
 
 统一后台入口为 `fc41dProcess()`，上层不再直接触碰内部事务推进细节。
 
@@ -81,6 +82,7 @@ read_next:
 - `fc41dSetBleCfg()`
 - `fc41dInit()`
 - `fc41dStart()`
+- `fc41dDisconnectBle()`
 - `fc41dStop()`
 - `fc41dProcess()`
 - `fc41dReset()`
@@ -103,9 +105,10 @@ read_next:
 
 `fc41d` 当前采用 `active module + background pump` 模式：
 
-- `Init()` 只完成 transport / control hook / flowparser stream 初始化。
+- `Init()` 只完成 transport / control hook / flowparser stream 初始化，并把 reset pin 交给项目侧 control hook 做引脚初始化。
 - `Start()` 只写入目标角色并挂起后台启动序列，不阻塞等待。
-- `Process()` 统一推进 RX、URC、控制事务、复位时序、ready settle 和错误重试。
+- `Process()` 统一推进 RX、URC、控制事务、复位时序、等待 `ready`、ready settle 和错误重试。
+- `fc41dDisconnectBle()` 只在 `READY` 且当前存在 BLE 外连时提交一次主动断连事务，不阻塞等待。
 
 运行态分两层：
 
@@ -114,18 +117,20 @@ read_next:
 
 BLE ready 条件：
 
+- 复位脚已被拉低 1 s 后再释放。
 - `ready` URC 已出现并完成 settle。
 - `AT` re-probe 成功。
 - `QSTASTOP`、`QBLEINIT`、可选 `QBLENAME`、可选 `QBLEGATTSSRV`、可选 `QBLEGATTSCHAR`、`QBLEADVSTART` 完成。
+- 主动断开外部 BLE 连接由 `fc41dDisconnectBle()` 触发，默认在 `fc41d_ctrl.c` 中集中下发对应 `Q*` AT 命令。
 
 ## 5. 函数指针 / port / assembly 契约
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `fc41dLoadPlatformDefaultCfg` | 必需 | 项目侧 `User/port` | `fc41dGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId / timeout | 不写则退回 weak 默认值 | `cfg != NULL` | 默认值应体现当前板级接线 |
+| `fc41dLoadPlatformDefaultCfg` | 必需 | 项目侧 `User/port` | `fc41dGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId / reset pin / timeout | 不写则退回 weak 默认值 | `cfg != NULL` | 默认值应体现当前板级接线 |
 | `fc41dGetPlatformTransportInterface` | 必需 | 项目侧 `User/port` | `fc41dInit`、`fc41dBackGourd`、发送 hook | `const stFc41dTransportInterface *(*)(cfg)` | 返回可用 transport 接口 | 返回 `NULL` 视为未绑定 | cfg 已装载 | core 不直接 include `drvuart_port.h` |
-| `fc41dGetPlatformControlInterface` | 必需 | 项目侧 `User/port` | `fc41dInit`、`fc41dStart`、`fc41dProcess` | `const stFc41dControlInterface *(*)(device)` | 返回可用 reset control hook | 返回 `NULL` 时 `Start` 失败 | device 合法 | 当前最少要提供 `setResetLevel` |
-| `fc41dPlatformIsValidCfg` | 建议 | 项目侧 `User/port` | `fc41dSetCfg`、`fc41dInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId 到项目允许范围 |
+| `fc41dGetPlatformControlInterface` | 必需 | 项目侧 `User/port` | `fc41dInit`、`fc41dStart`、`fc41dProcess` | `const stFc41dControlInterface *(*)(device)` | 返回可用 reset control hook | 返回 `NULL` 时 `Start` 失败 | device 合法 | 当前最少要提供 `init(resetPin)` 和 `setResetLevel(resetPin, isActive)` |
+| `fc41dPlatformIsValidCfg` | 建议 | 项目侧 `User/port` | `fc41dSetCfg`、`fc41dInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId、reset pin 到项目允许范围 |
 
 ## 6. 公共函数使用契约
 
@@ -139,7 +144,7 @@ BLE ready 条件：
 | --- | --- | --- |
 | 改 FC41D 启动流程、ready 判定、MAC 缓存 | `fc41d_ctrl.c/.h` | 项目 manager |
 | 改 payload 提取、RX/TX ring、通知组包 | `fc41d_data.c/.h` | 项目 manager |
-| 改默认 UART linkId、tick 来源、reset pin | 项目侧 `fc41d_port.*` | `fc41d.c` |
+| 改默认 UART linkId、tick 来源、reset pin 绑定 | 项目侧 `fc41d_port.*` | `fc41d.c` |
 | 改 FC41D 常用 AT 命令文本、超时、控制顺序 | `fc41d_ctrl.c/.h` | `wireless_mgr.c` |
 | 改业务默认 BLE 名称、service UUID、char UUID | 项目侧 manager / cfg | `fc41d.c` |
 

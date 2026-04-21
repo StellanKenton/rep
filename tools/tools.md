@@ -18,6 +18,8 @@ common_utils: []
 copy_minimal_set:
   - tools/
 read_next:
+  - aes/aes.md
+  - md5/md5.md
   - ringbuffer/ringbuffer.md
   - numfilter/numfilter.md
   - butterworthfilter/butterworthfilter.md
@@ -46,6 +48,8 @@ read_next:
 
 | 目录 | 职责 |
 | --- | --- |
+| `aes/` | AES 分组加解密工具，支持 ECB/CBC 和 PKCS7 辅助处理 |
+| `md5/` | MD5 摘要计算与 16/32 位十六进制字符串转换 |
 | `ringbuffer/` | 字节环形缓冲区与并发约束 |
 | `numfilter/` | 数值算法与统计工具 |
 | `butterworthfilter/` | 二阶 Butterworth 低通滤波器 |
@@ -78,4 +82,5 @@ read_next:
 
 1. 先读本文件。
 2. 需要容器时读 `ringbuffer/ringbuffer.md`。
-3. 需要滤波或数值算法时再进入对应目录主文档。
+3. 需要摘要或分组加密时先读 `md5/md5.md`、`aes/aes.md`。
+4. 需要滤波或数值算法时再进入对应目录主文档。

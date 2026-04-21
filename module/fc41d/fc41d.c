@@ -13,7 +13,10 @@
 
 #include <string.h>
 
+#include "../../service/log/log.h"
 #include "fc41d_ctrl.h"
+
+#define FC41D_LOG_TAG                   "fc41d"
 
 static stFc41dDevice gFc41dDevices[FC41D_DEV_MAX];
 static bool gFc41dDefCfgDone[FC41D_DEV_MAX] = {false};
@@ -27,6 +30,7 @@ __attribute__((weak)) void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stF
     }
 
     cfg->linkId = 0U;
+    cfg->resetPin = 0U;
     cfg->rxPollChunkSize = FC41D_RX_POLL_CHUNK_SIZE;
     cfg->txTimeoutMs = FC41D_DEFAULT_TX_TIMEOUT_MS;
     cfg->bootWaitMs = FC41D_DEFAULT_BOOT_WAIT_MS;
@@ -109,6 +113,15 @@ eFc41dStatus fc41dSetCfg(eFc41dMapType device, const stFc41dCfg *cfg)
     lDevice->info.isReady = false;
     fc41dResetState(lDevice);
     gFc41dDefCfgDone[device] = true;
+    LOG_I(FC41D_LOG_TAG,
+          "set cfg dev=%u link=%u reset=%u rxChunk=%u txTout=%lu readyTout=%lu retry=%lu",
+          (unsigned int)device,
+          (unsigned int)cfg->linkId,
+          (unsigned int)cfg->resetPin,
+          (unsigned int)cfg->rxPollChunkSize,
+          (unsigned long)cfg->txTimeoutMs,
+          (unsigned long)cfg->readyTimeoutMs,
+          (unsigned long)cfg->retryIntervalMs);
     return FC41D_STATUS_OK;
 }
 
@@ -143,6 +156,14 @@ eFc41dStatus fc41dSetBleCfg(eFc41dMapType device, const stFc41dBleCfg *cfg)
     lDevice->bleCfg = *cfg;
     lDevice->state.hasMacAddress = false;
     lDevice->state.macAddress[0] = '\0';
+    LOG_I(FC41D_LOG_TAG,
+          "set ble cfg dev=%u mode=%u name=%s service=%s rx=%s tx=%s",
+          (unsigned int)device,
+          (unsigned int)cfg->initMode,
+          (cfg->name[0] == '\0') ? "<empty>" : cfg->name,
+          (cfg->serviceUuid[0] == '\0') ? "<empty>" : cfg->serviceUuid,
+          (cfg->rxCharUuid[0] == '\0') ? "<empty>" : cfg->rxCharUuid,
+          (cfg->txCharUuid[0] == '\0') ? "<empty>" : cfg->txCharUuid);
     return FC41D_STATUS_OK;
 }
 
@@ -157,27 +178,35 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
 
     lDevice = fc41dGetDevice(device);
     if (lDevice == NULL) {
+        LOG_E(FC41D_LOG_TAG, "init invalid device=%u", (unsigned int)device);
         return FC41D_STATUS_INVALID_PARAM;
     }
 
     if (!fc41dPlatformIsValidCfg(&lDevice->cfg)) {
+        LOG_E(FC41D_LOG_TAG, "init invalid cfg dev=%u", (unsigned int)device);
         return FC41D_STATUS_INVALID_PARAM;
     }
 
     lTransport = fc41dGetTransport(lDevice);
     if ((lTransport == NULL) || (lTransport->init == NULL) || (lTransport->write == NULL) ||
         (lTransport->getRxLen == NULL) || (lTransport->read == NULL) || (lTransport->getTickMs == NULL)) {
+        LOG_E(FC41D_LOG_TAG, "init transport interface not ready dev=%u", (unsigned int)device);
         return FC41D_STATUS_NOT_READY;
     }
 
     lDrvStatus = lTransport->init(lDevice->cfg.linkId);
     if (lDrvStatus != DRV_STATUS_OK) {
+        LOG_E(FC41D_LOG_TAG,
+              "init transport failed dev=%u link=%u status=%d",
+              (unsigned int)device,
+              (unsigned int)lDevice->cfg.linkId,
+              (int)lDrvStatus);
         return fc41dMapDrvStatus(lDrvStatus);
     }
 
     lControl = fc41dGetControl(device);
     if ((lControl != NULL) && (lControl->init != NULL)) {
-        lControl->init();
+        lControl->init(lDevice->cfg.resetPin);
     }
 
     (void)memset(&lStreamCfg, 0, sizeof(lStreamCfg));
@@ -196,6 +225,10 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
 
     lStreamStatus = flowparserStreamInit(&lDevice->stream, &lStreamCfg);
     if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+        LOG_E(FC41D_LOG_TAG,
+              "init stream failed dev=%u status=%d",
+              (unsigned int)device,
+              (int)lStreamStatus);
         return fc41dMapStreamStatus(lStreamStatus);
     }
 
@@ -208,6 +241,11 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
     lDevice->info.rxBytes = 0U;
     lDevice->info.urcCount = 0U;
     fc41dResetState(lDevice);
+    LOG_I(FC41D_LOG_TAG,
+          "init ok dev=%u link=%u reset=%u",
+          (unsigned int)device,
+          (unsigned int)lDevice->cfg.linkId,
+          (unsigned int)lDevice->cfg.resetPin);
     return FC41D_STATUS_OK;
 }
 
@@ -222,6 +260,7 @@ void fc41dReset(eFc41dMapType device)
 
     flowparserStreamReset(&lDevice->stream);
     fc41dResetState(lDevice);
+    LOG_I(FC41D_LOG_TAG, "reset dev=%u", (unsigned int)device);
 }
 
 eFc41dStatus fc41dStart(eFc41dMapType device, eFc41dRole role)
@@ -241,17 +280,53 @@ eFc41dStatus fc41dStart(eFc41dMapType device, eFc41dRole role)
 
     lControl = fc41dGetControl(device);
     if ((lControl == NULL) || (lControl->setResetLevel == NULL)) {
+        LOG_E(FC41D_LOG_TAG, "start control interface missing dev=%u", (unsigned int)device);
         return FC41D_STATUS_UNSUPPORTED;
     }
 
     flowparserStreamReset(&lDevice->stream);
     lStatus = fc41dCtrlStart(lDevice, role);
     if (lStatus != FC41D_STATUS_OK) {
+        LOG_W(FC41D_LOG_TAG,
+              "start failed dev=%u role=%d status=%d",
+              (unsigned int)device,
+              (int)role,
+              (int)lStatus);
         return lStatus;
     }
 
-    lControl->setResetLevel(false);
+    lControl->setResetLevel(lDevice->cfg.resetPin, false);
+    LOG_I(FC41D_LOG_TAG,
+          "start dev=%u role=%d",
+          (unsigned int)device,
+          (int)role);
     return FC41D_STATUS_OK;
+}
+
+eFc41dStatus fc41dDisconnectBle(eFc41dMapType device)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    if ((lDevice->state.role != FC41D_ROLE_BLE_PERIPHERAL) || !lDevice->state.isReady) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    if (!lDevice->state.isBleConnected) {
+        return FC41D_STATUS_OK;
+    }
+
+    fc41dSyncState(lDevice);
+    if (lDevice->state.isBusy) {
+        return FC41D_STATUS_BUSY;
+    }
+
+    LOG_I(FC41D_LOG_TAG, "disconnect ble request dev=%u", (unsigned int)device);
+    return fc41dCtrlDisconnectBle(lDevice);
 }
 
 void fc41dStop(eFc41dMapType device)
@@ -266,11 +341,12 @@ void fc41dStop(eFc41dMapType device)
 
     lControl = fc41dGetControl(device);
     if ((lControl != NULL) && (lControl->setResetLevel != NULL)) {
-        lControl->setResetLevel(false);
+        lControl->setResetLevel(lDevice->cfg.resetPin, false);
     }
 
     flowparserStreamReset(&lDevice->stream);
     fc41dCtrlStop(lDevice);
+    LOG_I(FC41D_LOG_TAG, "stop dev=%u", (unsigned int)device);
 }
 
 eFc41dStatus fc41dProcess(eFc41dMapType device, uint32_t nowTickMs)
@@ -288,6 +364,12 @@ eFc41dStatus fc41dProcess(eFc41dMapType device, uint32_t nowTickMs)
         if (lDevice->state.role != FC41D_ROLE_NONE) {
             fc41dCtrlScheduleRetry(lDevice, device, nowTickMs, lStatus);
         }
+        LOG_W(FC41D_LOG_TAG,
+              "background failed dev=%u status=%d role=%d run=%d",
+              (unsigned int)device,
+              (int)lStatus,
+              (int)lDevice->state.role,
+              (int)lDevice->state.runState);
         return lStatus;
     }
 
@@ -373,7 +455,16 @@ eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_
         return FC41D_STATUS_NOT_READY;
     }
 
-    return fc41dDataWrite(&lDevice->dataPlane, buffer, length);
+    lDevice->state.lastError = fc41dDataWrite(&lDevice->dataPlane, buffer, length);
+    if (lDevice->state.lastError != FC41D_STATUS_OK) {
+        LOG_W(FC41D_LOG_TAG,
+              "queue tx failed dev=%u len=%u status=%d",
+              (unsigned int)device,
+              (unsigned int)length,
+              (int)lDevice->state.lastError);
+    }
+
+    return lDevice->state.lastError;
 }
 
 bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize)
@@ -526,11 +617,21 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
         lReadLen = (lAvailLen > lChunkLimit) ? lChunkLimit : lAvailLen;
         lDrvStatus = lTransport->read(device->cfg.linkId, lRxBuffer, lReadLen);
         if (lDrvStatus != DRV_STATUS_OK) {
+            LOG_W(FC41D_LOG_TAG,
+                  "rx read failed link=%u req=%u status=%d",
+                  (unsigned int)device->cfg.linkId,
+                  (unsigned int)lReadLen,
+                  (int)lDrvStatus);
             return fc41dMapDrvStatus(lDrvStatus);
         }
 
         lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
         if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+            LOG_W(FC41D_LOG_TAG,
+                  "stream feed failed link=%u len=%u status=%d",
+                  (unsigned int)device->cfg.linkId,
+                  (unsigned int)lReadLen,
+                  (int)lStreamStatus);
             return fc41dMapStreamStatus(lStreamStatus);
         }
 
@@ -545,6 +646,10 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
         return FC41D_STATUS_OK;
     }
 
+    LOG_W(FC41D_LOG_TAG,
+          "stream process failed link=%u status=%d",
+          (unsigned int)device->cfg.linkId,
+          (int)lStreamStatus);
     return fc41dMapStreamStatus(lStreamStatus);
 }
 
@@ -563,9 +668,16 @@ static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, ui
         return FLOWPARSER_STREAM_NOT_INIT;
     }
 
-    return (lTransport->write(lDevice->cfg.linkId, buf, len, lDevice->cfg.txTimeoutMs) == DRV_STATUS_OK) ?
-           FLOWPARSER_STREAM_OK :
-           FLOWPARSER_STREAM_PORT_FAIL;
+    if (lTransport->write(lDevice->cfg.linkId, buf, len, lDevice->cfg.txTimeoutMs) != DRV_STATUS_OK) {
+        LOG_W(FC41D_LOG_TAG,
+              "stream send failed link=%u len=%u timeout=%lu",
+              (unsigned int)lDevice->cfg.linkId,
+              (unsigned int)len,
+              (unsigned long)lDevice->cfg.txTimeoutMs);
+        return FLOWPARSER_STREAM_PORT_FAIL;
+    }
+
+    return FLOWPARSER_STREAM_OK;
 }
 
 static uint32_t fc41dStreamGetTickMs(void *userData)

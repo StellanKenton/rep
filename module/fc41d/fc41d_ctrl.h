@@ -32,9 +32,6 @@ typedef struct stFc41dUrcCb {
 
 typedef enum eFc41dCtrlStage {
     FC41D_CTRL_STAGE_IDLE = 0,
-    FC41D_CTRL_STAGE_BOOT_WAIT_ARMED,
-    FC41D_CTRL_STAGE_BOOT_WAIT,
-    FC41D_CTRL_STAGE_PROBE,
     FC41D_CTRL_STAGE_ASSERT_RESET,
     FC41D_CTRL_STAGE_RESET_HOLD,
     FC41D_CTRL_STAGE_WAIT_READY,
@@ -51,11 +48,19 @@ typedef enum eFc41dCtrlStage {
     FC41D_CTRL_STAGE_RUNNING,
 } eFc41dCtrlStage;
 
+typedef enum eFc41dCtrlTxnKind {
+    FC41D_CTRL_TXN_NONE = 0,
+    FC41D_CTRL_TXN_STAGE,
+    FC41D_CTRL_TXN_DATA_TX,
+    FC41D_CTRL_TXN_BLE_DISCONNECT,
+} eFc41dCtrlTxnKind;
+
 typedef struct stFc41dCtrlPlane {
     char cmdBuf[FC41D_CTRL_CMD_BUFFER_SIZE];
     uint32_t nextActionTick;
     uint32_t readyDeadlineTick;
     eFc41dCtrlStage stage;
+    eFc41dCtrlTxnKind txnKind;
     bool isTxnDone;
     eFc41dStatus txnStatus;
 } stFc41dCtrlPlane;
@@ -85,6 +90,7 @@ eFc41dStatus fc41dMapDrvStatus(eDrvStatus status);
 eFc41dStatus fc41dMapStreamStatus(eFlowParserStrmSta status);
 eFc41dStatus fc41dMapResult(eFlowParserResult result);
 eFc41dStatus fc41dCtrlStart(stFc41dDevice *device, eFc41dRole role);
+eFc41dStatus fc41dCtrlDisconnectBle(stFc41dDevice *device);
 void fc41dCtrlStop(stFc41dDevice *device);
 eFc41dStatus fc41dCtrlProcess(stFc41dDevice *device, eFc41dMapType deviceId, uint32_t nowTickMs);
 void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint32_t nowTickMs, eFc41dStatus status);

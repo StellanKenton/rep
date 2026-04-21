@@ -12,6 +12,10 @@
 
 #include <string.h>
 
+#include "../../service/log/log.h"
+
+#define FC41D_DATA_LOG_TAG              "fc41dData"
+
 static void fc41dDataWriteOverwrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length);
 static uint16_t fc41dDataPeekTx(const stFc41dDataPlane *dataPlane, uint8_t *buffer, uint16_t bufferSize);
 static void fc41dDataDropTx(stFc41dDataPlane *dataPlane, uint16_t length);
@@ -70,6 +74,11 @@ eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, 
 
     lCapacity = (uint16_t)sizeof(dataPlane->txStorage);
     if ((length > lCapacity) || ((uint16_t)(lCapacity - dataPlane->txUsed) < length)) {
+        LOG_W(FC41D_DATA_LOG_TAG,
+              "tx overflow len=%u used=%u cap=%u",
+              (unsigned int)length,
+              (unsigned int)dataPlane->txUsed,
+              (unsigned int)lCapacity);
         return FC41D_STATUS_OVERFLOW;
     }
 
@@ -221,12 +230,22 @@ static void fc41dDataWriteOverwrite(stFc41dDataPlane *dataPlane, const uint8_t *
     }
 
     if (length >= (uint16_t)sizeof(dataPlane->rxStorage)) {
+        LOG_W(FC41D_DATA_LOG_TAG,
+              "rx payload truncate len=%u cap=%u",
+              (unsigned int)length,
+              (unsigned int)sizeof(dataPlane->rxStorage));
         buffer = &buffer[length - (uint16_t)sizeof(dataPlane->rxStorage)];
         length = (uint16_t)sizeof(dataPlane->rxStorage);
     }
 
     for (lIndex = 0U; lIndex < length; lIndex++) {
         if (dataPlane->rxUsed >= (uint16_t)sizeof(dataPlane->rxStorage)) {
+            if (lIndex == 0U) {
+                LOG_W(FC41D_DATA_LOG_TAG,
+                      "rx overwrite used=%u cap=%u",
+                      (unsigned int)dataPlane->rxUsed,
+                      (unsigned int)sizeof(dataPlane->rxStorage));
+            }
             dataPlane->rxTail = (uint16_t)((dataPlane->rxTail + 1U) % (uint16_t)sizeof(dataPlane->rxStorage));
             dataPlane->rxUsed--;
         }
