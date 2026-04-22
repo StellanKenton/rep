@@ -130,6 +130,22 @@ typedef struct stVfsMountCfg {
     bool isReadOnly;
 } stVfsMountCfg;
 
+struct stVfsMountEntry {
+    char mountPath[VFS_PATH_MAX];
+    const stVfsBackendOps *backendOps;
+    void *backendContext;
+    bool isAutoMount;
+    bool isReadOnly;
+    bool isMounted;
+    bool isUsed;
+};
+
+struct stVfsBackendFile {
+    uint8_t mountIndex;
+    bool isOpen;
+    uint8_t context[VFS_FILE_CONTEXT_SIZE];
+};
+
 bool vfsInit(void);
 bool vfsIsReady(void);
 const stVfsStatus *vfsGetStatus(void);

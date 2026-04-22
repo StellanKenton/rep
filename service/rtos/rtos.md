@@ -14,6 +14,8 @@ This component provides a reusable RTOS facade for `rep/` and project-side code.
 
 ## Usage
 
-Project and reusable code should call `repRtosDelayMs()`, `repRtosGetTickMs()`, and `repRtosIsSchedulerRunning()` instead of directly including vendor RTOS headers.
+Project and reusable code should call `repRtosDelayMs()`, `repRtosGetTickMs()`, `repRtosTaskCreate()`, `repRtosTaskDelayUntilMs()`, `repRtosStatsInit()`, and `repRtosIsSchedulerRunning()` instead of directly including vendor RTOS headers.
+
+Native RTOS headers and APIs are only allowed inside `User/port/rtos_port.*` or equivalent project-side RTOS port files. Project code under `User/system`、`User/manager`、`User/bsp` and reusable code under `rep/` must not call `OSTime*`、`OSTask*`、`OSSem*`、`OSMutex*`、`OSQ*`、`OSFlag*` or other vendor RTOS APIs directly.
 
 When a new RTOS is introduced, extend only `User/port/rtos_port.c` unless the normalized interface itself needs a new capability.

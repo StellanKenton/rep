@@ -188,6 +188,17 @@ eRepRtosStatus repRtosTaskDelayUntilMs(uint32_t *lastWakeTimeMs, uint32_t period
     return ops->taskDelayUntilMs(lastWakeTimeMs, periodMs);
 }
 
+eRepRtosStatus repRtosStatsInit(void)
+{
+    const stRepRtosOps *ops = repRtosGetOps();
+
+    if ((ops == NULL) || (ops->statsInit == NULL)) {
+        return REP_RTOS_STATUS_NOT_READY;
+    }
+
+    return ops->statsInit();
+}
+
 const char *repRtosGetName(void)
 {
     const char *name = rtosPortGetName();

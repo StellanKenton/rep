@@ -40,6 +40,7 @@ typedef enum eRepRtosStatus {
 
 typedef void (*repRtosTaskEntry)(void *argument);
 typedef void *repRtosTaskHandle;
+typedef uintptr_t repRtosStackType;
 
 typedef struct stRepRtosMutex {
     void *nativeHandle;
@@ -58,6 +59,7 @@ typedef struct stRepRtosTaskConfig {
     const char *name;
     repRtosTaskEntry entry;
     void *argument;
+    repRtosStackType *stackBuffer;
     uint32_t stackSize;
     uint32_t priority;
     repRtosTaskHandle *handle;
@@ -79,6 +81,7 @@ typedef struct stRepRtosOps {
     eRepRtosStatus (*queueReset)(stRepRtosQueue *queue);
     eRepRtosStatus (*taskCreate)(const stRepRtosTaskConfig *config);
     eRepRtosStatus (*taskDelayUntilMs)(uint32_t *lastWakeTimeMs, uint32_t periodMs);
+    eRepRtosStatus (*statsInit)(void);
 } stRepRtosOps;
 
 eRepRtosSchedulerState repRtosGetSchedulerState(void);
@@ -97,6 +100,7 @@ eRepRtosStatus repRtosQueueReceive(stRepRtosQueue *queue, void *item, uint32_t t
 eRepRtosStatus repRtosQueueReset(stRepRtosQueue *queue);
 eRepRtosStatus repRtosTaskCreate(const stRepRtosTaskConfig *config);
 eRepRtosStatus repRtosTaskDelayUntilMs(uint32_t *lastWakeTimeMs, uint32_t periodMs);
+eRepRtosStatus repRtosStatsInit(void);
 const char *repRtosGetName(void);
 uint32_t repRtosGetSystem(void);
 

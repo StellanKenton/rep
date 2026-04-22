@@ -112,6 +112,8 @@ read_next:
 - ISR 只做短小、有界、非阻塞动作。
 - 跨上下文共享数据必须明确 ownership、更新顺序和临界区规则。
 - 文档中要写明哪些 API 允许在任务、ISR 或两者中调用。
+- 项目层和复用层代码禁止直接调用原生 RTOS API；`OSTime*`、`OSTask*`、`OSSem*`、`OSMutex*`、`OSQ*`、`OSFlag*`、`OSStatInit` 等接口只允许出现在 `User/port/rtos_port.*` 这类端口绑定层。
+- 需要延时、tick、任务创建、互斥、队列、统计初始化等能力时，统一通过 `rep/service/rtos/rtos.h` 暴露的 `repRtos*` 接口访问，不能在 `User/system`、`User/manager`、`User/bsp` 或 `rep/` 业务代码中直接 include vendor RTOS 头并调用原生函数。
 
 ## 7. 文档写作风格
 

@@ -17,21 +17,6 @@
 
 #define VFS_LOG_TAG "vfs"
 
-struct stVfsMountEntry {
-    char mountPath[VFS_PATH_MAX];
-    const stVfsBackendOps *backendOps;
-    void *backendContext;
-    bool isAutoMount;
-    bool isReadOnly;
-    bool isMounted;
-    bool isUsed;
-};
-
-struct stVfsBackendFile {
-    uint8_t mountIndex;
-    bool isOpen;
-    uint8_t context[VFS_FILE_CONTEXT_SIZE];
-};
 
 static bool vfsLock(void);
 static void vfsUnlock(void);
