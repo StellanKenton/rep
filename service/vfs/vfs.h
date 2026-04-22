@@ -38,6 +38,10 @@ extern "C" {
 #define VFS_FILE_CONTEXT_SIZE                  384U
 #endif
 
+#ifndef VFS_LIST_BATCH_SIZE
+#define VFS_LIST_BATCH_SIZE                    8U
+#endif
+
 #define VFS_FILE_FLAG_READ                     0x01U
 #define VFS_FILE_FLAG_WRITE                    0x02U
 #define VFS_FILE_FLAG_CREATE                   0x04U
@@ -100,7 +104,14 @@ typedef struct stVfsBackendOps {
     bool (*format)(void *backendContext, eVfsResult *error);
     bool (*getSpaceInfo)(void *backendContext, stVfsSpaceInfo *info, eVfsResult *error);
     bool (*stat)(void *backendContext, const char *path, stVfsNodeInfo *info, eVfsResult *error);
-    bool (*listDir)(void *backendContext, const char *path, pfVfsDirVisitor visitor, void *visitorContext, uint32_t *entryCount, eVfsResult *error);
+    bool (*listDir)(void *backendContext,
+                    const char *path,
+                    uint32_t startIndex,
+                    stVfsNodeInfo *entries,
+                    uint32_t entryCapacity,
+                    uint32_t *entryCount,
+                    bool *hasMore,
+                    eVfsResult *error);
     bool (*mkdir)(void *backendContext, const char *path, eVfsResult *error);
     bool (*remove)(void *backendContext, const char *path, eVfsResult *error);
     bool (*rename)(void *backendContext, const char *oldPath, const char *newPath, eVfsResult *error);

@@ -36,7 +36,10 @@ struct stVfsBackendFile {
 static bool vfsLock(void);
 static void vfsUnlock(void);
 static void vfsSetStatus(eVfsState state, bool isReady, eVfsResult error);
+static bool vfsValidateBackendOps(const stVfsBackendOps *backendOps);
 static bool vfsCopyText(char *buffer, const char *text, uint32_t capacity);
+static bool vfsFlagsRequireWriteAccess(uint32_t flags);
+static bool vfsMountAllowsWriteInt(uint32_t mountIndex);
 static bool vfsPathMatchesMount(const char *path, const char *mountPath);
 static bool vfsFindMountByMountPathInt(const char *mountPath, uint32_t *mountIndex);
 static bool vfsFindMountByPathInt(const char *path, uint32_t *mountIndex, char *backendPath, uint32_t backendPathCapacity);
@@ -73,6 +76,28 @@ static void vfsSetStatus(eVfsState state, bool isReady, eVfsResult error)
     gVfsStatus.lastError = error;
 }
 
+static bool vfsValidateBackendOps(const stVfsBackendOps *backendOps)
+{
+    if (backendOps == NULL) {
+        return false;
+    }
+
+    return (backendOps->mount != NULL) &&
+           (backendOps->unmount != NULL) &&
+           (backendOps->format != NULL) &&
+           (backendOps->getSpaceInfo != NULL) &&
+           (backendOps->stat != NULL) &&
+           (backendOps->listDir != NULL) &&
+           (backendOps->mkdir != NULL) &&
+           (backendOps->remove != NULL) &&
+           (backendOps->rename != NULL) &&
+           (backendOps->fileOpen != NULL) &&
+           (backendOps->fileGetSize != NULL) &&
+           (backendOps->fileRead != NULL) &&
+           (backendOps->fileWrite != NULL) &&
+           (backendOps->fileClose != NULL);
+}
+
 static bool vfsCopyText(char *buffer, const char *text, uint32_t capacity)
 {
     uint32_t lLength;
@@ -87,6 +112,29 @@ static bool vfsCopyText(char *buffer, const char *text, uint32_t capacity)
     }
 
     (void)memcpy(buffer, text, lLength + 1U);
+    return true;
+}
+
+static bool vfsFlagsRequireWriteAccess(uint32_t flags)
+{
+    return ((flags & VFS_FILE_FLAG_WRITE) != 0U) ||
+           ((flags & VFS_FILE_FLAG_CREATE) != 0U) ||
+           ((flags & VFS_FILE_FLAG_APPEND) != 0U) ||
+           ((flags & VFS_FILE_FLAG_TRUNC) != 0U);
+}
+
+static bool vfsMountAllowsWriteInt(uint32_t mountIndex)
+{
+    if ((mountIndex >= VFS_MAX_MOUNTS) || !gVfsMounts[mountIndex].isUsed) {
+        vfsSetStatus(eVFS_STATE_FAULT, false, eVFS_INVALID_PARAM);
+        return false;
+    }
+
+    if (gVfsMounts[mountIndex].isReadOnly) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_READ_ONLY);
+        return false;
+    }
+
     return true;
 }
 
@@ -271,6 +319,10 @@ static bool vfsOpenFileInt(const char *path, uint32_t flags, struct stVfsBackend
         return false;
     }
 
+    if (vfsFlagsRequireWriteAccess(flags) && !vfsMountAllowsWriteInt(lMountIndex)) {
+        return false;
+    }
+
     (void)memset(file, 0, sizeof(*file));
     if (!gVfsMounts[lMountIndex].backendOps->fileOpen(gVfsMounts[lMountIndex].backendContext,
                                                       lBackendPath,
@@ -402,7 +454,7 @@ bool vfsRegisterMount(const stVfsMountCfg *cfg)
     uint32_t lIndex;
     char lMountPath[VFS_PATH_MAX];
 
-    if ((cfg == NULL) || (cfg->mountPath == NULL) || (cfg->backendOps == NULL) || (cfg->backendContext == NULL)) {
+    if ((cfg == NULL) || (cfg->mountPath == NULL) || !vfsValidateBackendOps(cfg->backendOps) || (cfg->backendContext == NULL)) {
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
         return false;
     }
@@ -444,6 +496,7 @@ bool vfsRegisterMount(const stVfsMountCfg *cfg)
     gVfsMounts[lIndex].isUsed = true;
 
     if (cfg->isAutoMount && !vfsMountInt(lIndex)) {
+        (void)memset(&gVfsMounts[lIndex], 0, sizeof(gVfsMounts[lIndex]));
         vfsUnlock();
         return false;
     }
@@ -538,6 +591,11 @@ bool vfsFormat(const char *mountPath)
         return false;
     }
 
+    if (!vfsMountAllowsWriteInt(lIndex)) {
+        vfsUnlock();
+        return false;
+    }
+
     lResult = gVfsMounts[lIndex].backendOps->format(gVfsMounts[lIndex].backendContext, &lError);
     if (!lResult) {
         vfsSetStatus(eVFS_STATE_FAULT, false, lError);
@@ -591,9 +649,6 @@ bool vfsNormalizePath(const char *source, char *path, uint32_t capacity)
 
                 if (lPathLength > 1U) {
                     lPathLength--;
-                    while ((lPathLength > 1U) && (path[lPathLength - 1U] != '/')) {
-                        lPathLength--;
-                    }
                 }
 
                 path[lPathLength] = '\0';
@@ -727,11 +782,16 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
 {
     char lPath[VFS_PATH_MAX];
     char lBackendPath[VFS_PATH_MAX];
+    stVfsNodeInfo lEntries[VFS_LIST_BATCH_SIZE];
+    stVfsNodeInfo lMountEntries[VFS_MAX_MOUNTS];
     uint32_t lMountIndex;
     uint32_t lIndex;
+    uint32_t lBatchIndex;
+    uint32_t lStartIndex = 0U;
+    uint32_t lBatchCount = 0U;
     uint32_t lCount = 0U;
     eVfsResult lError = eVFS_OK;
-    stVfsNodeInfo lMountInfo;
+    bool lHasMore = false;
     bool lResult;
 
     if ((path == NULL) || !vfsInit() || !vfsLock()) {
@@ -750,49 +810,88 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
                 continue;
             }
 
-            (void)memset(&lMountInfo, 0, sizeof(lMountInfo));
-            lMountInfo.type = eVFS_NODE_DIR;
-            if (!vfsCopyText(lMountInfo.name, &gVfsMounts[lIndex].mountPath[1], sizeof(lMountInfo.name))) {
+            (void)memset(&lMountEntries[lCount], 0, sizeof(lMountEntries[lCount]));
+            lMountEntries[lCount].type = eVFS_NODE_DIR;
+            if (!vfsCopyText(lMountEntries[lCount].name, &gVfsMounts[lIndex].mountPath[1], sizeof(lMountEntries[lCount].name))) {
                 vfsSetStatus(eVFS_STATE_READY, true, eVFS_NAME_TOO_LONG);
                 vfsUnlock();
                 return false;
             }
 
             lCount++;
-            if ((visitor != NULL) && !visitor(context, &lMountInfo)) {
-                break;
-            }
         }
+
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+        vfsUnlock();
 
         if (entryCount != NULL) {
             *entryCount = lCount;
         }
 
-        vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
-        vfsUnlock();
+        if (visitor != NULL) {
+            for (lIndex = 0U; lIndex < lCount; ++lIndex) {
+                if (!visitor(context, &lMountEntries[lIndex])) {
+                    break;
+                }
+            }
+        }
+
         return true;
     }
 
-    if (!vfsFindMountByPathInt(lPath, &lMountIndex, lBackendPath, sizeof(lBackendPath))) {
-        vfsSetStatus(eVFS_STATE_READY, true, eVFS_NOT_FOUND);
+    while (true) {
+        if (!vfsFindMountByPathInt(lPath, &lMountIndex, lBackendPath, sizeof(lBackendPath))) {
+            vfsSetStatus(eVFS_STATE_READY, true, eVFS_NOT_FOUND);
+            vfsUnlock();
+            return false;
+        }
+
+        if (!vfsEnsureMountedInt(lMountIndex)) {
+            vfsUnlock();
+            return false;
+        }
+
+        lResult = gVfsMounts[lMountIndex].backendOps->listDir(gVfsMounts[lMountIndex].backendContext,
+                                                              lBackendPath,
+                                                              lStartIndex,
+                                                              lEntries,
+                                                              VFS_LIST_BATCH_SIZE,
+                                                              &lBatchCount,
+                                                              &lHasMore,
+                                                              &lError);
+        vfsSetStatus(eVFS_STATE_READY, true, lResult ? eVFS_OK : lError);
         vfsUnlock();
-        return false;
+        if (!lResult) {
+            return false;
+        }
+
+        lCount += lBatchCount;
+        if (visitor != NULL) {
+            for (lBatchIndex = 0U; lBatchIndex < lBatchCount; ++lBatchIndex) {
+                if (!visitor(context, &lEntries[lBatchIndex])) {
+                    if (entryCount != NULL) {
+                        *entryCount = lCount;
+                    }
+                    return true;
+                }
+            }
+        }
+
+        if (!lHasMore || (lBatchCount == 0U)) {
+            break;
+        }
+
+        lStartIndex += lBatchCount;
+        if (!vfsLock()) {
+            return false;
+        }
     }
 
-    if (!vfsEnsureMountedInt(lMountIndex)) {
-        vfsUnlock();
-        return false;
+    if (entryCount != NULL) {
+        *entryCount = lCount;
     }
 
-    lResult = gVfsMounts[lMountIndex].backendOps->listDir(gVfsMounts[lMountIndex].backendContext,
-                                                          lBackendPath,
-                                                          visitor,
-                                                          context,
-                                                          entryCount,
-                                                          &lError);
-    vfsSetStatus(eVFS_STATE_READY, true, lResult ? eVFS_OK : lError);
-    vfsUnlock();
-    return lResult;
+    return true;
 }
 
 bool vfsExists(const char *path)
@@ -830,6 +929,11 @@ bool vfsMkdir(const char *path)
         return false;
     }
 
+    if (!vfsMountAllowsWriteInt(lMountIndex)) {
+        vfsUnlock();
+        return false;
+    }
+
     lResult = gVfsMounts[lMountIndex].backendOps->mkdir(gVfsMounts[lMountIndex].backendContext, lBackendPath, &lError);
     vfsSetStatus(eVFS_STATE_READY, true, lResult ? eVFS_OK : lError);
     vfsUnlock();
@@ -861,6 +965,11 @@ bool vfsDelete(const char *path)
     }
 
     if (!vfsEnsureMountedInt(lMountIndex)) {
+        vfsUnlock();
+        return false;
+    }
+
+    if (!vfsMountAllowsWriteInt(lMountIndex)) {
         vfsUnlock();
         return false;
     }
@@ -916,6 +1025,11 @@ bool vfsRename(const char *oldPath, const char *newPath)
         return false;
     }
 
+    if (!vfsMountAllowsWriteInt(lOldMountIndex)) {
+        vfsUnlock();
+        return false;
+    }
+
     lResult = gVfsMounts[lOldMountIndex].backendOps->rename(gVfsMounts[lOldMountIndex].backendContext,
                                                             lOldBackendPath,
                                                             lNewBackendPath,
@@ -949,6 +1063,10 @@ bool vfsCopy(const char *sourcePath, const char *targetPath)
 bool vfsMove(const char *sourcePath, const char *targetPath)
 {
     stVfsNodeInfo lInfo;
+    char lSourceNormPath[VFS_PATH_MAX];
+    char lTargetNormPath[VFS_PATH_MAX];
+    uint32_t lSourceMountIndex;
+    uint32_t lTargetMountIndex;
 
     if ((sourcePath == NULL) || (targetPath == NULL)) {
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
@@ -971,6 +1089,26 @@ bool vfsMove(const char *sourcePath, const char *targetPath)
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_UNSUPPORTED);
         return false;
     }
+
+    if (!vfsLock()) {
+        return false;
+    }
+
+    if (!vfsNormalizePath(sourcePath, lSourceNormPath, sizeof(lSourceNormPath)) ||
+        !vfsNormalizePath(targetPath, lTargetNormPath, sizeof(lTargetNormPath)) ||
+        !vfsFindMountByPathInt(lSourceNormPath, &lSourceMountIndex, NULL, 0U) ||
+        !vfsFindMountByPathInt(lTargetNormPath, &lTargetMountIndex, NULL, 0U)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_NOT_FOUND);
+        vfsUnlock();
+        return false;
+    }
+
+    if (!vfsMountAllowsWriteInt(lSourceMountIndex) || !vfsMountAllowsWriteInt(lTargetMountIndex)) {
+        vfsUnlock();
+        return false;
+    }
+
+    vfsUnlock();
 
     if (!vfsCopyFileInt(sourcePath, targetPath)) {
         return false;

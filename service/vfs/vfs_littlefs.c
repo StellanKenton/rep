@@ -36,7 +36,14 @@ static bool vfsLittlefsUnmount(void *backendContext, eVfsResult *error);
 static bool vfsLittlefsFormat(void *backendContext, eVfsResult *error);
 static bool vfsLittlefsGetSpaceInfo(void *backendContext, stVfsSpaceInfo *info, eVfsResult *error);
 static bool vfsLittlefsStat(void *backendContext, const char *path, stVfsNodeInfo *info, eVfsResult *error);
-static bool vfsLittlefsListDir(void *backendContext, const char *path, pfVfsDirVisitor visitor, void *visitorContext, uint32_t *entryCount, eVfsResult *error);
+static bool vfsLittlefsListDir(void *backendContext,
+                               const char *path,
+                               uint32_t startIndex,
+                               stVfsNodeInfo *entries,
+                               uint32_t entryCapacity,
+                               uint32_t *entryCount,
+                               bool *hasMore,
+                               eVfsResult *error);
 static bool vfsLittlefsMkdir(void *backendContext, const char *path, eVfsResult *error);
 static bool vfsLittlefsRemove(void *backendContext, const char *path, eVfsResult *error);
 static bool vfsLittlefsRename(void *backendContext, const char *oldPath, const char *newPath, eVfsResult *error);
@@ -370,21 +377,31 @@ static bool vfsLittlefsStat(void *backendContext, const char *path, stVfsNodeInf
     return (lResult == LFS_ERR_OK) && vfsLittlefsFillNodeInfo(&lInfo, info);
 }
 
-static bool vfsLittlefsListDir(void *backendContext, const char *path, pfVfsDirVisitor visitor, void *visitorContext, uint32_t *entryCount, eVfsResult *error)
+static bool vfsLittlefsListDir(void *backendContext,
+                               const char *path,
+                               uint32_t startIndex,
+                               stVfsNodeInfo *entries,
+                               uint32_t entryCapacity,
+                               uint32_t *entryCount,
+                               bool *hasMore,
+                               eVfsResult *error)
 {
     stVfsLittlefsContext *lContext = (stVfsLittlefsContext *)backendContext;
     lfs_dir_t lDir;
     struct lfs_info lInfo;
-    stVfsNodeInfo lNodeInfo;
     uint32_t lCount = 0U;
+    uint32_t lVisibleIndex = 0U;
     int lResult;
 
-    if ((lContext == NULL) || (path == NULL)) {
+    if ((lContext == NULL) || (path == NULL) || (entries == NULL) || (entryCapacity == 0U) || (entryCount == NULL) || (hasMore == NULL)) {
         if (error != NULL) {
             *error = eVFS_INVALID_PARAM;
         }
         return false;
     }
+
+    *entryCount = 0U;
+    *hasMore = false;
 
     lResult = lfs_dir_open(&lContext->lfs, &lDir, path);
     if (lResult != LFS_ERR_OK) {
@@ -412,17 +429,30 @@ static bool vfsLittlefsListDir(void *backendContext, const char *path, pfVfsDirV
             continue;
         }
 
-        (void)vfsLittlefsFillNodeInfo(&lInfo, &lNodeInfo);
-        lCount++;
-        if ((visitor != NULL) && !visitor(visitorContext, &lNodeInfo)) {
+        if (lVisibleIndex < startIndex) {
+            lVisibleIndex++;
+            continue;
+        }
+
+        if (lCount >= entryCapacity) {
+            *hasMore = true;
             break;
         }
+
+        if (!vfsLittlefsFillNodeInfo(&lInfo, &entries[lCount])) {
+            (void)lfs_dir_close(&lContext->lfs, &lDir);
+            if (error != NULL) {
+                *error = eVFS_IO;
+            }
+            return false;
+        }
+
+        lCount++;
+        lVisibleIndex++;
     }
 
     lResult = lfs_dir_close(&lContext->lfs, &lDir);
-    if (entryCount != NULL) {
-        *entryCount = lCount;
-    }
+    *entryCount = lCount;
 
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
