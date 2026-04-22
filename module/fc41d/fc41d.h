@@ -134,8 +134,18 @@ typedef eDrvStatus eFc41dStatus;
 #define FC41D_STATUS_OVERFLOW                ((eFc41dStatus)(DRV_STATUS_ERROR + 1))
 #define FC41D_STATUS_STREAM_FAIL             ((eFc41dStatus)(DRV_STATUS_ERROR + 2))
 
+typedef enum eFc41dRawMatchSta {
+    FC41D_RAW_MATCH_NONE = 0,
+    FC41D_RAW_MATCH_NEED_MORE,
+    FC41D_RAW_MATCH_OK,
+} eFc41dRawMatchSta;
+
 typedef void (*fc41dLineFunc)(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 typedef bool (*fc41dUrcMatchFunc)(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
+typedef eFc41dRawMatchSta (*fc41dRawMatchFunc)(void *userData,
+                                               const uint8_t *buf,
+                                               uint16_t availLen,
+                                               uint16_t *frameLen);
 
 typedef struct stFc41dCfg {
     uint8_t linkId;
@@ -202,6 +212,7 @@ eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_
 bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize);
 eFc41dStatus fc41dSetUrcHandler(eFc41dMapType device, fc41dLineFunc handler, void *userData);
 eFc41dStatus fc41dSetUrcMatcher(eFc41dMapType device, fc41dUrcMatchFunc matcher, void *userData);
+eFc41dStatus fc41dSetRawMatcher(eFc41dMapType device, fc41dRawMatchFunc matcher, void *userData);
 
 #ifdef __cplusplus
 }

@@ -73,6 +73,7 @@ read_next:
 - `flowparserStreamGetStage()`
 - `flowparserStreamSetUrcHandler()`
 - `flowparserStreamSetUrcMatcher()`
+- `flowparserStreamSetRawHook()`
 
 ## 4. 状态机约定
 
@@ -87,6 +88,7 @@ read_next:
 2. `Feed` 只负责把底层收到的字节灌入内部 ring buffer。
 3. `Proc` 负责消费 ring buffer、按行切分、识别 prompt/结束行/错误行，并在命中时调用 done 回调。
 4. 若配置了 `flowparserStreamIsUrcFunc`，则 URC 在事务进行中也会先走 URC 路径，不污染当前事务结果。
+5. 若配置了 raw hook，则 `Proc` 会在逐行消费前先检查 ring buffer 头部是否命中完整 raw frame；命中后整帧直接交给 raw handler，后续文本 URC 仍继续按行处理。
 
 ## 5. 函数指针 / port / assembly 契约
 
@@ -95,6 +97,7 @@ read_next:
 | `flowparserStreamSendFunc` | 必需 | transport 绑定层 | `flowparserStreamSubmit`、prompt 后 payload 发送 | `eFlowParserStrmSta (*)(userData, buf, len)` | 返回 `FLOWPARSER_STREAM_OK` | 返回其他状态视为发送失败 | transport 已初始化 | 不在 core 中直连 UART |
 | `flowparserStreamGetTickFunc` | 可选 | transport / platform | 超时检查 | `uint32_t (*)(userData)` | 返回单调 tick | 缺失则禁用基于 tick 的超时 | 需要 timeout 语义 | 使用无符号减法处理回绕 |
 | `flowparserStreamIsUrcFunc` | 可选 | 上层协议或平台 | `flowparserStreamProc` 分发前 | `bool (*)(userData, lineBuf, lineLen)` | 返回 `true` 视为 URC | 返回 `false` 视为普通响应 | 行已被完整切分 | 用于隔离异步事件 |
+| `flowparserStreamRawMatchFunc` + `flowparserStreamRawFrameFunc` | 可选 | 上层协议或平台 | `flowparserStreamProc` 逐行解析前 | `match(userData, buf, availLen, frameLen)` + `handler(userData, frameBuf, frameLen)` | matcher 返回命中后 handler 收到整帧 | matcher 返回 `NEED_MORE` 时保留当前头部字节等待补齐 | raw frame 固定从 ring 头部开始匹配 | 适合 BLE 透传帧这类非文本字节流 |
 
 ## 6. 公共函数使用契约
 
@@ -108,6 +111,7 @@ read_next:
 | --- | --- | --- |
 | 改模式匹配语义 | `flowparser.c/.h` | transport hook |
 | 改 prompt、超时、分行流程 | `flowparser_stream.c/.h` | 上层 modem 状态机 |
+| 改 raw frame 识别或旁路转发 | `flowparser_stream.c/.h` + 项目侧 raw hook | 具体业务 manager |
 | 改具体 UART / DMA / tick 绑定 | 项目侧 platform/assembly | `flowparser` core |
 
 ## 8. 复制到其他工程的最小步骤
@@ -122,3 +126,4 @@ read_next:
 - `AT+QISEND` 这类 prompt 事务在收到 `>` 后能发送 payload 并等待最终结果。
 - ring buffer 满时返回 `OVERFLOW`，而不是静默覆盖。
 - 未配置 URC matcher 时，空闲态行能进入 URC handler；配置 matcher 后，事务内 URC 也能独立上报。
+- 配置 raw hook 后，完整 raw frame 会先被转发，且 raw frame 后面紧跟的文本 URC 仍能继续被正常切行处理。

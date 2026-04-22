@@ -28,6 +28,8 @@ typedef struct stFc41dUrcCb {
     void *handlerUserData;
     fc41dUrcMatchFunc pfMatcher;
     void *matcherUserData;
+    fc41dRawMatchFunc pfRawMatcher;
+    void *rawMatcherUserData;
 } stFc41dUrcCb;
 
 typedef enum eFc41dCtrlStage {

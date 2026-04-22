@@ -67,6 +67,8 @@ static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, ui
 static uint32_t fc41dStreamGetTickMs(void *userData);
 static bool fc41dStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static void fc41dStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
+static eFlowParserRawMatchSta fc41dStreamRawMatch(void *userData, const uint8_t *buf, uint16_t availLen, uint16_t *frameLen);
+static void fc41dStreamDispatchRaw(void *userData, const uint8_t *frameBuf, uint16_t frameLen);
 
 eFc41dStatus fc41dGetDefCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
@@ -222,6 +224,10 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
     lStreamCfg.urcUserData = lDevice;
     lStreamCfg.pfIsUrc = fc41dStreamIsUrc;
     lStreamCfg.isUrcUserData = lDevice;
+    lStreamCfg.pfRawMatcher = fc41dStreamRawMatch;
+    lStreamCfg.rawMatchUserData = lDevice;
+    lStreamCfg.pfRawHandler = fc41dStreamDispatchRaw;
+    lStreamCfg.rawHandlerUserData = lDevice;
 
     lStreamStatus = flowparserStreamInit(&lDevice->stream, &lStreamCfg);
     if (lStreamStatus != FLOWPARSER_STREAM_OK) {
@@ -518,6 +524,21 @@ eFc41dStatus fc41dSetUrcMatcher(eFc41dMapType device, fc41dUrcMatchFunc matcher,
     return FC41D_STATUS_OK;
 }
 
+eFc41dStatus fc41dSetRawMatcher(eFc41dMapType device, fc41dRawMatchFunc matcher, void *userData)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDevice->urcCb.pfRawMatcher = matcher;
+    lDevice->urcCb.rawMatcherUserData = userData;
+    flowparserStreamSetRawHook(&lDevice->stream, fc41dStreamRawMatch, lDevice, fc41dStreamDispatchRaw, lDevice);
+    return FC41D_STATUS_OK;
+}
+
 void fc41dTxnLineThunk(void *userData, const uint8_t *lineBuf, uint16_t lineLen)
 {
     stFc41dDevice *lDevice;
@@ -625,6 +646,10 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
             return fc41dMapDrvStatus(lDrvStatus);
         }
 
+        if ((device->state.role == FC41D_ROLE_BLE_PERIPHERAL) && device->state.isBleConnected) {
+            fc41dDataStoreRx(&device->dataPlane, lRxBuffer, lReadLen);
+        }
+
         lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
         if (lStreamStatus != FLOWPARSER_STREAM_OK) {
             LOG_W(FC41D_LOG_TAG,
@@ -716,9 +741,45 @@ static void fc41dStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint1
     }
 
     fc41dCtrlHandleUrc(lDevice, lineBuf, lineLen);
-    (void)fc41dDataTryStoreUrcPayload(&lDevice->dataPlane, lineBuf, lineLen);
+    if (!lDevice->state.isBleConnected) {
+        (void)fc41dDataTryStoreUrcPayload(&lDevice->dataPlane, lineBuf, lineLen);
+    }
     if (lDevice->urcCb.pfHandler != NULL) {
         lDevice->urcCb.pfHandler(lDevice->urcCb.handlerUserData, lineBuf, lineLen);
     }
+}
+
+static eFlowParserRawMatchSta fc41dStreamRawMatch(void *userData, const uint8_t *buf, uint16_t availLen, uint16_t *frameLen)
+{
+    stFc41dDevice *lDevice;
+    eFc41dRawMatchSta lMatchSta;
+
+    lDevice = (stFc41dDevice *)userData;
+    if ((lDevice == NULL) || (lDevice->urcCb.pfRawMatcher == NULL)) {
+        return FLOWPARSER_RAW_MATCH_NONE;
+    }
+
+    lMatchSta = lDevice->urcCb.pfRawMatcher(lDevice->urcCb.rawMatcherUserData, buf, availLen, frameLen);
+    switch (lMatchSta) {
+        case FC41D_RAW_MATCH_NEED_MORE:
+            return FLOWPARSER_RAW_MATCH_NEED_MORE;
+        case FC41D_RAW_MATCH_OK:
+            return FLOWPARSER_RAW_MATCH_OK;
+        case FC41D_RAW_MATCH_NONE:
+        default:
+            return FLOWPARSER_RAW_MATCH_NONE;
+    }
+}
+
+static void fc41dStreamDispatchRaw(void *userData, const uint8_t *frameBuf, uint16_t frameLen)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = (stFc41dDevice *)userData;
+    if ((lDevice == NULL) || (frameBuf == NULL) || (frameLen == 0U)) {
+        return;
+    }
+
+    fc41dDataStoreRx(&lDevice->dataPlane, frameBuf, frameLen);
 }
 /**************************End of file********************************/

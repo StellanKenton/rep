@@ -32,10 +32,21 @@ typedef enum eFlowParserStrmSta {
     FLOWPARSER_STREAM_ERROR,
 } eFlowParserStrmSta;
 
+typedef enum eFlowParserRawMatchSta {
+    FLOWPARSER_RAW_MATCH_NONE = 0,
+    FLOWPARSER_RAW_MATCH_NEED_MORE,
+    FLOWPARSER_RAW_MATCH_OK,
+} eFlowParserRawMatchSta;
+
 typedef void (*flowparserStreamLineFunc)(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 typedef uint32_t (*flowparserStreamGetTickFunc)(void *userData);
 typedef bool (*flowparserStreamIsUrcFunc)(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 typedef eFlowParserStrmSta (*flowparserStreamSendFunc)(void *userData, const uint8_t *buf, uint16_t len);
+typedef eFlowParserRawMatchSta (*flowparserStreamRawMatchFunc)(void *userData,
+                                                               const uint8_t *buf,
+                                                               uint16_t availLen,
+                                                               uint16_t *frameLen);
+typedef void (*flowparserStreamRawFrameFunc)(void *userData, const uint8_t *frameBuf, uint16_t frameLen);
 
 typedef struct stFlowParserStreamCfg {
     uint8_t *rxStorage;
@@ -50,6 +61,10 @@ typedef struct stFlowParserStreamCfg {
     void *urcUserData;
     flowparserStreamIsUrcFunc pfIsUrc;
     void *isUrcUserData;
+    flowparserStreamRawMatchFunc pfRawMatcher;
+    void *rawMatchUserData;
+    flowparserStreamRawFrameFunc pfRawHandler;
+    void *rawHandlerUserData;
 } stFlowParserStreamCfg;
 
 typedef struct stFlowParserStream {
@@ -66,6 +81,10 @@ typedef struct stFlowParserStream {
     void *urcUserData;
     flowparserStreamIsUrcFunc pfIsUrc;
     void *isUrcUserData;
+    flowparserStreamRawMatchFunc pfRawMatcher;
+    void *rawMatchUserData;
+    flowparserStreamRawFrameFunc pfRawHandler;
+    void *rawHandlerUserData;
     uint8_t *lineBuf;
     uint16_t lineBufSize;
     uint16_t lineLen;
@@ -86,6 +105,11 @@ bool flowparserStreamIsBusy(const stFlowParserStream *stream);
 eFlowParserStage flowparserStreamGetStage(const stFlowParserStream *stream);
 void flowparserStreamSetUrcHandler(stFlowParserStream *stream, flowparserStreamLineFunc urcHandler, void *userData);
 void flowparserStreamSetUrcMatcher(stFlowParserStream *stream, flowparserStreamIsUrcFunc isUrc, void *userData);
+void flowparserStreamSetRawHook(stFlowParserStream *stream,
+                                flowparserStreamRawMatchFunc rawMatcher,
+                                void *matchUserData,
+                                flowparserStreamRawFrameFunc rawHandler,
+                                void *handlerUserData);
 
 #ifdef __cplusplus
 }

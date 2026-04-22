@@ -52,6 +52,12 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
 static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType deviceId, uint32_t nowTickMs);
 static bool fc41dMatchPrefix(const uint8_t *lineBuf, uint16_t lineLen, const char *prefix);
 static bool fc41dHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
+static bool fc41dHasBleToken(const uint8_t *lineBuf, uint16_t lineLen);
+static bool fc41dHasBleWriteToken(const uint8_t *lineBuf, uint16_t lineLen);
+static bool fc41dHasBleConnectToken(const uint8_t *lineBuf, uint16_t lineLen);
+static bool fc41dHasBleDisconnectToken(const uint8_t *lineBuf, uint16_t lineLen);
+static bool fc41dHasDelimitedToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
+static bool fc41dIsTokenBodyChar(uint8_t ch);
 static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
 static bool fc41dTryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
 static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value);
@@ -350,6 +356,7 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
 bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_t lineLen)
 {
     uint32_t lIndex;
+    bool lHasBle;
 
     if ((device == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
         return false;
@@ -366,9 +373,11 @@ bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_
         }
     }
 
-    if (fc41dHasToken(lineBuf, lineLen, "BLE") &&
-        (fc41dHasToken(lineBuf, lineLen, "WRITE") || fc41dHasToken(lineBuf, lineLen, "CONNECT") ||
-         fc41dHasToken(lineBuf, lineLen, "DISCONNECT"))) {
+    lHasBle = fc41dHasBleToken(lineBuf, lineLen);
+    if (lHasBle &&
+        (fc41dHasBleWriteToken(lineBuf, lineLen) ||
+         fc41dHasBleConnectToken(lineBuf, lineLen) ||
+         fc41dHasBleDisconnectToken(lineBuf, lineLen))) {
         return true;
     }
 
@@ -377,6 +386,10 @@ bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_
 
 void fc41dCtrlHandleUrc(stFc41dDevice *device, const uint8_t *lineBuf, uint16_t lineLen)
 {
+    bool lHasBle;
+    bool lHasDisconnect;
+    bool lHasConnect;
+
     if ((device == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
         return;
     }
@@ -387,14 +400,16 @@ void fc41dCtrlHandleUrc(stFc41dDevice *device, const uint8_t *lineBuf, uint16_t 
         LOG_I(FC41D_CTRL_LOG_TAG, "urc ready");
     }
 
-    if (fc41dHasToken(lineBuf, lineLen, "BLE") && fc41dHasToken(lineBuf, lineLen, "CONNECT")) {
-        device->state.isBleConnected = true;
-        LOG_I(FC41D_CTRL_LOG_TAG, "urc ble connected");
-    }
+    lHasBle = fc41dHasBleToken(lineBuf, lineLen);
+    lHasDisconnect = lHasBle && fc41dHasBleDisconnectToken(lineBuf, lineLen);
+    lHasConnect = lHasBle && fc41dHasBleConnectToken(lineBuf, lineLen);
 
-    if (fc41dHasToken(lineBuf, lineLen, "BLE") && fc41dHasToken(lineBuf, lineLen, "DISCONNECT")) {
+    if (lHasDisconnect) {
         device->state.isBleConnected = false;
         LOG_I(FC41D_CTRL_LOG_TAG, "urc ble disconnected");
+    } else if (lHasConnect) {
+        device->state.isBleConnected = true;
+        LOG_I(FC41D_CTRL_LOG_TAG, "urc ble connected");
     }
 }
 
@@ -865,6 +880,81 @@ static bool fc41dHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *
     }
 
     return false;
+}
+
+static bool fc41dHasBleToken(const uint8_t *lineBuf, uint16_t lineLen)
+{
+    return fc41dHasToken(lineBuf, lineLen, "QBLE") ||
+           fc41dHasDelimitedToken(lineBuf, lineLen, "BLE") ||
+           fc41dHasToken(lineBuf, lineLen, "BLEWRITE") ||
+           fc41dHasToken(lineBuf, lineLen, "BLECONN") ||
+           fc41dHasToken(lineBuf, lineLen, "BLEDISCONN");
+}
+
+static bool fc41dHasBleWriteToken(const uint8_t *lineBuf, uint16_t lineLen)
+{
+    return fc41dHasDelimitedToken(lineBuf, lineLen, "WRITE") ||
+           fc41dHasToken(lineBuf, lineLen, "QBLEWRITE") ||
+           fc41dHasToken(lineBuf, lineLen, "BLEWRITE");
+}
+
+static bool fc41dHasBleConnectToken(const uint8_t *lineBuf, uint16_t lineLen)
+{
+    return fc41dHasDelimitedToken(lineBuf, lineLen, "CONNECT") ||
+           fc41dHasDelimitedToken(lineBuf, lineLen, "CONNECTED") ||
+           fc41dHasToken(lineBuf, lineLen, "QBLECONN") ||
+           fc41dHasToken(lineBuf, lineLen, "BLECONN");
+}
+
+static bool fc41dHasBleDisconnectToken(const uint8_t *lineBuf, uint16_t lineLen)
+{
+    return fc41dHasDelimitedToken(lineBuf, lineLen, "DISCONNECT") ||
+           fc41dHasDelimitedToken(lineBuf, lineLen, "DISCONNECTED") ||
+           fc41dHasToken(lineBuf, lineLen, "QBLEDISCONN") ||
+           fc41dHasToken(lineBuf, lineLen, "BLEDISCONN");
+}
+
+static bool fc41dHasDelimitedToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token)
+{
+    uint16_t lIndex;
+    uint16_t lTokenLen;
+    uint16_t lTokenEnd;
+
+    if ((lineBuf == NULL) || (token == NULL)) {
+        return false;
+    }
+
+    lTokenLen = (uint16_t)strlen(token);
+    if ((lTokenLen == 0U) || (lineLen < lTokenLen)) {
+        return false;
+    }
+
+    for (lIndex = 0U; lIndex <= (uint16_t)(lineLen - lTokenLen); lIndex++) {
+        if (memcmp(&lineBuf[lIndex], token, lTokenLen) != 0) {
+            continue;
+        }
+
+        if ((lIndex > 0U) && fc41dIsTokenBodyChar(lineBuf[lIndex - 1U])) {
+            continue;
+        }
+
+        lTokenEnd = (uint16_t)(lIndex + lTokenLen);
+        if ((lTokenEnd < lineLen) && fc41dIsTokenBodyChar(lineBuf[lTokenEnd])) {
+            continue;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+static bool fc41dIsTokenBodyChar(uint8_t ch)
+{
+    return ((ch >= (uint8_t)'0') && (ch <= (uint8_t)'9')) ||
+           ((ch >= (uint8_t)'A') && (ch <= (uint8_t)'Z')) ||
+           ((ch >= (uint8_t)'a') && (ch <= (uint8_t)'z')) ||
+           (ch == (uint8_t)'_');
 }
 
 static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize)

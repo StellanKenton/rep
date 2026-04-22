@@ -21,10 +21,9 @@ static uint16_t fc41dDataPeekTx(const stFc41dDataPlane *dataPlane, uint8_t *buff
 static void fc41dDataDropTx(stFc41dDataPlane *dataPlane, uint16_t length);
 static eFc41dStatus fc41dDataAppendChar(char *buffer, uint16_t bufferSize, uint16_t *length, char value);
 static eFc41dStatus fc41dDataAppendText(char *buffer, uint16_t bufferSize, uint16_t *length, const char *text);
+static eFc41dStatus fc41dDataAppendUint(char *buffer, uint16_t bufferSize, uint16_t *length, uint16_t value);
 static eFc41dStatus fc41dDataAppendHexBytes(char *buffer, uint16_t bufferSize, uint16_t *length, const uint8_t *data, uint16_t dataLen);
 static bool fc41dDataHasToken(const uint8_t *lineBuf, uint16_t lineLen, const char *token);
-static bool fc41dDataTryWriteHexPayload(stFc41dDataPlane *dataPlane, const uint8_t *payload, uint16_t payloadLen);
-static bool fc41dDataTryHexNibble(uint8_t ch, uint8_t *value);
 
 void fc41dDataReset(stFc41dDataPlane *dataPlane)
 {
@@ -61,6 +60,11 @@ uint16_t fc41dDataRead(stFc41dDataPlane *dataPlane, uint8_t *buffer, uint16_t bu
 
     dataPlane->rxUsed = (uint16_t)(dataPlane->rxUsed - lReadLen);
     return lReadLen;
+}
+
+void fc41dDataStoreRx(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length)
+{
+    fc41dDataWriteOverwrite(dataPlane, buffer, length);
 }
 
 eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length)
@@ -149,6 +153,16 @@ eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane, const char *ch
         return lStatus;
     }
 
+    lStatus = fc41dDataAppendUint(cmdBuf, bufferSize, &lLength, dataPlane->txPendingLen);
+    if (lStatus != FC41D_STATUS_OK) {
+        return lStatus;
+    }
+
+    lStatus = fc41dDataAppendChar(cmdBuf, bufferSize, &lLength, ',');
+    if (lStatus != FC41D_STATUS_OK) {
+        return lStatus;
+    }
+
     lStatus = fc41dDataAppendHexBytes(cmdBuf, bufferSize, &lLength, dataPlane->txPendingBuf, dataPlane->txPendingLen);
     if (lStatus != FC41D_STATUS_OK) {
         return lStatus;
@@ -159,10 +173,6 @@ eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane, const char *ch
 
 bool fc41dDataTryStoreUrcPayload(stFc41dDataPlane *dataPlane, const uint8_t *lineBuf, uint16_t lineLen)
 {
-    uint16_t lStart;
-    uint16_t lEnd;
-    uint16_t lIndex;
-
     if ((dataPlane == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
         return false;
     }
@@ -171,54 +181,8 @@ bool fc41dDataTryStoreUrcPayload(stFc41dDataPlane *dataPlane, const uint8_t *lin
         return false;
     }
 
-    lStart = lineLen;
-    lEnd = lineLen;
-    for (lIndex = lineLen; lIndex > 0U; lIndex--) {
-        if (lineBuf[lIndex - 1U] == '"') {
-            if (lEnd == lineLen) {
-                lEnd = (uint16_t)(lIndex - 1U);
-            } else {
-                lStart = lIndex;
-                break;
-            }
-        }
-    }
-
-    if ((lStart < lEnd) && (lEnd <= lineLen)) {
-        if (fc41dDataTryWriteHexPayload(dataPlane, &lineBuf[lStart], (uint16_t)(lEnd - lStart))) {
-            return true;
-        }
-
-        fc41dDataWriteOverwrite(dataPlane, &lineBuf[lStart], (uint16_t)(lEnd - lStart));
-        return true;
-    }
-
-    lStart = lineLen;
-    for (lIndex = lineLen; lIndex > 0U; lIndex--) {
-        if ((lineBuf[lIndex - 1U] == ':') || (lineBuf[lIndex - 1U] == ',')) {
-            lStart = lIndex;
-            break;
-        }
-    }
-
-    if (lStart >= lineLen) {
-        return false;
-    }
-
-    while ((lStart < lineLen) && ((lineBuf[lStart] == ' ') || (lineBuf[lStart] == '\t'))) {
-        lStart++;
-    }
-
-    lEnd = lineLen;
-    while ((lEnd > lStart) && ((lineBuf[lEnd - 1U] == ' ') || (lineBuf[lEnd - 1U] == '\t'))) {
-        lEnd--;
-    }
-
-    if (lEnd <= lStart) {
-        return false;
-    }
-
-    return fc41dDataTryWriteHexPayload(dataPlane, &lineBuf[lStart], (uint16_t)(lEnd - lStart));
+    fc41dDataStoreRx(dataPlane, lineBuf, lineLen);
+    return true;
 }
 
 static void fc41dDataWriteOverwrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length)
@@ -326,6 +290,33 @@ static eFc41dStatus fc41dDataAppendText(char *buffer, uint16_t bufferSize, uint1
     return FC41D_STATUS_OK;
 }
 
+static eFc41dStatus fc41dDataAppendUint(char *buffer, uint16_t bufferSize, uint16_t *length, uint16_t value)
+{
+    char lDigits[5];
+    uint16_t lDigitCount;
+    eFc41dStatus lStatus;
+
+    if ((buffer == NULL) || (length == NULL)) {
+        return FC41D_STATUS_INVALID_PARAM;
+    }
+
+    lDigitCount = 0U;
+    do {
+        lDigits[lDigitCount++] = (char)('0' + (value % 10U));
+        value = (uint16_t)(value / 10U);
+    } while ((value > 0U) && (lDigitCount < (uint16_t)sizeof(lDigits)));
+
+    while (lDigitCount > 0U) {
+        lDigitCount--;
+        lStatus = fc41dDataAppendChar(buffer, bufferSize, length, lDigits[lDigitCount]);
+        if (lStatus != FC41D_STATUS_OK) {
+            return lStatus;
+        }
+    }
+
+    return FC41D_STATUS_OK;
+}
+
 static eFc41dStatus fc41dDataAppendHexBytes(char *buffer, uint16_t bufferSize, uint16_t *length, const uint8_t *data, uint16_t dataLen)
 {
     static const char lHexDigits[] = "0123456789ABCDEF";
@@ -369,57 +360,6 @@ static bool fc41dDataHasToken(const uint8_t *lineBuf, uint16_t lineLen, const ch
         if (memcmp(&lineBuf[lIndex], token, lTokenLen) == 0) {
             return true;
         }
-    }
-
-    return false;
-}
-
-static bool fc41dDataTryWriteHexPayload(stFc41dDataPlane *dataPlane, const uint8_t *payload, uint16_t payloadLen)
-{
-    uint16_t lIndex;
-    uint8_t lHigh;
-    uint8_t lLow;
-    uint8_t lByte;
-
-    if ((dataPlane == NULL) || (payload == NULL) || (payloadLen == 0U) || ((payloadLen & 0x01U) != 0U)) {
-        return false;
-    }
-
-    for (lIndex = 0U; lIndex < payloadLen; lIndex += 2U) {
-        if (!fc41dDataTryHexNibble(payload[lIndex], &lHigh) || !fc41dDataTryHexNibble(payload[lIndex + 1U], &lLow)) {
-            return false;
-        }
-    }
-
-    for (lIndex = 0U; lIndex < payloadLen; lIndex += 2U) {
-        (void)fc41dDataTryHexNibble(payload[lIndex], &lHigh);
-        (void)fc41dDataTryHexNibble(payload[lIndex + 1U], &lLow);
-        lByte = (uint8_t)((lHigh << 4U) | lLow);
-        fc41dDataWriteOverwrite(dataPlane, &lByte, 1U);
-    }
-
-    return true;
-}
-
-static bool fc41dDataTryHexNibble(uint8_t ch, uint8_t *value)
-{
-    if (value == NULL) {
-        return false;
-    }
-
-    if ((ch >= '0') && (ch <= '9')) {
-        *value = (uint8_t)(ch - '0');
-        return true;
-    }
-
-    if ((ch >= 'a') && (ch <= 'f')) {
-        *value = (uint8_t)(10U + ch - 'a');
-        return true;
-    }
-
-    if ((ch >= 'A') && (ch <= 'F')) {
-        *value = (uint8_t)(10U + ch - 'A');
-        return true;
     }
 
     return false;

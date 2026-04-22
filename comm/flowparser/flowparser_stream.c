@@ -17,6 +17,7 @@ static void flowparserStreamFinish(stFlowParserStream *stream, eFlowParserResult
 static void flowparserStreamSetStage(stFlowParserStream *stream, eFlowParserStage stage);
 static bool flowparserStreamHasTimedOut(const stFlowParserStream *stream, uint32_t limitMs);
 static eFlowParserStrmSta flowparserStreamCheckTimeout(stFlowParserStream *stream);
+static eFlowParserStrmSta flowparserStreamTryDispatchRaw(stFlowParserStream *stream, bool *hasConsumed, bool *needMoreData);
 static eFlowParserStrmSta flowparserStreamConsumeByte(stFlowParserStream *stream, uint8_t data, bool *hasLine, bool *isPrompt);
 static eFlowParserStrmSta flowparserStreamDispatchLine(stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen, bool isPrompt);
 static bool flowparserStreamIsConfiguredUrc(const stFlowParserStream *stream, const uint8_t *lineBuf, uint16_t lineLen);
@@ -46,6 +47,10 @@ eFlowParserStrmSta flowparserStreamInit(stFlowParserStream *stream, const stFlow
     stream->urcUserData = cfg->urcUserData;
     stream->pfIsUrc = cfg->pfIsUrc;
     stream->isUrcUserData = cfg->isUrcUserData;
+    stream->pfRawMatcher = cfg->pfRawMatcher;
+    stream->rawMatchUserData = cfg->rawMatchUserData;
+    stream->pfRawHandler = cfg->pfRawHandler;
+    stream->rawHandlerUserData = cfg->rawHandlerUserData;
     stream->stage = FLOWPARSER_STAGE_IDLE;
     stream->isInit = true;
     return FLOWPARSER_STREAM_OK;
@@ -128,6 +133,8 @@ eFlowParserStrmSta flowparserStreamProc(stFlowParserStream *stream)
     bool hasLine;
     bool isPrompt;
     bool consumed;
+    bool rawNeedMoreData;
+    bool rawConsumed;
     eFlowParserStrmSta status;
 
     if ((stream == NULL) || !stream->isInit) {
@@ -140,7 +147,25 @@ eFlowParserStrmSta flowparserStreamProc(stFlowParserStream *stream)
     }
 
     consumed = false;
-    while (ringBufferPopByte(&stream->rxRb, &data) == RINGBUFFER_OK) {
+    rawNeedMoreData = false;
+    while (true) {
+        rawConsumed = false;
+        status = flowparserStreamTryDispatchRaw(stream, &rawConsumed, &rawNeedMoreData);
+        if (status != FLOWPARSER_STREAM_OK) {
+            return status;
+        }
+        if (rawConsumed) {
+            consumed = true;
+            continue;
+        }
+        if (rawNeedMoreData) {
+            break;
+        }
+
+        if (ringBufferPopByte(&stream->rxRb, &data) != RINGBUFFER_OK) {
+            break;
+        }
+
         consumed = true;
         hasLine = false;
         isPrompt = false;
@@ -198,6 +223,22 @@ void flowparserStreamSetUrcMatcher(stFlowParserStream *stream, flowparserStreamI
 
     stream->pfIsUrc = isUrc;
     stream->isUrcUserData = userData;
+}
+
+void flowparserStreamSetRawHook(stFlowParserStream *stream,
+                                flowparserStreamRawMatchFunc rawMatcher,
+                                void *matchUserData,
+                                flowparserStreamRawFrameFunc rawHandler,
+                                void *handlerUserData)
+{
+    if (stream == NULL) {
+        return;
+    }
+
+    stream->pfRawMatcher = rawMatcher;
+    stream->rawMatchUserData = matchUserData;
+    stream->pfRawHandler = rawHandler;
+    stream->rawHandlerUserData = handlerUserData;
 }
 
 static void flowparserStreamClearTxn(stFlowParserStream *stream)
@@ -290,6 +331,72 @@ static eFlowParserStrmSta flowparserStreamCheckTimeout(stFlowParserStream *strea
             break;
     }
 
+    return FLOWPARSER_STREAM_OK;
+}
+
+static eFlowParserStrmSta flowparserStreamTryDispatchRaw(stFlowParserStream *stream, bool *hasConsumed, bool *needMoreData)
+{
+    uint32_t lAvailLen;
+    uint32_t lPeekLen;
+    uint32_t lCopiedLen;
+    uint16_t lFrameLen;
+    eFlowParserRawMatchSta lMatchSta;
+
+    if ((stream == NULL) || (hasConsumed == NULL) || (needMoreData == NULL)) {
+        return FLOWPARSER_STREAM_INVALID_PARAM;
+    }
+
+    *hasConsumed = false;
+    *needMoreData = false;
+    if ((stream->lineLen != 0U) || (stream->pfRawMatcher == NULL) || (stream->pfRawHandler == NULL)) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    lAvailLen = ringBufferGetUsed(&stream->rxRb);
+    if (lAvailLen == 0U) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    lPeekLen = lAvailLen;
+    if (lPeekLen > stream->lineBufSize) {
+        lPeekLen = stream->lineBufSize;
+    }
+
+    lCopiedLen = ringBufferPeek(&stream->rxRb, stream->lineBuf, lPeekLen);
+    if (lCopiedLen == 0U) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    lFrameLen = 0U;
+    lMatchSta = stream->pfRawMatcher(stream->rawMatchUserData, stream->lineBuf, (uint16_t)lCopiedLen, &lFrameLen);
+    if (lMatchSta == FLOWPARSER_RAW_MATCH_NONE) {
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (lMatchSta == FLOWPARSER_RAW_MATCH_NEED_MORE) {
+        *needMoreData = true;
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if ((lFrameLen == 0U) || (lFrameLen > (uint16_t)stream->lineBufSize)) {
+        flowparserStreamFinish(stream, FLOWPARSER_RESULT_OVERFLOW);
+        return FLOWPARSER_STREAM_OVERFLOW;
+    }
+
+    if (lAvailLen < lFrameLen) {
+        *needMoreData = true;
+        return FLOWPARSER_STREAM_OK;
+    }
+
+    if (lCopiedLen < lFrameLen) {
+        if (ringBufferPeek(&stream->rxRb, stream->lineBuf, lFrameLen) != lFrameLen) {
+            return FLOWPARSER_STREAM_ERROR;
+        }
+    }
+
+    stream->pfRawHandler(stream->rawHandlerUserData, stream->lineBuf, lFrameLen);
+    (void)ringBufferDiscard(&stream->rxRb, lFrameLen);
+    *hasConsumed = true;
     return FLOWPARSER_STREAM_OK;
 }
 

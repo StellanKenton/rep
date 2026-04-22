@@ -53,6 +53,7 @@ read_next:
 - `fc41d_ctrl.c` 负责启动状态机、控制事务提交、URC 状态映射和重试策略。
 - `fc41d_data.c` 负责 BLE payload 提取、RX/TX ring 管理和通知组包。
 - `stFc41dCfg` 同时持有 transport linkId 和 reset pin 这类板级绑定，由项目侧 `User/port` 注入默认值。
+- 若项目侧注册了 `fc41dSetRawMatcher()`，则 BLE connect 后命中的二进制 raw frame 会先经 `flowparser` raw hook 转进 `dataPlane->rxUsed`，未命中的文本数据仍继续走 URC/事务解析。
 
 统一后台入口为 `fc41dProcess()`，上层不再直接触碰内部事务推进细节。
 
@@ -91,6 +92,7 @@ read_next:
 - `fc41dGetRxLength()` / `fc41dReadData()` / `fc41dWriteData()`
 - `fc41dGetCachedMac()`
 - `fc41dSetUrcHandler()` / `fc41dSetUrcMatcher()`
+- `fc41dSetRawMatcher()`
 
 上层推荐顺序：
 
@@ -137,6 +139,7 @@ BLE ready 条件：
 | 来源模块 | 公共函数 | 允许在哪些文件调用 | 用途 | 调用前提 | 典型调用顺序 | 返回值处理 | 禁止做法 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `flowparser_stream` | `flowparserStreamInit/Reset/Feed/Submit/Proc/IsBusy/GetStage` | `fc41d.c`、`fc41d_ctrl.c` | 背景泵和控制事务推进 | stream cfg 已准备好 | `Init -> Start -> Process` | 显式映射为 `fc41d` 状态码 | 让上层直接操作 `stFlowParserStream` |
+| `flowparser_stream` raw hook | `flowparserStreamSetRawHook` | `fc41d.c` | BLE 连接后的原始帧旁路到 `dataPlane` | 已注册项目侧 raw matcher | `SetRawMatcher -> Process -> ReadData` | 命中后写入 `rxUsed` ring，未命中继续走文本流 | 在 `rep/module/fc41d` 内硬编码项目私有帧格式 |
 
 ## 7. 改动落点矩阵
 
@@ -144,6 +147,7 @@ BLE ready 条件：
 | --- | --- | --- |
 | 改 FC41D 启动流程、ready 判定、MAC 缓存 | `fc41d_ctrl.c/.h` | 项目 manager |
 | 改 payload 提取、RX/TX ring、通知组包 | `fc41d_data.c/.h` | 项目 manager |
+| 改 BLE connect 后的 raw frame 判定 | 项目侧 `wireless_mgr` + `fc41dSetRawMatcher` | `fc41d.c` 中硬编码项目私有协议 |
 | 改默认 UART linkId、tick 来源、reset pin 绑定 | 项目侧 `fc41d_port.*` | `fc41d.c` |
 | 改 FC41D 常用 AT 命令文本、超时、控制顺序 | `fc41d_ctrl.c/.h` | `wireless_mgr.c` |
 | 改业务默认 BLE 名称、service UUID、char UUID | 项目侧 manager / cfg | `fc41d.c` |
@@ -154,7 +158,14 @@ BLE ready 条件：
 
 - 上层通过 `fc41dWriteData()` 提交原始字节流。
 - `fc41d` 在 `RUNNING` 阶段按块缓存、等待连接态后再下发通知命令。
+- 当前通知命令格式固定为 `AT+QBLEGATTSNTFY=<tx-char-uuid>,<raw-byte-len>,<hex-bytes>`，其中 `<hex-bytes>` 是原始字节流按大写十六进制展开后的文本。
 - 发送组包和重试留在模块内，不再让 manager 直接拼 AT 文本。
+
+当前 BLE 数据接收对 `+QBLE...WRITE` 这类 URC 也保持“少猜测”策略：
+
+- BLE 已连接时，`fc41dBackGround()` 会把 UART 收到的每个 RX chunk 直接镜像写入 `dataPlane->rxUsed`，不再等待整条 `WRITE` URC 结束。
+- `fc41dDataTryStoreUrcPayload()` 只保留为未进入连接态时的行级兜底，不再在模块内猜测引号区、hex 文本区或业务 payload 边界。
+- 上层 manager 自己创建的协议解析器负责按同步头重同步，并丢弃前导的 URC 文本噪声。
 
 ## 8. 复制到其他工程的最小步骤
 

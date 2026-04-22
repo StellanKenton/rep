@@ -35,6 +35,7 @@ typedef struct stFc41dDataPlane {
 void fc41dDataReset(stFc41dDataPlane *dataPlane);
 uint16_t fc41dDataGetRxLength(const stFc41dDataPlane *dataPlane);
 uint16_t fc41dDataRead(stFc41dDataPlane *dataPlane, uint8_t *buffer, uint16_t bufferSize);
+void fc41dDataStoreRx(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length);
 eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, uint16_t length);
 bool fc41dDataHasPendingTx(const stFc41dDataPlane *dataPlane);
 void fc41dDataClearPendingTx(stFc41dDataPlane *dataPlane);
