@@ -25,6 +25,7 @@ read_next:
     - log/log.md
     - rtos/rtos.md
     - update/update.md
+    - vfs/vfs.md
 ---
 
 # Service 层总文档
@@ -53,6 +54,7 @@ read_next:
 | `log/` | 统一 log/console 输入输出抽象 | `log/log.md` |
 | `rtos/` | RTOS 适配和最小并发抽象 | `rtos/rtos.md` |
 | `update/` | 通用升级状态机与逻辑区域编排 | `update/update.md` |
+| `vfs/` | 统一挂载点、路径与基础文件语义的轻量 VFS 服务 | `vfs/vfs.md` |
 
 ## 3. 目录内推荐模式
 
