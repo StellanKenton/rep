@@ -18,6 +18,7 @@
 
 #define DRVGPIO_LOG_TAG                 "drvGpio"
 
+#if (DRVGPIO_LOG_SUPPORT == 1)
 static uint32_t gDrvGpioInvalidPinMask = 0U;
 static bool gDrvGpioInvalidBspLogged = false;
 static bool gDrvGpioInvalidStateLogged = false;
@@ -26,12 +27,14 @@ static bool gDrvGpioReadHookMissingLogged = false;
 static bool gDrvGpioToggleHookMissingLogged = false;
 
 static void drvGpioLogInvalidPinOnce(uint8_t pin);
+#endif
 
 __attribute__((weak)) const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void)
 {
     return NULL;
 }
 
+#if (DRVGPIO_LOG_SUPPORT == 1)
 static void drvGpioLogInvalidPinOnce(uint8_t pin)
 {
     uint32_t lPinMask;
@@ -52,6 +55,7 @@ static void drvGpioLogInvalidPinOnce(uint8_t pin)
     gDrvGpioInvalidPinMask |= lPinMask;
     LOG_E(DRVGPIO_LOG_TAG, "Invalid GPIO pin: %d", pin);
 }
+#endif
 
 /**
 * @brief : Check if the provided logical pin mapping is valid.
