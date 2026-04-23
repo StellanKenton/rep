@@ -113,6 +113,7 @@ typedef struct stLogOutputState {
 bool logInit(void);
 int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 bool logRegisterConsole(const stConsoleCommand *command);
+void logProcessOutput(void);
 void ConsoleBackGournd(void);
 
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
@@ -179,3 +180,4 @@ static inline int32_t logDirectWriteText(uint32_t transport, const char *buffer)
 #endif
 #endif
 /**************************End of file********************************/
+

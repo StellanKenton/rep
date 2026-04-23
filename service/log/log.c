@@ -687,6 +687,15 @@ static void logProcessOutputCore(void)
     }
 }
 
+void logProcessOutput(void)
+{
+    if (!logInit()) {
+        return;
+    }
+
+    logProcessOutputCore();
+}
+
 void ConsoleBackGournd(void)
 {
     if (!logInit()) {
@@ -728,6 +737,7 @@ bool logGetStats(uint32_t transport, stLogOutputStats *stats)
 
     return true;
 }
+
 
 void logSetTimestampProvider(logTimestampProvider provider)
 {

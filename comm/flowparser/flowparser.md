@@ -90,6 +90,12 @@ read_next:
 4. 若配置了 `flowparserStreamIsUrcFunc`，则 URC 在事务进行中也会先走 URC 路径，不污染当前事务结果。
 5. 若配置了 raw hook，则 `Proc` 会在逐行消费前先检查 ring buffer 头部是否命中完整 raw frame；命中后整帧直接交给 raw handler，后续文本 URC 仍继续按行处理。
 
+长度约束：
+
+- `flowparser_stream` 以“单行”作为核心处理单位。
+- 任意一行文本长度若超过配置的 `lineBufSize - 1`，`flowparserStreamConsumeByte()` 会返回 `OVERFLOW`，当前事务失败。
+- `rxStorageSize` 只约束暂存峰值，不改变单行上限；要处理更长的 AT 单行响应，必须提高调用方传入的 `lineBufSize`，必要时同步提高 `rxStorageSize` 或改为更频繁地 `Proc()`。
+
 ## 5. 函数指针 / port / assembly 契约
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |

@@ -20,6 +20,7 @@ copy_minimal_set:
     - module/
 read_next:
     - fc41d/fc41d.md
+    - esp32c5/esp32c5.md
     - mpu6050/mpu6050.md
     - w25qxxx/w25qxxx.md
 ---
@@ -203,5 +204,7 @@ read_next:
 - 模块自己的 md 是否已经写清 core 和 port 的契约。
 
 当前仓库里新增 FC41D 这类串口 AT 模块时，优先沿用“module core + User/port transport binding + background poll”模式，不要把 UART 轮询或系统 tick 直接写进 `rep/module` 之外的随机业务文件。
+
+`esp32c5/` 目录同样遵循这套模式，但控制面改为 ESP-AT 的 BLE 指令族，默认通过 `AT+BLEINIT`、`AT+BLEADVPARAM`、`AT+BLEADVDATA`、`AT+BLEADVSTART`、`AT+BLEGATTSNTFY` 组装 server 侧 BLE 流程。
 
 满足以上要求后，这个模块通常就符合当前工程的 module 层风格。
