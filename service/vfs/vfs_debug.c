@@ -10,12 +10,15 @@
 **********************************************************************************/
 #include "vfs_debug.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "vfs.h"
 #include "../log/console.h"
 
+#define VFS_DEBUG_LOG_TAG "vfs_dbg"
 #define VFS_DEBUG_CWD_MAX  96U
 #define VFS_DEBUG_RW_BUFFER_MAX  256U
 #define VFS_DEBUG_REPLY_LINE_MAX  64U
@@ -31,7 +34,10 @@ struct stVfsDebugLsContext {
     uint32_t entryCount;
     uint32_t seenEntryHashes[16];
     uint32_t seenEntryHashCount;
+    uint16_t replyLength;
+    bool isReplyTruncated;
     bool hasReplyError;
+    char replyBuffer[CONSOLE_REPLY_BUFFER_SIZE];
 };
 
 struct stVfsDebugDeleteFirstChildContext {
@@ -39,6 +45,14 @@ struct stVfsDebugDeleteFirstChildContext {
     char childPath[VFS_PATH_MAX];
     bool hasChild;
     bool isPathOverflow;
+};
+
+struct stVfsDebugDfContext {
+    uint32_t transport;
+    uint16_t replyLength;
+    bool isReplyTruncated;
+    bool hasReplyError;
+    char replyBuffer[CONSOLE_REPLY_BUFFER_SIZE];
 };
 
 static struct stVfsDebugSession *vfsDebugGetSession(uint32_t transport);
@@ -53,9 +67,11 @@ static bool vfsDebugUpdateSessionCwdAfterMove(struct stVfsDebugSession *session,
 static uint32_t vfsDebugHashEntry(const stVfsNodeInfo *entry);
 static bool vfsDebugLsEntrySeen(struct stVfsDebugLsContext *context, const stVfsNodeInfo *entry);
 static bool vfsDebugDeletePathRecursive(const char *absolutePath);
+static bool vfsDebugAppendDfReply(struct stVfsDebugDfContext *context, const char *format, ...);
 static eConsoleCommandResult vfsDebugReplyFileContent(uint32_t transport, const uint8_t *data, uint32_t size);
 static eConsoleCommandResult vfsDebugReplyPathError(uint32_t transport);
 static bool vfsDebugLsVisitor(void *context, const stVfsNodeInfo *entry);
+static bool vfsDebugDfRootVisitor(void *context, const stVfsNodeInfo *entry);
 static bool vfsDebugDeleteFindFirstChildVisitor(void *context, const stVfsNodeInfo *entry);
 static eConsoleCommandResult vfsDebugConsoleMkdirHandler(uint32_t transport, int argc, char *argv[]);
 static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int argc, char *argv[]);
@@ -539,30 +555,134 @@ static eConsoleCommandResult vfsDebugReplyPathError(uint32_t transport)
     return (logConsoleReply(transport, "ERROR: invalid path") > 0) ? CONSOLE_COMMAND_RESULT_OK : CONSOLE_COMMAND_RESULT_ERROR;
 }
 
-static bool vfsDebugLsVisitor(void *context, const stVfsNodeInfo *entry)
+static bool vfsDebugAppendDfReply(struct stVfsDebugDfContext *context, const char *format, ...)
 {
-    struct stVfsDebugLsContext *lContext = (struct stVfsDebugLsContext *)context;
-    int32_t lReplyResult;
+    int lLineLength;
+    uint16_t lAvailableLength;
+    va_list lArgs;
+
+    if ((context == NULL) || (format == NULL)) {
+        return false;
+    }
+
+    if (context->replyLength >= (sizeof(context->replyBuffer) - 1U)) {
+        context->isReplyTruncated = true;
+        return true;
+    }
+
+    lAvailableLength = (uint16_t)(sizeof(context->replyBuffer) - context->replyLength);
+    va_start(lArgs, format);
+    lLineLength = vsnprintf(&context->replyBuffer[context->replyLength], lAvailableLength, format, lArgs);
+    va_end(lArgs);
+    if (lLineLength <= 0) {
+        context->hasReplyError = true;
+        return false;
+    }
+
+    if ((uint16_t)lLineLength >= lAvailableLength) {
+        context->replyLength = (uint16_t)(sizeof(context->replyBuffer) - 1U);
+        context->replyBuffer[context->replyLength] = '\0';
+        context->isReplyTruncated = true;
+        return true;
+    }
+
+    context->replyLength = (uint16_t)(context->replyLength + (uint16_t)lLineLength);
+    return true;
+}
+
+static bool vfsDebugDfRootVisitor(void *context, const stVfsNodeInfo *entry)
+{
+    struct stVfsDebugDfContext *lContext = (struct stVfsDebugDfContext *)context;
+    char lMountPath[VFS_PATH_MAX];
+    stVfsSpaceInfo lSpaceInfo;
 
     if ((lContext == NULL) || (entry == NULL)) {
         return false;
     }
 
-    if (vfsDebugLsEntrySeen(lContext, entry)) {
-        return true;
-    }
-
-    if (entry->type == eVFS_NODE_DIR) {
-        lReplyResult = logConsoleReply(lContext->transport, "dir  %s/", entry->name);
-    } else {
-        lReplyResult = logConsoleReply(lContext->transport, "file %lu %s", (unsigned long)entry->size, entry->name);
-    }
-
-    if (lReplyResult <= 0) {
+    if (!vfsDebugBuildChildPath("/", entry->name, lMountPath, sizeof(lMountPath))) {
         lContext->hasReplyError = true;
         return false;
     }
 
+    if (!vfsGetSpaceInfo(lMountPath, &lSpaceInfo)) {
+        if (!vfsDebugAppendDfReply(lContext,
+                                   "%s total=? used=? free=? err=%u\n",
+                                   lMountPath,
+                                   (unsigned)vfsGetStatus()->lastError)) {
+            lContext->hasReplyError = true;
+            return false;
+        }
+        return true;
+    }
+
+    if (!vfsDebugAppendDfReply(lContext,
+                               "%s total=%lu used=%lu free=%lu bytes\n",
+                               lMountPath,
+                               (unsigned long)lSpaceInfo.totalSize,
+                               (unsigned long)lSpaceInfo.usedSize,
+                               (unsigned long)lSpaceInfo.freeSize)) {
+        lContext->hasReplyError = true;
+        return false;
+    }
+
+    return true;
+}
+
+static bool vfsDebugLsVisitor(void *context, const stVfsNodeInfo *entry)
+{
+    struct stVfsDebugLsContext *lContext = (struct stVfsDebugLsContext *)context;
+    int lLineLength;
+    uint16_t lAvailableLength;
+
+    if ((lContext == NULL) || (entry == NULL)) {
+        return false;
+    }
+
+    LOG_D(VFS_DEBUG_LOG_TAG,
+          "ls visitor transport=%lu name=%s type=%u size=%lu replyLen=%u",
+          (unsigned long)lContext->transport,
+          entry->name,
+          (unsigned)entry->type,
+          (unsigned long)entry->size,
+          (unsigned)lContext->replyLength);
+
+    if (vfsDebugLsEntrySeen(lContext, entry)) {
+        LOG_D(VFS_DEBUG_LOG_TAG,
+              "ls visitor dedup name=%s type=%u size=%lu",
+              entry->name,
+              (unsigned)entry->type,
+              (unsigned long)entry->size);
+        return true;
+    }
+
+    if (lContext->replyLength >= (sizeof(lContext->replyBuffer) - 1U)) {
+        lContext->isReplyTruncated = true;
+        lContext->entryCount++;
+        return true;
+    }
+
+    lAvailableLength = (uint16_t)(sizeof(lContext->replyBuffer) - lContext->replyLength);
+    if (entry->type == eVFS_NODE_DIR) {
+        lLineLength = snprintf(&lContext->replyBuffer[lContext->replyLength], lAvailableLength, "dir  %s/\n", entry->name);
+    } else {
+        lLineLength = snprintf(&lContext->replyBuffer[lContext->replyLength], lAvailableLength, "file %lu %s\n", (unsigned long)entry->size, entry->name);
+    }
+
+    if (lLineLength <= 0) {
+        lContext->hasReplyError = true;
+        return false;
+    }
+
+    if ((uint16_t)lLineLength >= lAvailableLength) {
+        lContext->replyLength = (uint16_t)(sizeof(lContext->replyBuffer) - 1U);
+        lContext->replyBuffer[lContext->replyLength] = '\0';
+        lContext->isReplyTruncated = true;
+        lContext->entryCount++;
+        return true;
+    }
+
+    lContext->replyLength = (uint16_t)(lContext->replyLength + (uint16_t)lLineLength);
     lContext->entryCount++;
     return true;
 }
@@ -597,6 +717,7 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
     struct stVfsDebugSession *lSession;
     struct stVfsDebugLsContext lContext;
     char lLocalPath[VFS_DEBUG_CWD_MAX];
+    uint32_t lListedCount = 0U;
 
     if ((argc != 1) && (argc != 2)) {
         return CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT;
@@ -608,33 +729,92 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
         return vfsDebugReplyPathError(transport);
     }
 
+    LOG_D(VFS_DEBUG_LOG_TAG,
+          "ls begin transport=%lu argc=%d cwd=%s local=%s absolute=%s",
+          (unsigned long)transport,
+          argc,
+          lSession->cwd,
+          lLocalPath,
+          gVfsDebugPathBuffer);
+
     if (!vfsGetInfo(gVfsDebugPathBuffer, &gVfsDebugNodeInfo)) {
+        LOG_W(VFS_DEBUG_LOG_TAG,
+              "ls stat fail local=%s absolute=%s err=%u",
+              lLocalPath,
+              gVfsDebugPathBuffer,
+              (unsigned)vfsGetStatus()->lastError);
         if (logConsoleReply(transport, "ERROR: path not found %s err=%u", lLocalPath, (unsigned)vfsGetStatus()->lastError) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
         return CONSOLE_COMMAND_RESULT_OK;
     }
 
+    LOG_D(VFS_DEBUG_LOG_TAG,
+          "ls stat ok local=%s absolute=%s type=%u size=%lu",
+          lLocalPath,
+          gVfsDebugPathBuffer,
+          (unsigned)gVfsDebugNodeInfo.type,
+          (unsigned long)gVfsDebugNodeInfo.size);
+
     if (gVfsDebugNodeInfo.type == eVFS_NODE_FILE) {
+        LOG_D(VFS_DEBUG_LOG_TAG, "ls file shortcut path=%s", lLocalPath);
         return (logConsoleReply(transport, "file %lu %s", (unsigned long)gVfsDebugNodeInfo.size, lLocalPath) > 0) ? CONSOLE_COMMAND_RESULT_OK : CONSOLE_COMMAND_RESULT_ERROR;
     }
 
     (void)memset(&lContext, 0, sizeof(lContext));
     lContext.transport = transport;
-    if (!vfsListDir(gVfsDebugPathBuffer, vfsDebugLsVisitor, &lContext, NULL)) {
+    if (!vfsListDir(gVfsDebugPathBuffer, vfsDebugLsVisitor, &lContext, &lListedCount)) {
+        LOG_W(VFS_DEBUG_LOG_TAG,
+              "ls list fail local=%s absolute=%s err=%u",
+              lLocalPath,
+              gVfsDebugPathBuffer,
+              (unsigned)vfsGetStatus()->lastError);
         if (logConsoleReply(transport, "ERROR: ls fail path=%s err=%u", lLocalPath, (unsigned)vfsGetStatus()->lastError) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
         return CONSOLE_COMMAND_RESULT_OK;
     }
 
+    LOG_D(VFS_DEBUG_LOG_TAG,
+          "ls list ok local=%s absolute=%s listed=%lu visitorCount=%lu replyLen=%u truncated=%u replyErr=%u",
+          lLocalPath,
+          gVfsDebugPathBuffer,
+          (unsigned long)lListedCount,
+          (unsigned long)lContext.entryCount,
+          (unsigned)lContext.replyLength,
+          lContext.isReplyTruncated ? 1U : 0U,
+          lContext.hasReplyError ? 1U : 0U);
+
     if (lContext.hasReplyError) {
+        LOG_W(VFS_DEBUG_LOG_TAG, "ls abort reply error local=%s", lLocalPath);
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
     if (lContext.entryCount == 0U) {
+        LOG_D(VFS_DEBUG_LOG_TAG, "ls empty local=%s listed=%lu", lLocalPath, (unsigned long)lListedCount);
         return (logConsoleReply(transport, "empty") > 0) ? CONSOLE_COMMAND_RESULT_OK : CONSOLE_COMMAND_RESULT_ERROR;
     }
+
+    if (lContext.isReplyTruncated) {
+        if (lContext.replyLength < (sizeof(lContext.replyBuffer) - sizeof("...\n"))) {
+            (void)memcpy(&lContext.replyBuffer[lContext.replyLength], "...\n", sizeof("...\n"));
+            lContext.replyLength = (uint16_t)(lContext.replyLength + sizeof("...\n") - 1U);
+        }
+    }
+
+    if ((lContext.replyLength == 0U) || (logConsoleReply(transport, "%s", lContext.replyBuffer) <= 0)) {
+        LOG_W(VFS_DEBUG_LOG_TAG,
+              "ls reply write fail local=%s replyLen=%u",
+              lLocalPath,
+              (unsigned)lContext.replyLength);
+        return CONSOLE_COMMAND_RESULT_ERROR;
+    }
+
+    LOG_D(VFS_DEBUG_LOG_TAG,
+          "ls reply write ok local=%s replyLen=%u firstLine=%.32s",
+          lLocalPath,
+          (unsigned)lContext.replyLength,
+          lContext.replyBuffer);
 
     return CONSOLE_COMMAND_RESULT_OK;
 }
@@ -889,13 +1069,53 @@ static eConsoleCommandResult vfsDebugConsoleRmHandler(uint32_t transport, int ar
 static eConsoleCommandResult vfsDebugConsoleDfHandler(uint32_t transport, int argc, char *argv[])
 {
     stVfsSpaceInfo lSpaceInfo;
+    struct stVfsDebugSession *lSession;
+    struct stVfsDebugDfContext lDfContext;
+    const char *lTargetPath;
     (void)argv;
 
     if (argc != 1) {
         return CONSOLE_COMMAND_RESULT_INVALID_ARGUMENT;
     }
 
-    if (!vfsGetSpaceInfo(gVfsDebugRootPath, &lSpaceInfo)) {
+    lTargetPath = gVfsDebugRootPath;
+    if (strcmp(gVfsDebugRootPath, "/") == 0) {
+        lSession = vfsDebugGetSession(transport);
+        if (lSession == NULL) {
+            return CONSOLE_COMMAND_RESULT_ERROR;
+        }
+
+        lTargetPath = lSession->cwd;
+        if (strcmp(lTargetPath, "/") == 0) {
+            (void)memset(&lDfContext, 0, sizeof(lDfContext));
+            lDfContext.transport = transport;
+            if (!vfsListDir("/", vfsDebugDfRootVisitor, &lDfContext, NULL)) {
+                if (logConsoleReply(transport, "ERROR: df fail err=%u", (unsigned)vfsGetStatus()->lastError) <= 0) {
+                    return CONSOLE_COMMAND_RESULT_ERROR;
+                }
+                return CONSOLE_COMMAND_RESULT_OK;
+            }
+
+            if (lDfContext.hasReplyError) {
+                return CONSOLE_COMMAND_RESULT_ERROR;
+            }
+
+            if (lDfContext.isReplyTruncated) {
+                if (lDfContext.replyLength < (sizeof(lDfContext.replyBuffer) - sizeof("...\n"))) {
+                    (void)memcpy(&lDfContext.replyBuffer[lDfContext.replyLength], "...\n", sizeof("...\n"));
+                    lDfContext.replyLength = (uint16_t)(lDfContext.replyLength + sizeof("...\n") - 1U);
+                }
+            }
+
+            if ((lDfContext.replyLength == 0U) || (logConsoleReply(transport, "%s", lDfContext.replyBuffer) <= 0)) {
+                return CONSOLE_COMMAND_RESULT_ERROR;
+            }
+
+            return CONSOLE_COMMAND_RESULT_OK;
+        }
+    }
+
+    if (!vfsGetSpaceInfo(lTargetPath, &lSpaceInfo)) {
         if (logConsoleReply(transport, "ERROR: df fail err=%u", (unsigned)vfsGetStatus()->lastError) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }

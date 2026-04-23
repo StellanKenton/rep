@@ -224,7 +224,7 @@ static bool vfsMountInt(uint32_t mountIndex)
     if (!gVfsMounts[mountIndex].backendOps->mount(gVfsMounts[mountIndex].backendContext,
                                                   gVfsMounts[mountIndex].isReadOnly,
                                                   &lError)) {
-        vfsSetStatus(eVFS_STATE_FAULT, false, lError);
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
         LOG_E(VFS_LOG_TAG, "mount fail path=%s err=%u", gVfsMounts[mountIndex].mountPath, (unsigned)lError);
         return false;
     }
@@ -254,7 +254,7 @@ static bool vfsUnmountInt(uint32_t mountIndex)
     }
 
     if (!gVfsMounts[mountIndex].backendOps->unmount(gVfsMounts[mountIndex].backendContext, &lError)) {
-        vfsSetStatus(eVFS_STATE_FAULT, false, lError);
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
         LOG_E(VFS_LOG_TAG, "unmount fail path=%s err=%u", gVfsMounts[mountIndex].mountPath, (unsigned)lError);
         return false;
     }
@@ -583,7 +583,7 @@ bool vfsFormat(const char *mountPath)
 
     lResult = gVfsMounts[lIndex].backendOps->format(gVfsMounts[lIndex].backendContext, &lError);
     if (!lResult) {
-        vfsSetStatus(eVFS_STATE_FAULT, false, lError);
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
     } else {
         gVfsMounts[lIndex].isMounted = true;
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
@@ -675,6 +675,10 @@ bool vfsTranslateMountPath(const char *mountPath, const char *localPath, char *a
     lMountLength = (uint32_t)strlen(lMountPath);
     if (strcmp(lLocalPath, "/") == 0) {
         return vfsCopyText(absolutePath, lMountPath, capacity);
+    }
+
+    if (strcmp(lMountPath, "/") == 0) {
+        return vfsCopyText(absolutePath, lLocalPath, capacity);
     }
 
     if ((lMountLength + (uint32_t)strlen(lLocalPath) + 1U) > capacity) {
@@ -806,6 +810,15 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
             lCount++;
         }
 
+        LOG_D(VFS_LOG_TAG, "list root path=%s mountCount=%lu visitor=%u", lPath, (unsigned long)lCount, (visitor != NULL) ? 1U : 0U);
+        for (lIndex = 0U; lIndex < lCount; ++lIndex) {
+            LOG_D(VFS_LOG_TAG,
+                  "list root entry[%lu] name=%s type=%u",
+                  (unsigned long)lIndex,
+                  lMountEntries[lIndex].name,
+                  (unsigned)lMountEntries[lIndex].type);
+        }
+
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
         vfsUnlock();
 
@@ -816,6 +829,7 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
         if (visitor != NULL) {
             for (lIndex = 0U; lIndex < lCount; ++lIndex) {
                 if (!visitor(context, &lMountEntries[lIndex])) {
+                    LOG_D(VFS_LOG_TAG, "list root visitor stop index=%lu name=%s", (unsigned long)lIndex, lMountEntries[lIndex].name);
                     break;
                 }
             }

@@ -35,7 +35,7 @@ extern "C" {
 #endif
 
 #ifndef VFS_FILE_CONTEXT_SIZE
-#define VFS_FILE_CONTEXT_SIZE                  384U
+#define VFS_FILE_CONTEXT_SIZE                  640U
 #endif
 
 #ifndef VFS_LIST_BATCH_SIZE

@@ -30,6 +30,7 @@ static int vfsLittlefsSync(const struct lfs_config *cfg);
 static eVfsResult vfsLittlefsMapError(int error);
 static uint32_t vfsLittlefsGetAddress(const stVfsLittlefsContext *context, lfs_block_t block, lfs_off_t off);
 static bool vfsLittlefsProbeBlank(const stVfsLittlefsContext *context);
+static bool vfsLittlefsProbeSignature(const stVfsLittlefsContext *context);
 static bool vfsLittlefsFillNodeInfo(const struct lfs_info *lfsInfo, stVfsNodeInfo *info);
 static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *error);
 static bool vfsLittlefsUnmount(void *backendContext, eVfsResult *error);
@@ -193,6 +194,42 @@ static bool vfsLittlefsProbeBlank(const stVfsLittlefsContext *context)
     return true;
 }
 
+static bool vfsLittlefsProbeSignature(const stVfsLittlefsContext *context)
+{
+    static const char gLittlefsSignature[] = "littlefs";
+    uint8_t lProbe[64];
+    uint32_t lBlockIndex;
+    uint32_t lSearchIndex;
+    uint32_t lBlockCount;
+
+    if ((context == NULL) || (context->cfg.blockDeviceOps == NULL) || (context->cfg.blockDeviceOps->read == NULL) ||
+        (context->cfg.blockSize == 0U)) {
+        return false;
+    }
+
+    lBlockCount = context->cfg.regionSizeBytes / context->cfg.blockSize;
+    if (lBlockCount > 2U) {
+        lBlockCount = 2U;
+    }
+
+    for (lBlockIndex = 0U; lBlockIndex < lBlockCount; ++lBlockIndex) {
+        if (!context->cfg.blockDeviceOps->read(context->cfg.blockDeviceContext,
+                                               vfsLittlefsGetAddress(context, (lfs_block_t)lBlockIndex, 0U),
+                                               lProbe,
+                                               (uint32_t)sizeof(lProbe))) {
+            return false;
+        }
+
+        for (lSearchIndex = 0U; (lSearchIndex + (uint32_t)(sizeof(gLittlefsSignature) - 1U)) <= (uint32_t)sizeof(lProbe); ++lSearchIndex) {
+            if (memcmp(&lProbe[lSearchIndex], gLittlefsSignature, sizeof(gLittlefsSignature) - 1U) == 0) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 static bool vfsLittlefsFillNodeInfo(const struct lfs_info *lfsInfo, stVfsNodeInfo *info)
 {
     uint32_t lNameLength;
@@ -218,6 +255,8 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
 {
     stVfsLittlefsContext *lContext = (stVfsLittlefsContext *)backendContext;
     int lResult;
+    bool lIsBlank;
+    bool lHasSignature;
 
     (void)isReadOnly;
 
@@ -250,25 +289,21 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
         return false;
     }
 
-    if (vfsLittlefsProbeBlank(lContext)) {
-        LOG_I(VFS_LITTLEFS_LOG_TAG, "littlefs region blank, format start");
+    lIsBlank = vfsLittlefsProbeBlank(lContext);
+    lHasSignature = !lIsBlank && vfsLittlefsProbeSignature(lContext);
+
+    if (lIsBlank) {
+        LOG_I(VFS_LITTLEFS_LOG_TAG, "littlefs region blank, background format required");
+    } else if (!lHasSignature) {
+        LOG_I(VFS_LITTLEFS_LOG_TAG, "littlefs signature missing, background format required");
     } else {
-        LOG_W(VFS_LITTLEFS_LOG_TAG, "littlefs mount fail err=%d, format start", lResult);
+        LOG_W(VFS_LITTLEFS_LOG_TAG, "littlefs mount fail err=%d, existing littlefs may be corrupt, background format required", lResult);
     }
 
-    lResult = lfs_format(&lContext->lfs, &lContext->lfsCfg);
-    if (lResult != LFS_ERR_OK) {
-        if (error != NULL) {
-            *error = vfsLittlefsMapError(lResult);
-        }
-        return false;
-    }
-
-    lResult = lfs_mount(&lContext->lfs, &lContext->lfsCfg);
     if (error != NULL) {
-        *error = vfsLittlefsMapError(lResult);
+        *error = eVFS_CORRUPT;
     }
-    return lResult == LFS_ERR_OK;
+    return false;
 }
 
 static bool vfsLittlefsUnmount(void *backendContext, eVfsResult *error)
