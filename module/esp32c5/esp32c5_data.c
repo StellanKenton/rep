@@ -121,6 +121,7 @@ eEsp32c5Status esp32c5DataBuildBleNotify(stEsp32c5DataPlane *dataPlane,
                                          uint8_t connIndex,
                                          uint8_t serviceIndex,
                                          uint8_t charIndex,
+                                         uint16_t maxPayloadLen,
                                          char *cmdBuf,
                                          uint16_t bufferSize,
                                          const uint8_t **payloadBuf,
@@ -134,8 +135,16 @@ eEsp32c5Status esp32c5DataBuildBleNotify(stEsp32c5DataPlane *dataPlane,
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
+    if (maxPayloadLen == 0U) {
+        return ESP32C5_STATUS_INVALID_PARAM;
+    }
+
+    if (maxPayloadLen > ESP32C5_BLE_TX_CHUNK_SIZE) {
+        maxPayloadLen = ESP32C5_BLE_TX_CHUNK_SIZE;
+    }
+
     if (dataPlane->txPendingLen == 0U) {
-        dataPlane->txPendingLen = esp32c5DataPeekTx(dataPlane, dataPlane->txPendingBuf, ESP32C5_BLE_TX_CHUNK_SIZE);
+        dataPlane->txPendingLen = esp32c5DataPeekTx(dataPlane, dataPlane->txPendingBuf, maxPayloadLen);
         if (dataPlane->txPendingLen == 0U) {
             return ESP32C5_STATUS_NOT_READY;
         }

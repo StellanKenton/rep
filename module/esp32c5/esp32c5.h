@@ -42,11 +42,11 @@ typedef enum eEsp32c5RunState {
 } eEsp32c5RunState;
 
 #ifndef ESP32C5_STREAM_RX_STORAGE_SIZE
-#define ESP32C5_STREAM_RX_STORAGE_SIZE       512U
+#define ESP32C5_STREAM_RX_STORAGE_SIZE       640U
 #endif
 
 #ifndef ESP32C5_STREAM_LINE_BUFFER_SIZE
-#define ESP32C5_STREAM_LINE_BUFFER_SIZE      512U
+#define ESP32C5_STREAM_LINE_BUFFER_SIZE      640U
 #endif
 
 #ifndef ESP32C5_RX_POLL_CHUNK_SIZE
@@ -54,15 +54,19 @@ typedef enum eEsp32c5RunState {
 #endif
 
 #ifndef ESP32C5_DATA_RX_BUFFER_SIZE
-#define ESP32C5_DATA_RX_BUFFER_SIZE          512U
+#define ESP32C5_DATA_RX_BUFFER_SIZE          640U
 #endif
 
 #ifndef ESP32C5_DATA_TX_BUFFER_SIZE
-#define ESP32C5_DATA_TX_BUFFER_SIZE          512U
+#define ESP32C5_DATA_TX_BUFFER_SIZE          640U
 #endif
 
 #ifndef ESP32C5_BLE_TX_CHUNK_SIZE
-#define ESP32C5_BLE_TX_CHUNK_SIZE            20U
+#define ESP32C5_BLE_TX_CHUNK_SIZE            512U
+#endif
+
+#ifndef ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE
+#define ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE 20U
 #endif
 
 #ifndef ESP32C5_CTRL_CMD_BUFFER_SIZE
@@ -192,9 +196,11 @@ typedef struct stEsp32c5State {
     bool isBusy;
     bool isBleAdvertising;
     bool isBleConnected;
+    bool isBleMtuConfigured;
     bool isReadyUrcSeen;
     bool hasMacAddress;
     uint8_t connIndex;
+    uint16_t bleMtu;
     eEsp32c5Status lastError;
     char macAddress[ESP32C5_MAC_ADDRESS_TEXT_MAX_LENGTH];
 } stEsp32c5State;

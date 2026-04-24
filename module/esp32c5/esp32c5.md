@@ -103,8 +103,14 @@ ready 条件：
 响应长度约束：
 
 - `flowparser_stream` 的单行上限等于配置的 `lineBufSize - 1`。
-- `esp32c5` 当前默认把 `ESP32C5_STREAM_LINE_BUFFER_SIZE` 和 `ESP32C5_STREAM_RX_STORAGE_SIZE` 提升到 `512` 字节，以覆盖常见 BLE/Wi-Fi AT 长响应。
+- `esp32c5` 当前默认把 `ESP32C5_STREAM_LINE_BUFFER_SIZE` 和 `ESP32C5_STREAM_RX_STORAGE_SIZE` 提升到 `640` 字节，以覆盖较长 `+WRITE` URC 和 BLE/Wi-Fi AT 响应。
 - 若后续接入 `AT+CWLAP` 一类更长结果，仍应按目标固件的最长单行响应审视该缓冲，而不是假设 `flowparser` 会自动做长行分页。
+
+BLE 数据长度约束：
+
+- 项目侧当前保留 `512` 字节发送缓存，但运行时会把大包拆成多个 `20` 字节 `AT+BLEGATTSNTFY` 通知分片顺序发送。
+- 但 ESP-AT 真正的单次通知有效载荷仍受协商后的 ATT MTU 约束；默认未协商时是 `23`，协商后默认首选值通常是 `203`。
+- 连接建立后，模块现在会主动提交 `AT+BLECFGMTU=<conn_index>` 请求 MTU 协商；若要单次稳定承载 `300` 甚至 `512` 字节，还需要外部 ESP-AT 固件把 Preferred MTU 提升到至少 `303` 或 `515`，且对端中心设备也接受该 MTU。
 
 ## 5. port / assembly 契约
 

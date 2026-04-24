@@ -24,6 +24,7 @@ static const char *const gEsp32c5CommonErrorPatterns[] = {"ERROR", "FAIL"};
 static const char *const gEsp32c5DefaultUrcPrefixes[] = {
     "+BLECONN",
     "+BLEDISCONN",
+    "+BLECFGMTU",
     "+WRITE",
     "+READ",
     "+NOTIFY",
@@ -66,6 +67,7 @@ static eEsp32c5Status esp32c5BuildCtrlU16(stEsp32c5Device *device, const char *p
 static eEsp32c5Status esp32c5BuildCtrlQuotedText(stEsp32c5Device *device, const char *prefix, const char *text);
 static eEsp32c5Status esp32c5BuildCtrlAdvParam(stEsp32c5Device *device);
 static eEsp32c5Status esp32c5BuildCtrlAdvData(stEsp32c5Device *device);
+static uint16_t esp32c5GetBleNotifyPayloadLimit(const stEsp32c5Device *device);
 static eEsp32c5Status esp32c5AppendChar(char *buffer, uint16_t bufferSize, uint16_t *length, char value);
 static eEsp32c5Status esp32c5AppendText(char *buffer, uint16_t bufferSize, uint16_t *length, const char *text);
 static eEsp32c5Status esp32c5AppendU16(char *buffer, uint16_t bufferSize, uint16_t *length, uint16_t value);
@@ -75,6 +77,7 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
 static eEsp32c5Status esp32c5ProcessCtrlStage(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs);
 static bool esp32c5MatchPrefix(const uint8_t *lineBuf, uint16_t lineLen, const char *prefix);
 static bool esp32c5TryParseConnIndex(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex);
+static bool esp32c5TryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex, uint16_t *mtu);
 static bool esp32c5TryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
 static bool esp32c5TryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
 static bool esp32c5TryHexNibble(uint8_t ch, uint8_t *value);
@@ -254,9 +257,11 @@ eEsp32c5Status esp32c5CtrlStart(stEsp32c5Device *device, eEsp32c5Role role)
     device->state.isBusy = true;
     device->state.isBleAdvertising = false;
     device->state.isBleConnected = false;
+    device->state.isBleMtuConfigured = false;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
     device->state.connIndex = 0U;
+    device->state.bleMtu = 23U;
     device->state.lastError = ESP32C5_STATUS_OK;
     device->state.macAddress[0] = '\0';
     esp32c5CtrlSetStage(device, ESP32C5_CTRL_STAGE_ASSERT_RESET);
@@ -374,9 +379,11 @@ void esp32c5CtrlScheduleRetry(stEsp32c5Device *device, eEsp32c5MapType deviceId,
     device->state.isBusy = true;
     device->state.isBleAdvertising = false;
     device->state.isBleConnected = false;
+    device->state.isBleMtuConfigured = false;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
     device->state.connIndex = 0U;
+    device->state.bleMtu = 23U;
     device->state.lastError = status;
     device->state.runState = ESP32C5_RUN_ERROR;
     device->state.macAddress[0] = '\0';
@@ -421,6 +428,8 @@ bool esp32c5CtrlIsUrc(const stEsp32c5Device *device, const uint8_t *lineBuf, uin
 void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint16_t lineLen)
 {
     uint8_t connIndex;
+    uint16_t mtu;
+    bool keepNegotiatedMtu;
 
     if ((device == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
         return;
@@ -436,15 +445,39 @@ void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint1
     if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLECONN")) {
         connIndex = 0U;
         (void)esp32c5TryParseConnIndex(lineBuf, lineLen, &connIndex);
+        keepNegotiatedMtu = device->state.isBleMtuConfigured &&
+                            (device->state.connIndex == connIndex) &&
+                            (device->state.bleMtu > 23U);
         device->state.connIndex = connIndex;
         device->state.isBleConnected = true;
+        if (!keepNegotiatedMtu) {
+            device->state.isBleMtuConfigured = false;
+            device->state.bleMtu = 23U;
+        }
         LOG_I(ESP32C5_CTRL_LOG_TAG, "urc ble connected idx=%u", (unsigned int)connIndex);
+        return;
+    }
+
+    if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLECFGMTU")) {
+        connIndex = 0U;
+        mtu = 0U;
+        if (esp32c5TryParseBleMtu(lineBuf, lineLen, &connIndex, &mtu)) {
+            device->state.connIndex = connIndex;
+            device->state.bleMtu = mtu;
+            device->state.isBleMtuConfigured = mtu > 23U;
+            LOG_I(ESP32C5_CTRL_LOG_TAG,
+                  "urc ble mtu idx=%u mtu=%u",
+                  (unsigned int)connIndex,
+                  (unsigned int)mtu);
+        }
         return;
     }
 
     if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLEDISCONN")) {
         device->state.isBleConnected = false;
+        device->state.isBleMtuConfigured = false;
         device->state.connIndex = 0U;
+        device->state.bleMtu = 23U;
         LOG_I(ESP32C5_CTRL_LOG_TAG, "urc ble disconnected");
     }
 }
@@ -692,6 +725,25 @@ static eEsp32c5Status esp32c5BuildCtrlAdvData(stEsp32c5Device *device)
     return (status == ESP32C5_STATUS_OK) ? esp32c5SubmitCtrlText(device, device->ctrlPlane.cmdBuf) : status;
 }
 
+static uint16_t esp32c5GetBleNotifyPayloadLimit(const stEsp32c5Device *device)
+{
+    uint16_t payloadLimit;
+
+    if (device == NULL) {
+        return 20U;
+    }
+
+    payloadLimit = 20U;
+    if (device->state.isBleMtuConfigured && (device->state.bleMtu > 3U)) {
+        payloadLimit = (uint16_t)(device->state.bleMtu - 3U);
+        if (payloadLimit > ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE) {
+            payloadLimit = ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE;
+        }
+    }
+
+    return payloadLimit;
+}
+
 static eEsp32c5Status esp32c5AppendChar(char *buffer, uint16_t bufferSize, uint16_t *length, char value)
 {
     if ((buffer == NULL) || (length == NULL) || (bufferSize == 0U) || (*length >= (uint16_t)(bufferSize - 1U))) {
@@ -810,7 +862,16 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
         if (device->ctrlPlane.stage == ESP32C5_CTRL_STAGE_RUNNING) {
             device->state.lastError = status;
             if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_DATA_TX) {
-                esp32c5DataClearPendingTx(&device->dataPlane);
+                LOG_W(ESP32C5_CTRL_LOG_TAG,
+                      "notify len=%u failed, keep mtu=%u",
+                      (unsigned int)device->dataPlane.txPendingLen,
+                      (unsigned int)device->state.bleMtu);
+                esp32c5DataConfirmPendingTx(&device->dataPlane);
+            } else if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_BLE_CFG_MTU) {
+                LOG_W(ESP32C5_CTRL_LOG_TAG,
+                      "mtu query failed, keep negotiated mtu=%u configured=%u",
+                      (unsigned int)device->state.bleMtu,
+                      (unsigned int)device->state.isBleMtuConfigured);
             }
             device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
             return ESP32C5_STATUS_OK;
@@ -863,9 +924,17 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
         case ESP32C5_CTRL_STAGE_RUNNING:
             if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_DATA_TX) {
                 esp32c5DataConfirmPendingTx(&device->dataPlane);
+            } else if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_BLE_CFG_MTU) {
+                LOG_I(ESP32C5_CTRL_LOG_TAG,
+                      "mtu negotiate request accepted conn=%u current_mtu=%u configured=%u",
+                      (unsigned int)device->state.connIndex,
+                      (unsigned int)device->state.bleMtu,
+                      (unsigned int)device->state.isBleMtuConfigured);
             } else if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_BLE_DISCONNECT) {
                 device->state.isBleConnected = false;
                 device->state.connIndex = 0U;
+                device->state.isBleMtuConfigured = false;
+                device->state.bleMtu = 23U;
             }
             device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
             break;
@@ -984,6 +1053,7 @@ static eEsp32c5Status esp32c5ProcessCtrlStage(stEsp32c5Device *device, eEsp32c5M
                                                    device->state.connIndex,
                                                    device->bleCfg.txServiceIndex,
                                                    device->bleCfg.txCharIndex,
+                                                   esp32c5GetBleNotifyPayloadLimit(device),
                                                    device->ctrlPlane.cmdBuf,
                                                    (uint16_t)sizeof(device->ctrlPlane.cmdBuf),
                                                    &payloadBuf,
@@ -1038,6 +1108,54 @@ static bool esp32c5TryParseConnIndex(const uint8_t *lineBuf, uint16_t lineLen, u
                 index++;
             }
             *connIndex = (uint8_t)value;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool esp32c5TryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex, uint16_t *mtu)
+{
+    uint16_t index;
+    uint16_t value;
+    uint8_t parsedConnIndex;
+
+    if ((lineBuf == NULL) || (connIndex == NULL) || (mtu == NULL)) {
+        return false;
+    }
+
+    parsedConnIndex = 0U;
+    *mtu = 0U;
+    for (index = 0U; index < lineLen; index++) {
+        if ((lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
+            value = 0U;
+            while ((index < lineLen) && (lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
+                value = (uint16_t)(value * 10U + (uint16_t)(lineBuf[index] - '0'));
+                index++;
+            }
+
+            parsedConnIndex = (uint8_t)value;
+            while ((index < lineLen) && (lineBuf[index] != ',')) {
+                index++;
+            }
+            if (index >= lineLen) {
+                return false;
+            }
+
+            index++;
+            if ((index >= lineLen) || (lineBuf[index] < '0') || (lineBuf[index] > '9')) {
+                return false;
+            }
+
+            value = 0U;
+            while ((index < lineLen) && (lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
+                value = (uint16_t)(value * 10U + (uint16_t)(lineBuf[index] - '0'));
+                index++;
+            }
+
+            *connIndex = parsedConnIndex;
+            *mtu = value;
             return true;
         }
     }
