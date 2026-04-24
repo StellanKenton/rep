@@ -8,6 +8,10 @@
 
 #include <string.h>
 
+#include "../log/log.h"
+
+#define VFS_FATFS_LOG_TAG "vfsfat"
+
 struct stVfsFatfsFileHandle {
     FIL file;
     bool isOpen;
@@ -187,6 +191,9 @@ static bool vfsFatfsMount(void *backendContext, bool isReadOnly, eVfsResult *err
     if (error != NULL) {
         *error = vfsFatfsMapError(lResult);
     }
+    if (lResult != FR_OK) {
+        LOG_W(VFS_FATFS_LOG_TAG, "mount drive=%s fr=%u", lContext->drivePath, (unsigned int)lResult);
+    }
     return lResult == FR_OK;
 }
 
@@ -222,9 +229,24 @@ static bool vfsFatfsFormat(void *backendContext, eVfsResult *error)
     }
 
     (void)f_mount(NULL, lContext->drivePath, 1U);
+    lResult = f_mount(&lContext->fatfs, lContext->drivePath, 0U);
+    if (lResult != FR_OK) {
+        if (error != NULL) {
+            *error = vfsFatfsMapError(lResult);
+        }
+        LOG_W(VFS_FATFS_LOG_TAG, "format prep mount drive=%s fr=%u", lContext->drivePath, (unsigned int)lResult);
+        return false;
+    }
+
     lResult = f_mkfs(lContext->drivePath, 0U, 0U);
+    if (lResult != FR_OK) {
+        LOG_W(VFS_FATFS_LOG_TAG, "mkfs drive=%s fr=%u", lContext->drivePath, (unsigned int)lResult);
+    }
     if (lResult == FR_OK) {
         lResult = f_mount(&lContext->fatfs, lContext->drivePath, 1U);
+        if (lResult != FR_OK) {
+            LOG_W(VFS_FATFS_LOG_TAG, "remount drive=%s fr=%u", lContext->drivePath, (unsigned int)lResult);
+        }
     }
     if (error != NULL) {
         *error = vfsFatfsMapError(lResult);
@@ -286,6 +308,17 @@ static bool vfsFatfsStat(void *backendContext, const char *path, stVfsNodeInfo *
             *error = eVFS_INVALID_PARAM;
         }
         return false;
+    }
+
+    if (strcmp(path, "/") == 0) {
+        (void)memset(info, 0, sizeof(*info));
+        info->type = eVFS_NODE_DIR;
+        info->name[0] = '/';
+        info->name[1] = '\0';
+        if (error != NULL) {
+            *error = eVFS_OK;
+        }
+        return true;
     }
 
 #if _USE_LFN

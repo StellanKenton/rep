@@ -38,6 +38,10 @@ extern "C" {
 #define VFS_FILE_CONTEXT_SIZE                  640U
 #endif
 
+#ifndef VFS_FILE_CONTEXT_WORD_COUNT
+#define VFS_FILE_CONTEXT_WORD_COUNT            ((VFS_FILE_CONTEXT_SIZE + sizeof(uint32_t) - 1U) / sizeof(uint32_t))
+#endif
+
 #ifndef VFS_LIST_BATCH_SIZE
 #define VFS_LIST_BATCH_SIZE                    8U
 #endif
@@ -143,7 +147,7 @@ struct stVfsMountEntry {
 struct stVfsBackendFile {
     uint8_t mountIndex;
     bool isOpen;
-    uint8_t context[VFS_FILE_CONTEXT_SIZE];
+    uint32_t context[VFS_FILE_CONTEXT_WORD_COUNT];
 };
 
 bool vfsInit(void);
