@@ -810,15 +810,6 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
             lCount++;
         }
 
-        LOG_D(VFS_LOG_TAG, "list root path=%s mountCount=%lu visitor=%u", lPath, (unsigned long)lCount, (visitor != NULL) ? 1U : 0U);
-        for (lIndex = 0U; lIndex < lCount; ++lIndex) {
-            LOG_D(VFS_LOG_TAG,
-                  "list root entry[%lu] name=%s type=%u",
-                  (unsigned long)lIndex,
-                  lMountEntries[lIndex].name,
-                  (unsigned)lMountEntries[lIndex].type);
-        }
-
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
         vfsUnlock();
 
@@ -829,7 +820,6 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
         if (visitor != NULL) {
             for (lIndex = 0U; lIndex < lCount; ++lIndex) {
                 if (!visitor(context, &lMountEntries[lIndex])) {
-                    LOG_D(VFS_LOG_TAG, "list root visitor stop index=%lu name=%s", (unsigned long)lIndex, lMountEntries[lIndex].name);
                     break;
                 }
             }

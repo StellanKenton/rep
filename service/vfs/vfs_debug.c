@@ -639,20 +639,7 @@ static bool vfsDebugLsVisitor(void *context, const stVfsNodeInfo *entry)
         return false;
     }
 
-    LOG_D(VFS_DEBUG_LOG_TAG,
-          "ls visitor transport=%lu name=%s type=%u size=%lu replyLen=%u",
-          (unsigned long)lContext->transport,
-          entry->name,
-          (unsigned)entry->type,
-          (unsigned long)entry->size,
-          (unsigned)lContext->replyLength);
-
     if (vfsDebugLsEntrySeen(lContext, entry)) {
-        LOG_D(VFS_DEBUG_LOG_TAG,
-              "ls visitor dedup name=%s type=%u size=%lu",
-              entry->name,
-              (unsigned)entry->type,
-              (unsigned long)entry->size);
         return true;
     }
 
@@ -729,14 +716,6 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
         return vfsDebugReplyPathError(transport);
     }
 
-    LOG_D(VFS_DEBUG_LOG_TAG,
-          "ls begin transport=%lu argc=%d cwd=%s local=%s absolute=%s",
-          (unsigned long)transport,
-          argc,
-          lSession->cwd,
-          lLocalPath,
-          gVfsDebugPathBuffer);
-
     if (!vfsGetInfo(gVfsDebugPathBuffer, &gVfsDebugNodeInfo)) {
         LOG_W(VFS_DEBUG_LOG_TAG,
               "ls stat fail local=%s absolute=%s err=%u",
@@ -749,15 +728,7 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
         return CONSOLE_COMMAND_RESULT_OK;
     }
 
-    LOG_D(VFS_DEBUG_LOG_TAG,
-          "ls stat ok local=%s absolute=%s type=%u size=%lu",
-          lLocalPath,
-          gVfsDebugPathBuffer,
-          (unsigned)gVfsDebugNodeInfo.type,
-          (unsigned long)gVfsDebugNodeInfo.size);
-
     if (gVfsDebugNodeInfo.type == eVFS_NODE_FILE) {
-        LOG_D(VFS_DEBUG_LOG_TAG, "ls file shortcut path=%s", lLocalPath);
         return (logConsoleReply(transport, "file %lu %s", (unsigned long)gVfsDebugNodeInfo.size, lLocalPath) > 0) ? CONSOLE_COMMAND_RESULT_OK : CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -775,23 +746,12 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
         return CONSOLE_COMMAND_RESULT_OK;
     }
 
-    LOG_D(VFS_DEBUG_LOG_TAG,
-          "ls list ok local=%s absolute=%s listed=%lu visitorCount=%lu replyLen=%u truncated=%u replyErr=%u",
-          lLocalPath,
-          gVfsDebugPathBuffer,
-          (unsigned long)lListedCount,
-          (unsigned long)lContext.entryCount,
-          (unsigned)lContext.replyLength,
-          lContext.isReplyTruncated ? 1U : 0U,
-          lContext.hasReplyError ? 1U : 0U);
-
     if (lContext.hasReplyError) {
         LOG_W(VFS_DEBUG_LOG_TAG, "ls abort reply error local=%s", lLocalPath);
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
     if (lContext.entryCount == 0U) {
-        LOG_D(VFS_DEBUG_LOG_TAG, "ls empty local=%s listed=%lu", lLocalPath, (unsigned long)lListedCount);
         return (logConsoleReply(transport, "empty") > 0) ? CONSOLE_COMMAND_RESULT_OK : CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -809,12 +769,6 @@ static eConsoleCommandResult vfsDebugConsoleLsHandler(uint32_t transport, int ar
               (unsigned)lContext.replyLength);
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
-
-    LOG_D(VFS_DEBUG_LOG_TAG,
-          "ls reply write ok local=%s replyLen=%u firstLine=%.32s",
-          lLocalPath,
-          (unsigned)lContext.replyLength,
-          lContext.replyBuffer);
 
     return CONSOLE_COMMAND_RESULT_OK;
 }

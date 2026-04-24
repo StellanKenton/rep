@@ -449,6 +449,7 @@ void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint1
                             (device->state.connIndex == connIndex) &&
                             (device->state.bleMtu > 23U);
         device->state.connIndex = connIndex;
+        device->state.isBleAdvertising = false;
         device->state.isBleConnected = true;
         if (!keepNegotiatedMtu) {
             device->state.isBleMtuConfigured = false;
@@ -474,6 +475,7 @@ void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint1
     }
 
     if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLEDISCONN")) {
+        device->state.isBleAdvertising = false;
         device->state.isBleConnected = false;
         device->state.isBleMtuConfigured = false;
         device->state.connIndex = 0U;
@@ -930,7 +932,11 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
                       (unsigned int)device->state.connIndex,
                       (unsigned int)device->state.bleMtu,
                       (unsigned int)device->state.isBleMtuConfigured);
+            } else if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_BLE_ADV_RESTART) {
+                device->state.isBleAdvertising = true;
+                LOG_I(ESP32C5_CTRL_LOG_TAG, "ble advertising restarted");
             } else if (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_BLE_DISCONNECT) {
+                device->state.isBleAdvertising = false;
                 device->state.isBleConnected = false;
                 device->state.connIndex = 0U;
                 device->state.isBleMtuConfigured = false;
@@ -1048,6 +1054,11 @@ static eEsp32c5Status esp32c5ProcessCtrlStage(stEsp32c5Device *device, eEsp32c5M
         case ESP32C5_CTRL_STAGE_RUNNING:
             device->state.runState = ESP32C5_RUN_READY;
             device->state.isReady = true;
+            if (!device->state.isBleConnected && !device->state.isBleAdvertising) {
+                device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_BLE_ADV_RESTART;
+                return esp32c5SubmitCtrlText(device, "AT+BLEADVSTART\r\n");
+            }
+
             if (device->state.isBleConnected && esp32c5DataHasPendingTx(&device->dataPlane)) {
                 status = esp32c5DataBuildBleNotify(&device->dataPlane,
                                                    device->state.connIndex,
