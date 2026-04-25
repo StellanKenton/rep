@@ -53,12 +53,15 @@ typedef enum eEsp32c5CtrlTxnKind {
     ESP32C5_CTRL_TXN_BLE_CFG_MTU,
     ESP32C5_CTRL_TXN_BLE_ADV_RESTART,
     ESP32C5_CTRL_TXN_BLE_DISCONNECT,
+    ESP32C5_CTRL_TXN_USER_TEXT,
 } eEsp32c5CtrlTxnKind;
 
 typedef struct stEsp32c5CtrlPlane {
     char cmdBuf[ESP32C5_CTRL_CMD_BUFFER_SIZE];
     uint32_t nextActionTick;
     uint32_t readyDeadlineTick;
+    esp32c5LineFunc userTextLineHandler;
+    void *userTextUserData;
     eEsp32c5CtrlStage stage;
     eEsp32c5CtrlTxnKind txnKind;
     bool isTxnDone;
@@ -91,6 +94,9 @@ eEsp32c5Status esp32c5MapStreamStatus(eFlowParserStrmSta status);
 eEsp32c5Status esp32c5MapResult(eFlowParserResult result);
 eEsp32c5Status esp32c5CtrlStart(stEsp32c5Device *device, eEsp32c5Role role);
 eEsp32c5Status esp32c5CtrlDisconnectBle(stEsp32c5Device *device);
+eEsp32c5Status esp32c5CtrlSubmitTextCommand(stEsp32c5Device *device, const char *cmdText);
+eEsp32c5Status esp32c5CtrlSubmitTextCommandEx(stEsp32c5Device *device, const char *cmdText, esp32c5LineFunc lineHandler, void *userData);
+eEsp32c5Status esp32c5CtrlSubmitPromptCommandEx(stEsp32c5Device *device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, esp32c5LineFunc lineHandler, void *userData);
 void esp32c5CtrlStop(stEsp32c5Device *device);
 eEsp32c5Status esp32c5CtrlProcess(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs);
 void esp32c5CtrlScheduleRetry(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs, eEsp32c5Status status);

@@ -169,6 +169,7 @@ typedef struct stEsp32c5Cfg {
 
 typedef struct stEsp32c5BleCfg {
     uint8_t initMode;
+    bool autoStartAdvertising;
     char name[ESP32C5_BLE_NAME_MAX_LENGTH + 1U];
     uint16_t advIntervalMin;
     uint16_t advIntervalMax;
@@ -219,6 +220,9 @@ eEsp32c5Status esp32c5Process(eEsp32c5MapType device, uint32_t nowTickMs);
 bool esp32c5IsReady(eEsp32c5MapType device);
 const stEsp32c5Info *esp32c5GetInfo(eEsp32c5MapType device);
 const stEsp32c5State *esp32c5GetState(eEsp32c5MapType device);
+eEsp32c5Status esp32c5SubmitTextCommand(eEsp32c5MapType device, const char *cmdText);
+eEsp32c5Status esp32c5SubmitTextCommandEx(eEsp32c5MapType device, const char *cmdText, esp32c5LineFunc lineHandler, void *userData);
+eEsp32c5Status esp32c5SubmitPromptCommandEx(eEsp32c5MapType device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, esp32c5LineFunc lineHandler, void *userData);
 uint16_t esp32c5GetRxLength(eEsp32c5MapType device);
 uint16_t esp32c5ReadData(eEsp32c5MapType device, uint8_t *buffer, uint16_t bufferSize);
 eEsp32c5Status esp32c5WriteData(eEsp32c5MapType device, const uint8_t *buffer, uint16_t length);

@@ -61,6 +61,7 @@ __attribute__((weak)) bool esp32c5PlatformIsValidCfg(const stEsp32c5Cfg *cfg)
 static bool esp32c5IsValidDevice(eEsp32c5MapType device);
 static stEsp32c5Device *esp32c5GetDevice(eEsp32c5MapType device);
 static void esp32c5LoadDefCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg);
+static bool esp32c5ShouldRetryBackgroundFailure(const stEsp32c5Device *device, eEsp32c5Status status);
 static eEsp32c5Status esp32c5BackGround(stEsp32c5Device *device);
 static eFlowParserStrmSta esp32c5StreamSend(void *userData, const uint8_t *buf, uint16_t len);
 static uint32_t esp32c5StreamGetTickMs(void *userData);
@@ -316,7 +317,8 @@ eEsp32c5Status esp32c5Process(eEsp32c5MapType device, uint32_t nowTickMs)
 
     status = esp32c5BackGround(deviceObj);
     if (status != ESP32C5_STATUS_OK) {
-        if (deviceObj->state.role != ESP32C5_ROLE_NONE) {
+        if ((deviceObj->state.role != ESP32C5_ROLE_NONE) &&
+            esp32c5ShouldRetryBackgroundFailure(deviceObj, status)) {
             esp32c5CtrlScheduleRetry(deviceObj, device, nowTickMs, status);
         }
         return status;
@@ -357,6 +359,53 @@ const stEsp32c5State *esp32c5GetState(eEsp32c5MapType device)
 
     esp32c5SyncState(deviceObj);
     return &deviceObj->state;
+}
+
+eEsp32c5Status esp32c5SubmitTextCommand(eEsp32c5MapType device, const char *cmdText)
+{
+    return esp32c5SubmitTextCommandEx(device, cmdText, NULL, NULL);
+}
+
+eEsp32c5Status esp32c5SubmitTextCommandEx(eEsp32c5MapType device, const char *cmdText, esp32c5LineFunc lineHandler, void *userData)
+{
+    stEsp32c5Device *deviceObj;
+
+    if (cmdText == NULL) {
+        return ESP32C5_STATUS_INVALID_PARAM;
+    }
+
+    deviceObj = esp32c5GetDevice(device);
+    if ((deviceObj == NULL) || !deviceObj->info.isInit) {
+        return ESP32C5_STATUS_NOT_READY;
+    }
+
+    esp32c5SyncState(deviceObj);
+    if ((deviceObj->state.role == ESP32C5_ROLE_NONE) || !deviceObj->state.isReady || deviceObj->state.isBusy) {
+        return ESP32C5_STATUS_BUSY;
+    }
+
+    return esp32c5CtrlSubmitTextCommandEx(deviceObj, cmdText, lineHandler, userData);
+}
+
+eEsp32c5Status esp32c5SubmitPromptCommandEx(eEsp32c5MapType device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, esp32c5LineFunc lineHandler, void *userData)
+{
+    stEsp32c5Device *deviceObj;
+
+    if ((cmdText == NULL) || (payloadBuf == NULL) || (payloadLen == 0U)) {
+        return ESP32C5_STATUS_INVALID_PARAM;
+    }
+
+    deviceObj = esp32c5GetDevice(device);
+    if ((deviceObj == NULL) || !deviceObj->info.isInit) {
+        return ESP32C5_STATUS_NOT_READY;
+    }
+
+    esp32c5SyncState(deviceObj);
+    if ((deviceObj->state.role == ESP32C5_ROLE_NONE) || !deviceObj->state.isReady || deviceObj->state.isBusy) {
+        return ESP32C5_STATUS_BUSY;
+    }
+
+    return esp32c5CtrlSubmitPromptCommandEx(deviceObj, cmdText, payloadBuf, payloadLen, lineHandler, userData);
 }
 
 uint16_t esp32c5GetRxLength(eEsp32c5MapType device)
@@ -523,6 +572,22 @@ static void esp32c5LoadDefCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg)
     if (cfg->retryIntervalMs == 0U) {
         cfg->retryIntervalMs = ESP32C5_DEFAULT_RETRY_INTERVAL_MS;
     }
+}
+
+static bool esp32c5ShouldRetryBackgroundFailure(const stEsp32c5Device *device, eEsp32c5Status status)
+{
+    if (device == NULL) {
+        return false;
+    }
+
+    if ((status == ESP32C5_STATUS_TIMEOUT) &&
+        device->ctrlPlane.isTxnDone &&
+        (device->ctrlPlane.stage == ESP32C5_CTRL_STAGE_RUNNING) &&
+        (device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_USER_TEXT)) {
+        return false;
+    }
+
+    return true;
 }
 
 static eEsp32c5Status esp32c5BackGround(stEsp32c5Device *device)

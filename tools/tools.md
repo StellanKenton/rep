@@ -21,6 +21,7 @@ read_next:
   - aes/aes.md
   - md5/md5.md
   - ringbuffer/ringbuffer.md
+  - jsonparser/jsonparser.md
   - trace/trace.md
   - numfilter/numfilter.md
   - butterworthfilter/butterworthfilter.md
@@ -51,6 +52,7 @@ read_next:
 | --- | --- |
 | `aes/` | AES 分组加解密工具，支持 ECB/CBC 和 PKCS7 辅助处理 |
 | `md5/` | MD5 摘要计算与 16/32 位十六进制字符串转换 |
+| `jsonparser/` | 轻量 JSON 字段提取工具，用于 HTTP 返回解析 |
 | `ringbuffer/` | 字节环形缓冲区与并发约束 |
 | `trace/` | Cortex-M fault 快照采集工具 |
 | `numfilter/` | 数值算法与统计工具 |
@@ -84,6 +86,7 @@ read_next:
 
 1. 先读本文件。
 2. 需要容器时读 `ringbuffer/ringbuffer.md`。
-3. 需要摘要或分组加密时先读 `md5/md5.md`、`aes/aes.md`。
-4. 需要 Cortex-M fault 现场采集时读 `trace/trace.md`。
-5. 需要滤波或数值算法时再进入对应目录主文档。
+3. 需要 JSON 字段提取时读 `jsonparser/jsonparser.md`。
+4. 需要摘要或分组加密时先读 `md5/md5.md`、`aes/aes.md`。
+5. 需要 Cortex-M fault 现场采集时读 `trace/trace.md`。
+6. 需要滤波或数值算法时再进入对应目录主文档。

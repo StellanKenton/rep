@@ -10,6 +10,14 @@ core_files:
   - esp32c5.c
   - esp32c5_ctrl.h
   - esp32c5_ctrl.c
+  - esp32c5_ble.h
+  - esp32c5_ble.c
+  - esp32c5_wifi.h
+  - esp32c5_wifi.c
+  - esp32c5_http.h
+  - esp32c5_http.c
+  - esp32c5_mqtt.h
+  - esp32c5_mqtt.c
   - esp32c5_data.h
   - esp32c5_data.c
   - esp32c5_assembly.h
@@ -44,13 +52,17 @@ read_next:
 
 ## 1. 模块定位
 
-`esp32c5` 采用和 `fc41d` 相同的“对外公共 API + 内部控制面 + 内部数据面”组织，但控制命令切换为 ESP-AT 的 BLE 指令族。
+`esp32c5` 采用和 `fc41d` 相同的“对外公共 API + 内部控制面 + 内部数据面”组织，并按 ESP-AT 功能族拆分为 BLE、WiFi、HTTP、MQTT helper。
 
 当前边界如下：
 
 - `flowparser` 只负责 AT 文本事务、prompt 和 done/error/timeout。
 - `esp32c5.c` 负责设备实例、公共 API 和后台主循环。
-- `esp32c5_ctrl.c` 负责启动状态机、URC 状态映射、MAC 查询、广告配置和通知事务提交。
+- `esp32c5_ctrl.c` 负责启动状态机、事务调度和通用 URC 分发。
+- `esp32c5_ble.c` 负责 BLE 默认配置、广告命令、BLE URC 解析和 MAC/MTU 解析。
+- `esp32c5_wifi.c` 负责 WiFi station/join 命令与 WiFi URC 前缀。
+- `esp32c5_http.c` 负责 HTTP POST prompt 命令组包。
+- `esp32c5_mqtt.c` 负责 MQTT usercfg/connect/query/subscribe/publish/raw publish 命令和 MQTT URC 解析。
 - `esp32c5_data.c` 负责 BLE RX/TX ring 和通知 payload 缓存。
 - transport、tick、上电控制都由项目侧 `User/port` 注入。
 
@@ -62,6 +74,10 @@ read_next:
 | `esp32c5.c` | 对外总入口、后台主循环、设备实例管理 |
 | `esp32c5_ctrl.h` | 内部控制面状态机声明 |
 | `esp32c5_ctrl.c` | 启动流程、广告配置、URC 状态映射 |
+| `esp32c5_ble.h/.c` | BLE 命令组包、BLE URC 解析、MAC/MTU 解析 |
+| `esp32c5_wifi.h/.c` | WiFi 命令组包、WiFi URC 识别 |
+| `esp32c5_http.h/.c` | HTTP POST prompt 命令组包 |
+| `esp32c5_mqtt.h/.c` | MQTT 命令组包、MQTT URC 与订阅 payload 解析 |
 | `esp32c5_data.h` | 内部数据面声明 |
 | `esp32c5_data.c` | RX/TX ring 管理、通知 prompt 组包 |
 | `esp32c5_assembly.h` | 项目侧 transport/tick/control 绑定契约 |

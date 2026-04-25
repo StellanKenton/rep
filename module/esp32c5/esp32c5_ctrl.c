@@ -13,6 +13,9 @@
 #include <string.h>
 
 #include "../../service/log/log.h"
+#include "esp32c5_ble.h"
+#include "esp32c5_mqtt.h"
+#include "esp32c5_wifi.h"
 
 #define ESP32C5_CTRL_LOG_TAG                 "esp32c5Ctl"
 #define ESP32C5_DEFAULT_ADV_TYPE             0U
@@ -20,6 +23,7 @@
 #define ESP32C5_DEFAULT_CHANNEL_MAP          7U
 
 static const char *const gEsp32c5CommonDonePatterns[] = {"OK"};
+static const char *const gEsp32c5PromptDonePatterns[] = {"OK", "+HTTPCPOST:*", "+MQTTPUB:*"};
 static const char *const gEsp32c5CommonErrorPatterns[] = {"ERROR", "FAIL"};
 static const char *const gEsp32c5DefaultUrcPrefixes[] = {
     "+BLECONN",
@@ -49,8 +53,8 @@ static const stFlowParserSpec gEsp32c5CommonSpec = {
 static const stFlowParserSpec gEsp32c5PromptSpec = {
     .responseDonePatterns = NULL,
     .responseDonePatternCnt = 0U,
-    .finalDonePatterns = gEsp32c5CommonDonePatterns,
-    .finalDonePatternCnt = 1U,
+    .finalDonePatterns = gEsp32c5PromptDonePatterns,
+    .finalDonePatternCnt = 3U,
     .errorPatterns = gEsp32c5CommonErrorPatterns,
     .errorPatternCnt = 2U,
     .totalToutMs = ESP32C5_DEFAULT_FINAL_TIMEOUT_MS,
@@ -60,7 +64,6 @@ static const stFlowParserSpec gEsp32c5PromptSpec = {
     .needPrompt = true,
 };
 
-static bool esp32c5ContainsForbiddenChar(const char *text);
 static eEsp32c5Status esp32c5SubmitCtrlText(stEsp32c5Device *device, const char *cmdText);
 static eEsp32c5Status esp32c5SubmitCtrlPrompt(stEsp32c5Device *device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen);
 static eEsp32c5Status esp32c5BuildCtrlU16(stEsp32c5Device *device, const char *prefix, uint16_t value);
@@ -72,15 +75,9 @@ static eEsp32c5Status esp32c5AppendChar(char *buffer, uint16_t bufferSize, uint1
 static eEsp32c5Status esp32c5AppendText(char *buffer, uint16_t bufferSize, uint16_t *length, const char *text);
 static eEsp32c5Status esp32c5AppendU16(char *buffer, uint16_t bufferSize, uint16_t *length, uint16_t value);
 static eEsp32c5Status esp32c5AppendQuotedText(char *buffer, uint16_t bufferSize, uint16_t *length, const char *text);
-static eEsp32c5Status esp32c5AppendHexByte(char *buffer, uint16_t bufferSize, uint16_t *length, uint8_t value);
 static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs);
 static eEsp32c5Status esp32c5ProcessCtrlStage(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs);
 static bool esp32c5MatchPrefix(const uint8_t *lineBuf, uint16_t lineLen, const char *prefix);
-static bool esp32c5TryParseConnIndex(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex);
-static bool esp32c5TryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex, uint16_t *mtu);
-static bool esp32c5TryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
-static bool esp32c5TryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
-static bool esp32c5TryHexNibble(uint8_t ch, uint8_t *value);
 static const char *esp32c5CtrlGetStageName(eEsp32c5CtrlStage stage);
 static const char *esp32c5CtrlGetRoleName(eEsp32c5Role role);
 static void esp32c5CtrlSetStage(stEsp32c5Device *device, eEsp32c5CtrlStage stage);
@@ -92,38 +89,12 @@ bool esp32c5IsValidRole(eEsp32c5Role role)
 
 void esp32c5LoadDefBleCfg(stEsp32c5BleCfg *cfg)
 {
-    if (cfg == NULL) {
-        return;
-    }
-
-    (void)memset(cfg, 0, sizeof(*cfg));
-    cfg->initMode = 2U;
-    cfg->advIntervalMin = ESP32C5_DEFAULT_ADV_INTERVAL_MIN;
-    cfg->advIntervalMax = ESP32C5_DEFAULT_ADV_INTERVAL_MAX;
-    cfg->rxServiceIndex = 1U;
-    cfg->rxCharIndex = 1U;
-    cfg->txServiceIndex = 1U;
-    cfg->txCharIndex = 2U;
+    esp32c5BleLoadDefCfg(cfg);
 }
 
 bool esp32c5IsValidText(const char *text, uint16_t maxLength, bool allowEmpty)
 {
-    uint16_t length;
-
-    if (text == NULL) {
-        return false;
-    }
-
-    if (*text == '\0') {
-        return allowEmpty;
-    }
-
-    length = (uint16_t)strlen(text);
-    if ((length == 0U) || (length > maxLength)) {
-        return false;
-    }
-
-    return !esp32c5ContainsForbiddenChar(text);
+    return esp32c5BleIsValidText(text, maxLength, allowEmpty);
 }
 
 void esp32c5ResetState(stEsp32c5Device *device)
@@ -141,6 +112,8 @@ void esp32c5ResetState(stEsp32c5Device *device)
     device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
     device->ctrlPlane.isTxnDone = false;
     device->ctrlPlane.txnStatus = ESP32C5_STATUS_OK;
+    device->ctrlPlane.userTextLineHandler = NULL;
+    device->ctrlPlane.userTextUserData = NULL;
     device->ctrlPlane.cmdBuf[0] = '\0';
     esp32c5DataReset(&device->dataPlane);
 }
@@ -270,6 +243,8 @@ eEsp32c5Status esp32c5CtrlStart(stEsp32c5Device *device, eEsp32c5Role role)
     device->ctrlPlane.isTxnDone = false;
     device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
     device->ctrlPlane.txnStatus = ESP32C5_STATUS_OK;
+    device->ctrlPlane.userTextLineHandler = NULL;
+    device->ctrlPlane.userTextUserData = NULL;
     device->ctrlPlane.cmdBuf[0] = '\0';
     LOG_I(ESP32C5_CTRL_LOG_TAG, "start role=%s", esp32c5CtrlGetRoleName(role));
     return ESP32C5_STATUS_OK;
@@ -324,6 +299,59 @@ eEsp32c5Status esp32c5CtrlDisconnectBle(stEsp32c5Device *device)
     }
 
     return status;
+}
+
+eEsp32c5Status esp32c5CtrlSubmitTextCommand(stEsp32c5Device *device, const char *cmdText)
+{
+    return esp32c5CtrlSubmitTextCommandEx(device, cmdText, NULL, NULL);
+}
+
+eEsp32c5Status esp32c5CtrlSubmitTextCommandEx(stEsp32c5Device *device, const char *cmdText, esp32c5LineFunc lineHandler, void *userData)
+{
+    if ((device == NULL) || (cmdText == NULL)) {
+        return ESP32C5_STATUS_INVALID_PARAM;
+    }
+
+    esp32c5SyncState(device);
+    if ((device->ctrlPlane.stage != ESP32C5_CTRL_STAGE_RUNNING) || device->info.isBusy) {
+        return ESP32C5_STATUS_BUSY;
+    }
+
+    device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_USER_TEXT;
+    device->ctrlPlane.userTextLineHandler = lineHandler;
+    device->ctrlPlane.userTextUserData = userData;
+    if (esp32c5SubmitCtrlText(device, cmdText) != ESP32C5_STATUS_OK) {
+        device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
+        device->ctrlPlane.userTextLineHandler = NULL;
+        device->ctrlPlane.userTextUserData = NULL;
+        return device->state.lastError = ESP32C5_STATUS_BUSY;
+    }
+
+    return ESP32C5_STATUS_OK;
+}
+
+eEsp32c5Status esp32c5CtrlSubmitPromptCommandEx(stEsp32c5Device *device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, esp32c5LineFunc lineHandler, void *userData)
+{
+    if ((device == NULL) || (cmdText == NULL) || (payloadBuf == NULL) || (payloadLen == 0U)) {
+        return ESP32C5_STATUS_INVALID_PARAM;
+    }
+
+    esp32c5SyncState(device);
+    if ((device->ctrlPlane.stage != ESP32C5_CTRL_STAGE_RUNNING) || device->info.isBusy) {
+        return ESP32C5_STATUS_BUSY;
+    }
+
+    device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_USER_TEXT;
+    device->ctrlPlane.userTextLineHandler = lineHandler;
+    device->ctrlPlane.userTextUserData = userData;
+    if (esp32c5SubmitCtrlPrompt(device, cmdText, payloadBuf, payloadLen) != ESP32C5_STATUS_OK) {
+        device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
+        device->ctrlPlane.userTextLineHandler = NULL;
+        device->ctrlPlane.userTextUserData = NULL;
+        return device->state.lastError = ESP32C5_STATUS_BUSY;
+    }
+
+    return ESP32C5_STATUS_OK;
 }
 
 void esp32c5CtrlStop(stEsp32c5Device *device)
@@ -390,6 +418,8 @@ void esp32c5CtrlScheduleRetry(stEsp32c5Device *device, eEsp32c5MapType deviceId,
     device->state.role = role;
     esp32c5CtrlSetStage(device, ESP32C5_CTRL_STAGE_ASSERT_RESET);
     device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
+    device->ctrlPlane.userTextLineHandler = NULL;
+    device->ctrlPlane.userTextUserData = NULL;
     device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.retryIntervalMs;
     device->ctrlPlane.readyDeadlineTick = 0U;
     device->ctrlPlane.isTxnDone = false;
@@ -413,6 +443,12 @@ bool esp32c5CtrlIsUrc(const stEsp32c5Device *device, const uint8_t *lineBuf, uin
 
     if ((device->urcCb.pfMatcher != NULL) &&
         device->urcCb.pfMatcher(device->urcCb.matcherUserData, lineBuf, lineLen)) {
+        return true;
+    }
+
+    if (esp32c5BleIsUrc(lineBuf, lineLen) ||
+        esp32c5WifiIsUrc(lineBuf, lineLen) ||
+        esp32c5MqttIsUrc(lineBuf, lineLen)) {
         return true;
     }
 
@@ -444,7 +480,7 @@ void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint1
 
     if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLECONN")) {
         connIndex = 0U;
-        (void)esp32c5TryParseConnIndex(lineBuf, lineLen, &connIndex);
+        (void)esp32c5BleTryParseConnIndex(lineBuf, lineLen, &connIndex);
         keepNegotiatedMtu = device->state.isBleMtuConfigured &&
                             (device->state.connIndex == connIndex) &&
                             (device->state.bleMtu > 23U);
@@ -462,7 +498,7 @@ void esp32c5CtrlHandleUrc(stEsp32c5Device *device, const uint8_t *lineBuf, uint1
     if (esp32c5MatchPrefix(lineBuf, lineLen, "+BLECFGMTU")) {
         connIndex = 0U;
         mtu = 0U;
-        if (esp32c5TryParseBleMtu(lineBuf, lineLen, &connIndex, &mtu)) {
+        if (esp32c5BleTryParseMtu(lineBuf, lineLen, &connIndex, &mtu)) {
             device->state.connIndex = connIndex;
             device->state.bleMtu = mtu;
             device->state.isBleMtuConfigured = mtu > 23U;
@@ -491,8 +527,13 @@ void esp32c5CtrlHandleTxnLine(stEsp32c5Device *device, const uint8_t *lineBuf, u
     }
 
     if ((device->ctrlPlane.stage == ESP32C5_CTRL_STAGE_QUERY_MAC) &&
-        esp32c5TryParseMacAddress(lineBuf, lineLen, device->state.macAddress, (uint16_t)sizeof(device->state.macAddress))) {
+        esp32c5BleTryParseMacAddress(lineBuf, lineLen, device->state.macAddress, (uint16_t)sizeof(device->state.macAddress))) {
         device->state.hasMacAddress = true;
+    }
+
+    if ((device->ctrlPlane.txnKind == ESP32C5_CTRL_TXN_USER_TEXT) &&
+        (device->ctrlPlane.userTextLineHandler != NULL)) {
+        device->ctrlPlane.userTextLineHandler(device->ctrlPlane.userTextUserData, lineBuf, lineLen);
     }
 }
 
@@ -523,20 +564,6 @@ void esp32c5TxnLineThunk(void *userData, const uint8_t *lineBuf, uint16_t lineLe
 void esp32c5TxnDoneThunk(void *userData, eFlowParserResult result)
 {
     esp32c5CtrlHandleTxnDone((stEsp32c5Device *)userData, result);
-}
-
-static bool esp32c5ContainsForbiddenChar(const char *text)
-{
-    char ch;
-
-    while ((text != NULL) && (*text != '\0')) {
-        ch = *text++;
-        if ((ch == '"') || (ch == '\r') || (ch == '\n')) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 static eEsp32c5Status esp32c5SubmitCtrlText(stEsp32c5Device *device, const char *cmdText)
@@ -645,105 +672,38 @@ static eEsp32c5Status esp32c5BuildCtrlQuotedText(stEsp32c5Device *device, const 
 
 static eEsp32c5Status esp32c5BuildCtrlAdvParam(stEsp32c5Device *device)
 {
-    uint16_t length;
     eEsp32c5Status status;
 
     if (device == NULL) {
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
-    length = 0U;
-    device->ctrlPlane.cmdBuf[0] = '\0';
-    status = esp32c5AppendText(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, "AT+BLEADVPARAM=");
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendU16(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, device->bleCfg.advIntervalMin);
-    }
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendChar(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, ',');
-    }
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendU16(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, device->bleCfg.advIntervalMax);
-    }
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendText(device->ctrlPlane.cmdBuf,
-                                   sizeof(device->ctrlPlane.cmdBuf),
-                                   &length,
-                                   ",0,0,7\r\n");
-    }
-
+    status = esp32c5BleBuildAdvParamCommand(&device->bleCfg,
+                                            device->ctrlPlane.cmdBuf,
+                                            (uint16_t)sizeof(device->ctrlPlane.cmdBuf));
     return (status == ESP32C5_STATUS_OK) ? esp32c5SubmitCtrlText(device, device->ctrlPlane.cmdBuf) : status;
 }
 
 static eEsp32c5Status esp32c5BuildCtrlAdvData(stEsp32c5Device *device)
 {
-    uint16_t length;
     eEsp32c5Status status;
-    const char *name;
-    uint16_t nameLen;
-    uint16_t maxNameLen;
-    uint16_t index;
 
     if (device == NULL) {
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
-    name = device->bleCfg.name;
-    nameLen = (uint16_t)strlen(name);
-    maxNameLen = 26U;
-    if (nameLen > maxNameLen) {
-        nameLen = maxNameLen;
-    }
-
-    length = 0U;
-    device->ctrlPlane.cmdBuf[0] = '\0';
-    status = esp32c5AppendText(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, "AT+BLEADVDATA=\"");
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, 0x02U);
-    }
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, 0x01U);
-    }
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, 0x06U);
-    }
-
-    if ((status == ESP32C5_STATUS_OK) && (nameLen > 0U)) {
-        status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, (uint8_t)(nameLen + 1U));
-        if (status == ESP32C5_STATUS_OK) {
-            status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, 0x09U);
-        }
-        for (index = 0U; (status == ESP32C5_STATUS_OK) && (index < nameLen); index++) {
-            status = esp32c5AppendHexByte(device->ctrlPlane.cmdBuf,
-                                          sizeof(device->ctrlPlane.cmdBuf),
-                                          &length,
-                                          (uint8_t)name[index]);
-        }
-    }
-
-    if (status == ESP32C5_STATUS_OK) {
-        status = esp32c5AppendText(device->ctrlPlane.cmdBuf, sizeof(device->ctrlPlane.cmdBuf), &length, "\"\r\n");
-    }
-
+    status = esp32c5BleBuildAdvDataCommand(&device->bleCfg,
+                                           device->ctrlPlane.cmdBuf,
+                                           (uint16_t)sizeof(device->ctrlPlane.cmdBuf));
     return (status == ESP32C5_STATUS_OK) ? esp32c5SubmitCtrlText(device, device->ctrlPlane.cmdBuf) : status;
 }
 
 static uint16_t esp32c5GetBleNotifyPayloadLimit(const stEsp32c5Device *device)
 {
-    uint16_t payloadLimit;
-
     if (device == NULL) {
         return 20U;
     }
-
-    payloadLimit = 20U;
-    if (device->state.isBleMtuConfigured && (device->state.bleMtu > 3U)) {
-        payloadLimit = (uint16_t)(device->state.bleMtu - 3U);
-        if (payloadLimit > ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE) {
-            payloadLimit = ESP32C5_BLE_NOTIFY_PREFERRED_CHUNK_SIZE;
-        }
-    }
-
-    return payloadLimit;
+    return esp32c5BleGetNotifyPayloadLimit(&device->state);
 }
 
 static eEsp32c5Status esp32c5AppendChar(char *buffer, uint16_t bufferSize, uint16_t *length, char value)
@@ -813,19 +773,6 @@ static eEsp32c5Status esp32c5AppendQuotedText(char *buffer, uint16_t bufferSize,
     }
 
     return status;
-}
-
-static eEsp32c5Status esp32c5AppendHexByte(char *buffer, uint16_t bufferSize, uint16_t *length, uint8_t value)
-{
-    static const char hexDigits[] = "0123456789ABCDEF";
-    eEsp32c5Status status;
-
-    status = esp32c5AppendChar(buffer, bufferSize, length, hexDigits[(value >> 4U) & 0x0FU]);
-    if (status != ESP32C5_STATUS_OK) {
-        return status;
-    }
-
-    return esp32c5AppendChar(buffer, bufferSize, length, hexDigits[value & 0x0FU]);
 }
 
 static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5MapType deviceId, uint32_t nowTickMs)
@@ -907,7 +854,7 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
             break;
         case ESP32C5_CTRL_STAGE_BLE_SET_ADV_DATA:
             device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
-            esp32c5CtrlSetStage(device, ESP32C5_CTRL_STAGE_BLE_ADV_START);
+            esp32c5CtrlSetStage(device, device->bleCfg.autoStartAdvertising ? ESP32C5_CTRL_STAGE_BLE_ADV_START : ESP32C5_CTRL_STAGE_QUERY_MAC);
             break;
         case ESP32C5_CTRL_STAGE_BLE_ADV_START:
             device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
@@ -943,6 +890,8 @@ static eEsp32c5Status esp32c5HandleCtrlDone(stEsp32c5Device *device, eEsp32c5Map
                 device->state.bleMtu = 23U;
             }
             device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_NONE;
+            device->ctrlPlane.userTextLineHandler = NULL;
+            device->ctrlPlane.userTextUserData = NULL;
             break;
         default:
             break;
@@ -1054,7 +1003,7 @@ static eEsp32c5Status esp32c5ProcessCtrlStage(stEsp32c5Device *device, eEsp32c5M
         case ESP32C5_CTRL_STAGE_RUNNING:
             device->state.runState = ESP32C5_RUN_READY;
             device->state.isReady = true;
-            if (!device->state.isBleConnected && !device->state.isBleAdvertising) {
+            if (device->bleCfg.autoStartAdvertising && !device->state.isBleConnected && !device->state.isBleAdvertising) {
                 device->ctrlPlane.txnKind = ESP32C5_CTRL_TXN_BLE_ADV_RESTART;
                 return esp32c5SubmitCtrlText(device, "AT+BLEADVSTART\r\n");
             }
@@ -1100,156 +1049,6 @@ static bool esp32c5MatchPrefix(const uint8_t *lineBuf, uint16_t lineLen, const c
 
     prefixLen = (uint16_t)strlen(prefix);
     return (lineLen >= prefixLen) && (memcmp(lineBuf, prefix, prefixLen) == 0);
-}
-
-static bool esp32c5TryParseConnIndex(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex)
-{
-    uint16_t index;
-    uint16_t value;
-
-    if ((lineBuf == NULL) || (connIndex == NULL)) {
-        return false;
-    }
-
-    for (index = 0U; index < lineLen; index++) {
-        if ((lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
-            value = 0U;
-            while ((index < lineLen) && (lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
-                value = (uint16_t)(value * 10U + (uint16_t)(lineBuf[index] - '0'));
-                index++;
-            }
-            *connIndex = (uint8_t)value;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool esp32c5TryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint8_t *connIndex, uint16_t *mtu)
-{
-    uint16_t index;
-    uint16_t value;
-    uint8_t parsedConnIndex;
-
-    if ((lineBuf == NULL) || (connIndex == NULL) || (mtu == NULL)) {
-        return false;
-    }
-
-    parsedConnIndex = 0U;
-    *mtu = 0U;
-    for (index = 0U; index < lineLen; index++) {
-        if ((lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
-            value = 0U;
-            while ((index < lineLen) && (lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
-                value = (uint16_t)(value * 10U + (uint16_t)(lineBuf[index] - '0'));
-                index++;
-            }
-
-            parsedConnIndex = (uint8_t)value;
-            while ((index < lineLen) && (lineBuf[index] != ',')) {
-                index++;
-            }
-            if (index >= lineLen) {
-                return false;
-            }
-
-            index++;
-            if ((index >= lineLen) || (lineBuf[index] < '0') || (lineBuf[index] > '9')) {
-                return false;
-            }
-
-            value = 0U;
-            while ((index < lineLen) && (lineBuf[index] >= '0') && (lineBuf[index] <= '9')) {
-                value = (uint16_t)(value * 10U + (uint16_t)(lineBuf[index] - '0'));
-                index++;
-            }
-
-            *connIndex = parsedConnIndex;
-            *mtu = value;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool esp32c5TryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize)
-{
-    uint16_t index;
-    const char *prefix;
-    uint16_t prefixLen;
-
-    if ((lineBuf == NULL) || (buffer == NULL) || (bufferSize < ESP32C5_MAC_ADDRESS_TEXT_MAX_LENGTH)) {
-        return false;
-    }
-
-    prefix = ESP32C5_MAC_QUERY_PREFIX;
-    prefixLen = (uint16_t)strlen(prefix);
-    for (index = 0U; index < lineLen; index++) {
-        if ((index + prefixLen) <= lineLen && (memcmp(&lineBuf[index], prefix, prefixLen) == 0)) {
-            return esp32c5TryParseMacCandidate(lineBuf, lineLen, (uint16_t)(index + prefixLen), buffer, bufferSize);
-        }
-    }
-
-    return false;
-}
-
-static bool esp32c5TryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize)
-{
-    uint16_t index;
-    uint16_t out;
-    uint8_t nibble;
-
-    if ((lineBuf == NULL) || (buffer == NULL) || (bufferSize < ESP32C5_MAC_ADDRESS_TEXT_MAX_LENGTH)) {
-        return false;
-    }
-
-    while ((start < lineLen) && ((lineBuf[start] == ' ') || (lineBuf[start] == '\t') || (lineBuf[start] == '"'))) {
-        start++;
-    }
-
-    out = 0U;
-    for (index = start; index < lineLen; index++) {
-        if (out >= (ESP32C5_MAC_ADDRESS_TEXT_MAX_LENGTH - 1U)) {
-            break;
-        }
-
-        if ((lineBuf[index] == ':') || esp32c5TryHexNibble(lineBuf[index], &nibble)) {
-            buffer[out++] = (char)lineBuf[index];
-            continue;
-        }
-        break;
-    }
-
-    buffer[out] = '\0';
-    return out == (ESP32C5_MAC_ADDRESS_TEXT_MAX_LENGTH - 1U);
-}
-
-static bool esp32c5TryHexNibble(uint8_t ch, uint8_t *value)
-{
-    if ((ch >= '0') && (ch <= '9')) {
-        if (value != NULL) {
-            *value = (uint8_t)(ch - '0');
-        }
-        return true;
-    }
-
-    if ((ch >= 'A') && (ch <= 'F')) {
-        if (value != NULL) {
-            *value = (uint8_t)(ch - 'A' + 10U);
-        }
-        return true;
-    }
-
-    if ((ch >= 'a') && (ch <= 'f')) {
-        if (value != NULL) {
-            *value = (uint8_t)(ch - 'a' + 10U);
-        }
-        return true;
-    }
-
-    return false;
 }
 
 static const char *esp32c5CtrlGetStageName(eEsp32c5CtrlStage stage)
