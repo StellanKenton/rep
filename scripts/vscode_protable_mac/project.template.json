@@ -8,6 +8,8 @@
     "generator": "Ninja",
     "artifactName": "DemoFirmware",
     "toolchainFile": "cmake/toolchains/arm-none-eabi.cmake",
+    "cmakePath": "cmake",
+    "ninjaPath": "ninja",
     "armToolchainBinDir": "/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin",
     "extraConfigureArgs": []
   },

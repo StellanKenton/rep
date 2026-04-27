@@ -12,6 +12,8 @@
 
 其中 `Firmware: Configure` 现在会先检查已有 `CMakeCache.txt` 里的工具链和编译器；如果发现缓存里的编译器不是当前配置要求的 Arm GNU Toolchain，会自动清掉旧缓存再重新配置，避免项目迁移或工具链切换后继续误用旧编译器。
 
+生成的 Cortex-Debug 配置不会手动追加 J-Link 的 GDB/SWO/Telnet 端口参数；这些端口由 Cortex-Debug 自己分配和连接，避免 GDB 连接端口与 J-Link 实际监听端口不一致。
+
 ## 目录内容
 
 - `deploy.sh`: 固定入口脚本，优先读取同目录下的 `project.json`
@@ -37,6 +39,8 @@
 - `jlink.device`: J-Link 识别的芯片名
 
 其他字段都有默认值，只有项目差异明显时再改。
+
+如果 `cmake` 或 `ninja` 不在 VS Code 能继承到的 PATH 里，可以把 `build.cmakePath` 和 `build.ninjaPath` 改成绝对路径。
 
 ## 部署后会生成什么
 
