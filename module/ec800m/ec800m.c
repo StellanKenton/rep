@@ -277,7 +277,7 @@ eEc800mStatus ec800mStart(eEc800mMapType device, eEc800mServiceMode serviceMode)
     deviceObj->state.serviceMode = serviceMode;
     deviceObj->state.runState = EC800M_RUN_BOOTING;
     deviceObj->state.isBusy = true;
-    deviceObj->ctrlPlane.stage = EC800M_CTRL_STAGE_ASSERT_RESET;
+    deviceObj->ctrlPlane.stage = EC800M_CTRL_STAGE_ASSERT_RESET_AND_PWRKEY;
     deviceObj->ctrlPlane.nextActionTick = 0U;
     LOG_I(EC800M_LOG_TAG, "start service=%u", (unsigned int)serviceMode);
     return EC800M_STATUS_OK;
@@ -615,30 +615,29 @@ static eEc800mStatus ec800mProcessCtrl(stEc800mDevice *device, eEc800mMapType de
     }
 
     switch (device->ctrlPlane.stage) {
-        case EC800M_CTRL_STAGE_ASSERT_RESET:
+        case EC800M_CTRL_STAGE_ASSERT_RESET_AND_PWRKEY:
             control->setResetLevel(device->cfg.resetPin, true);
+            control->setPwrkeyLevel(device->cfg.pwrkeyPin, true);
             device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.resetPulseMs;
-            device->ctrlPlane.stage = EC800M_CTRL_STAGE_RESET_HOLD;
+            device->ctrlPlane.stage = EC800M_CTRL_STAGE_RELEASE_RESET;
             break;
-        case EC800M_CTRL_STAGE_RESET_HOLD:
+        case EC800M_CTRL_STAGE_RELEASE_RESET:
             control->setResetLevel(device->cfg.resetPin, false);
             device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.resetWaitMs;
-            device->ctrlPlane.stage = EC800M_CTRL_STAGE_PWRKEY_ASSERT;
+            device->ctrlPlane.stage = EC800M_CTRL_STAGE_ASSERT_RESET_AGAIN;
             break;
-        case EC800M_CTRL_STAGE_PWRKEY_ASSERT:
-            if (device->cfg.pwrkeyPulseMs == 0U) {
-                control->setPwrkeyLevel(device->cfg.pwrkeyPin, false);
-                device->ctrlPlane.readyDeadlineTick = nowTickMs + device->cfg.readyTimeoutMs;
-                device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.bootWaitMs;
-                device->ctrlPlane.stage = EC800M_CTRL_STAGE_WAIT_AT;
-                break;
-            }
-            control->setPwrkeyLevel(device->cfg.pwrkeyPin, true);
-            device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.pwrkeyPulseMs;
-            device->ctrlPlane.stage = EC800M_CTRL_STAGE_PWRKEY_HOLD;
+        case EC800M_CTRL_STAGE_ASSERT_RESET_AGAIN:
+            control->setResetLevel(device->cfg.resetPin, true);
+            device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.resetPulseMs;
+            device->ctrlPlane.stage = EC800M_CTRL_STAGE_RELEASE_PWRKEY;
             break;
-        case EC800M_CTRL_STAGE_PWRKEY_HOLD:
+        case EC800M_CTRL_STAGE_RELEASE_PWRKEY:
             control->setPwrkeyLevel(device->cfg.pwrkeyPin, false);
+            device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.pwrkeyPulseMs;
+            device->ctrlPlane.stage = EC800M_CTRL_STAGE_ASSERT_PWRKEY;
+            break;
+        case EC800M_CTRL_STAGE_ASSERT_PWRKEY:
+            control->setPwrkeyLevel(device->cfg.pwrkeyPin, true);
             device->ctrlPlane.readyDeadlineTick = nowTickMs + device->cfg.readyTimeoutMs;
             device->ctrlPlane.nextActionTick = nowTickMs + device->cfg.bootWaitMs;
             device->ctrlPlane.stage = EC800M_CTRL_STAGE_WAIT_AT;
