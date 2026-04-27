@@ -63,6 +63,8 @@ static char gVfsFatfsFileContextSizeCheck[(sizeof(struct stVfsFatfsFileHandle) <
 
 bool vfsFatfsInitContext(stVfsFatfsContext *context, const stVfsFatfsCfg *cfg)
 {
+	(void)gVfsFatfsFileContextSizeCheck[0];
+
     if ((context == NULL) || (cfg == NULL) || (cfg->physicalDrive > 9U)) {
         return false;
     }

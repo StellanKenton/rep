@@ -92,7 +92,7 @@ read_next:
 ### 4.2 `module/`
 
 - 入口：`module/module.md`
-- 高复用叶子目录：`mpu6050/`、`pca9535/`、`tm1651/`、`w25qxxx/`、`gd25qxxx/`
+- 高复用叶子目录：`mpu6050/`、`pca9535/`、`tm1651/`、`w25qxxx/`、`gd25qxxx/`、`ec800m/`
 
 ### 4.3 `comm/`
 
