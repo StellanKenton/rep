@@ -30,6 +30,7 @@ typedef enum eFc41dMapType {
 typedef enum eFc41dRole {
     FC41D_ROLE_NONE = 0,
     FC41D_ROLE_BLE_PERIPHERAL,
+    FC41D_ROLE_WIFI_STATION,
     FC41D_ROLE_MAX,
 } eFc41dRole;
 
@@ -43,11 +44,11 @@ typedef enum eFc41dRunState {
 } eFc41dRunState;
 
 #ifndef FC41D_STREAM_RX_STORAGE_SIZE
-#define FC41D_STREAM_RX_STORAGE_SIZE         256U
+#define FC41D_STREAM_RX_STORAGE_SIZE         640U
 #endif
 
 #ifndef FC41D_STREAM_LINE_BUFFER_SIZE
-#define FC41D_STREAM_LINE_BUFFER_SIZE        128U
+#define FC41D_STREAM_LINE_BUFFER_SIZE        640U
 #endif
 
 #ifndef FC41D_RX_POLL_CHUNK_SIZE
@@ -67,7 +68,7 @@ typedef enum eFc41dRunState {
 #endif
 
 #ifndef FC41D_CTRL_CMD_BUFFER_SIZE
-#define FC41D_CTRL_CMD_BUFFER_SIZE           160U
+#define FC41D_CTRL_CMD_BUFFER_SIZE           384U
 #endif
 
 #ifndef FC41D_DEFAULT_TX_TIMEOUT_MS
@@ -206,6 +207,9 @@ eFc41dStatus fc41dProcess(eFc41dMapType device, uint32_t nowTickMs);
 bool fc41dIsReady(eFc41dMapType device);
 const stFc41dInfo *fc41dGetInfo(eFc41dMapType device);
 const stFc41dState *fc41dGetState(eFc41dMapType device);
+eFc41dStatus fc41dSubmitTextCommand(eFc41dMapType device, const char *cmdText);
+eFc41dStatus fc41dSubmitTextCommandEx(eFc41dMapType device, const char *cmdText, fc41dLineFunc lineHandler, void *userData);
+eFc41dStatus fc41dSubmitPromptCommandEx(eFc41dMapType device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, fc41dLineFunc lineHandler, void *userData);
 uint16_t fc41dGetRxLength(eFc41dMapType device);
 uint16_t fc41dReadData(eFc41dMapType device, uint8_t *buffer, uint16_t bufferSize);
 eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_t length);

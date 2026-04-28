@@ -40,6 +40,7 @@ typedef enum eFc41dCtrlStage {
     FC41D_CTRL_STAGE_READY_SETTLE,
     FC41D_CTRL_STAGE_PROBE_AFTER_READY,
     FC41D_CTRL_STAGE_STOP_STA,
+    FC41D_CTRL_STAGE_WIFI_READY,
     FC41D_CTRL_STAGE_BLE_INIT,
     FC41D_CTRL_STAGE_BLE_SET_NAME,
     FC41D_CTRL_STAGE_BLE_SET_SERVICE,
@@ -55,6 +56,7 @@ typedef enum eFc41dCtrlTxnKind {
     FC41D_CTRL_TXN_STAGE,
     FC41D_CTRL_TXN_DATA_TX,
     FC41D_CTRL_TXN_BLE_DISCONNECT,
+    FC41D_CTRL_TXN_USER_TEXT,
 } eFc41dCtrlTxnKind;
 
 typedef struct stFc41dCtrlPlane {
@@ -65,6 +67,8 @@ typedef struct stFc41dCtrlPlane {
     eFc41dCtrlTxnKind txnKind;
     bool isTxnDone;
     eFc41dStatus txnStatus;
+    fc41dLineFunc userTextLineHandler;
+    void *userTextUserData;
 } stFc41dCtrlPlane;
 
 typedef struct stFc41dDevice {
@@ -93,6 +97,9 @@ eFc41dStatus fc41dMapStreamStatus(eFlowParserStrmSta status);
 eFc41dStatus fc41dMapResult(eFlowParserResult result);
 eFc41dStatus fc41dCtrlStart(stFc41dDevice *device, eFc41dRole role);
 eFc41dStatus fc41dCtrlDisconnectBle(stFc41dDevice *device);
+eFc41dStatus fc41dCtrlSubmitTextCommand(stFc41dDevice *device, const char *cmdText);
+eFc41dStatus fc41dCtrlSubmitTextCommandEx(stFc41dDevice *device, const char *cmdText, fc41dLineFunc lineHandler, void *userData);
+eFc41dStatus fc41dCtrlSubmitPromptCommandEx(stFc41dDevice *device, const char *cmdText, const uint8_t *payloadBuf, uint16_t payloadLen, fc41dLineFunc lineHandler, void *userData);
 void fc41dCtrlStop(stFc41dDevice *device);
 eFc41dStatus fc41dCtrlProcess(stFc41dDevice *device, eFc41dMapType deviceId, uint32_t nowTickMs);
 void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint32_t nowTickMs, eFc41dStatus status);

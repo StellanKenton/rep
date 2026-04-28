@@ -463,7 +463,10 @@ static eFlowParserStrmSta flowparserStreamDispatchLine(stFlowParserStream *strea
         return FLOWPARSER_STREAM_OK;
     }
 
-    if ((stream->stage == FLOWPARSER_STAGE_WAIT_PROMPT) && isPrompt) {
+    if ((stream->stage == FLOWPARSER_STAGE_WAIT_PROMPT) &&
+        (isPrompt ||
+         ((lineLen == 7U) && (memcmp(lineBuf, "CONNECT", 7U) == 0)) ||
+         ((lineLen == 2U) && (memcmp(lineBuf, "OK", 2U) == 0)))) {
         if ((stream->payloadBuf != NULL) && (stream->payloadLen > 0U)) {
             if (stream->pfSend(stream->sendUserData, stream->payloadBuf, stream->payloadLen) != FLOWPARSER_STREAM_OK) {
                 flowparserStreamFinish(stream, FLOWPARSER_RESULT_SEND_FAIL);

@@ -416,6 +416,40 @@ const stFc41dState *fc41dGetState(eFc41dMapType device)
     return &lDevice->state;
 }
 
+eFc41dStatus fc41dSubmitTextCommand(eFc41dMapType device, const char *cmdText)
+{
+    return fc41dSubmitTextCommandEx(device, cmdText, NULL, NULL);
+}
+
+eFc41dStatus fc41dSubmitTextCommandEx(eFc41dMapType device, const char *cmdText, fc41dLineFunc lineHandler, void *userData)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    return fc41dCtrlSubmitTextCommandEx(lDevice, cmdText, lineHandler, userData);
+}
+
+eFc41dStatus fc41dSubmitPromptCommandEx(eFc41dMapType device,
+                                        const char *cmdText,
+                                        const uint8_t *payloadBuf,
+                                        uint16_t payloadLen,
+                                        fc41dLineFunc lineHandler,
+                                        void *userData)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->info.isInit) {
+        return FC41D_STATUS_NOT_READY;
+    }
+
+    return fc41dCtrlSubmitPromptCommandEx(lDevice, cmdText, payloadBuf, payloadLen, lineHandler, userData);
+}
+
 uint16_t fc41dGetRxLength(eFc41dMapType device)
 {
     stFc41dDevice *lDevice;
@@ -646,18 +680,19 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
             return fc41dMapDrvStatus(lDrvStatus);
         }
 
-        if ((device->state.role == FC41D_ROLE_BLE_PERIPHERAL) && device->state.isBleConnected) {
+        if ((device->state.role == FC41D_ROLE_BLE_PERIPHERAL) && device->state.isBleConnected &&
+            !flowparserStreamIsBusy(&device->stream)) {
             fc41dDataStoreRx(&device->dataPlane, lRxBuffer, lReadLen);
-        }
-
-        lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
-        if (lStreamStatus != FLOWPARSER_STREAM_OK) {
-            LOG_W(FC41D_LOG_TAG,
-                  "stream feed failed link=%u len=%u status=%d",
-                  (unsigned int)device->cfg.linkId,
-                  (unsigned int)lReadLen,
-                  (int)lStreamStatus);
-            return fc41dMapStreamStatus(lStreamStatus);
+        } else {
+            lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
+            if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+                LOG_W(FC41D_LOG_TAG,
+                      "stream feed failed link=%u len=%u status=%d",
+                      (unsigned int)device->cfg.linkId,
+                      (unsigned int)lReadLen,
+                      (int)lStreamStatus);
+                return fc41dMapStreamStatus(lStreamStatus);
+            }
         }
 
         device->info.rxBytes += lReadLen;
