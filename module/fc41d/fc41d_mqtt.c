@@ -227,14 +227,14 @@ eFc41dStatus fc41dMqttBuildPublishRawCommand(const char *topic, uint16_t payload
     }
 
     buffer[0] = '\0';
-    status = appendText(buffer, bufferSize, &length, "AT+MQTTPUBRAW=0,");
-    if (status == FC41D_STATUS_OK) status = appendQuotedText(buffer, bufferSize, &length, topic);
-    if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, ",");
-    if (status == FC41D_STATUS_OK) status = appendU16(buffer, bufferSize, &length, payloadLen);
-    if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, ",");
+    status = appendText(buffer, bufferSize, &length, "AT+QMTPUBRAW=0,0,");
     if (status == FC41D_STATUS_OK) status = appendU16(buffer, bufferSize, &length, qos);
     if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, ",");
     if (status == FC41D_STATUS_OK) status = appendU16(buffer, bufferSize, &length, retain);
+    if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, ",");
+    if (status == FC41D_STATUS_OK) status = appendQuotedText(buffer, bufferSize, &length, topic);
+    if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, ",");
+    if (status == FC41D_STATUS_OK) status = appendU16(buffer, bufferSize, &length, payloadLen);
     if (status == FC41D_STATUS_OK) status = appendText(buffer, bufferSize, &length, "\r\n");
     return status;
 }
