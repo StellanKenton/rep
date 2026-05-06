@@ -22,6 +22,7 @@ extern "C" {
 #endif
 
 #define FC41D_MAC_QUERY_PREFIX              "+QBLEADDR:"
+#define FC41D_VERSION_QUERY_PREFIX          "+QVERSION"
 
 typedef struct stFc41dUrcCb {
     fc41dLineFunc pfHandler;
@@ -47,6 +48,7 @@ typedef enum eFc41dCtrlStage {
     FC41D_CTRL_STAGE_BLE_SET_CHAR_RX,
     FC41D_CTRL_STAGE_BLE_SET_CHAR_TX,
     FC41D_CTRL_STAGE_BLE_ADV_START,
+    FC41D_CTRL_STAGE_QUERY_VERSION,
     FC41D_CTRL_STAGE_QUERY_MAC,
     FC41D_CTRL_STAGE_RUNNING,
 } eFc41dCtrlStage;

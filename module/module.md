@@ -22,6 +22,7 @@ read_next:
     - fc41d/fc41d.md
     - esp32c5/esp32c5.md
     - ec800m/ec800m.md
+    - wt2003hx/wt2003hx.md
     - mpu6050/mpu6050.md
     - w25qxxx/w25qxxx.md
 ---
@@ -209,5 +210,7 @@ read_next:
 `esp32c5/` 目录同样遵循这套模式，但控制面改为 ESP-AT 的 BLE 指令族，默认通过 `AT+BLEINIT`、`AT+BLEADVPARAM`、`AT+BLEADVDATA`、`AT+BLEADVSTART`、`AT+BLEGATTSNTFY` 组装 server 侧 BLE 流程。
 
 `ec800m/` 目录用于 EC800M-CN 4G 模块，沿用 flowparser AT 事务模式，只提供 MQTT/HTTP 和通用 AT helper；USB Host CDC/ACM、PWRKEY、RESET 等项目绑定放在 `User/port` 和 `User/bsp`。
+
+`wt2003hx/` 目录用于 WT2003HX 音频模块，使用 `frameparser` 解析 `7E ... EF` 串口数据帧，只提供播放、停止、音量、播放模式、输出模式和状态查询；UART linkId、使能 GPIO 与业务播放策略放在 `User/port` 和 `User/manager`。
 
 满足以上要求后，这个模块通常就符合当前工程的 module 层风格。

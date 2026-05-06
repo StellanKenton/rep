@@ -115,6 +115,10 @@ typedef enum eFc41dRunState {
 #define FC41D_MAC_ADDRESS_TEXT_MAX_LENGTH    18U
 #endif
 
+#ifndef FC41D_MODULE_VERSION_TEXT_MAX_LENGTH
+#define FC41D_MODULE_VERSION_TEXT_MAX_LENGTH 34U
+#endif
+
 #ifndef FC41D_BLE_NAME_MAX_LENGTH
 #define FC41D_BLE_NAME_MAX_LENGTH            32U
 #endif
@@ -189,8 +193,10 @@ typedef struct stFc41dState {
     bool isBleConnected;
     bool isReadyUrcSeen;
     bool hasMacAddress;
+    bool hasModuleVersion;
     eFc41dStatus lastError;
     char macAddress[FC41D_MAC_ADDRESS_TEXT_MAX_LENGTH];
+    char moduleVersion[FC41D_MODULE_VERSION_TEXT_MAX_LENGTH];
 } stFc41dState;
 
 eFc41dStatus fc41dGetDefCfg(eFc41dMapType device, stFc41dCfg *cfg);
@@ -213,7 +219,9 @@ eFc41dStatus fc41dSubmitPromptCommandEx(eFc41dMapType device, const char *cmdTex
 uint16_t fc41dGetRxLength(eFc41dMapType device);
 uint16_t fc41dReadData(eFc41dMapType device, uint8_t *buffer, uint16_t bufferSize);
 eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_t length);
+bool fc41dHasPendingTx(eFc41dMapType device);
 bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize);
+bool fc41dGetCachedVersion(eFc41dMapType device, char *buffer, uint16_t bufferSize);
 eFc41dStatus fc41dSetUrcHandler(eFc41dMapType device, fc41dLineFunc handler, void *userData);
 eFc41dStatus fc41dSetUrcMatcher(eFc41dMapType device, fc41dUrcMatchFunc matcher, void *userData);
 eFc41dStatus fc41dSetRawMatcher(eFc41dMapType device, fc41dRawMatchFunc matcher, void *userData);

@@ -63,6 +63,7 @@ static bool fc41dIsValidDevice(eFc41dMapType device);
 static stFc41dDevice *fc41dGetDevice(eFc41dMapType device);
 static void fc41dLoadDefCfg(eFc41dMapType device, stFc41dCfg *cfg);
 static eFc41dStatus fc41dBackGround(stFc41dDevice *device);
+static bool fc41dIsBleDirectRxMode(const stFc41dDevice *device);
 static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, uint16_t len);
 static uint32_t fc41dStreamGetTickMs(void *userData);
 static bool fc41dStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
@@ -157,7 +158,9 @@ eFc41dStatus fc41dSetBleCfg(eFc41dMapType device, const stFc41dBleCfg *cfg)
 
     lDevice->bleCfg = *cfg;
     lDevice->state.hasMacAddress = false;
+    lDevice->state.hasModuleVersion = false;
     lDevice->state.macAddress[0] = '\0';
+    lDevice->state.moduleVersion[0] = '\0';
     LOG_I(FC41D_LOG_TAG,
           "set ble cfg dev=%u mode=%u name=%s service=%s rx=%s tx=%s",
           (unsigned int)device,
@@ -322,16 +325,15 @@ eFc41dStatus fc41dDisconnectBle(eFc41dMapType device)
         return FC41D_STATUS_NOT_READY;
     }
 
-    if (!lDevice->state.isBleConnected) {
-        return FC41D_STATUS_OK;
-    }
-
     fc41dSyncState(lDevice);
     if (lDevice->state.isBusy) {
         return FC41D_STATUS_BUSY;
     }
 
-    LOG_I(FC41D_LOG_TAG, "disconnect ble request dev=%u", (unsigned int)device);
+    LOG_I(FC41D_LOG_TAG,
+          "disconnect ble request dev=%u connected=%u",
+          (unsigned int)device,
+          lDevice->state.isBleConnected ? 1U : 0U);
     return fc41dCtrlDisconnectBle(lDevice);
 }
 
@@ -507,6 +509,18 @@ eFc41dStatus fc41dWriteData(eFc41dMapType device, const uint8_t *buffer, uint16_
     return lDevice->state.lastError;
 }
 
+bool fc41dHasPendingTx(eFc41dMapType device)
+{
+    stFc41dDevice *lDevice;
+
+    lDevice = fc41dGetDevice(device);
+    if (lDevice == NULL) {
+        return false;
+    }
+
+    return fc41dDataHasPendingTx(&lDevice->dataPlane);
+}
+
 bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize)
 {
     stFc41dDevice *lDevice;
@@ -527,6 +541,29 @@ bool fc41dGetCachedMac(eFc41dMapType device, char *buffer, uint16_t bufferSize)
     }
 
     (void)memcpy(buffer, lDevice->state.macAddress, lLength + 1U);
+    return true;
+}
+
+bool fc41dGetCachedVersion(eFc41dMapType device, char *buffer, uint16_t bufferSize)
+{
+    stFc41dDevice *lDevice;
+    uint16_t lLength;
+
+    if ((buffer == NULL) || (bufferSize == 0U)) {
+        return false;
+    }
+
+    lDevice = fc41dGetDevice(device);
+    if ((lDevice == NULL) || !lDevice->state.hasModuleVersion) {
+        return false;
+    }
+
+    lLength = (uint16_t)strlen(lDevice->state.moduleVersion);
+    if (bufferSize <= lLength) {
+        return false;
+    }
+
+    (void)memcpy(buffer, lDevice->state.moduleVersion, lLength + 1U);
     return true;
 }
 
@@ -652,6 +689,7 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
     uint16_t lChunkLimit;
     eDrvStatus lDrvStatus;
     eFlowParserStrmSta lStreamStatus;
+    bool lDirectRxMode;
 
     if ((device == NULL) || !device->info.isReady) {
         return FC41D_STATUS_NOT_READY;
@@ -680,18 +718,32 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
             return fc41dMapDrvStatus(lDrvStatus);
         }
 
-        if ((device->state.role == FC41D_ROLE_BLE_PERIPHERAL) && device->state.isBleConnected &&
-            !flowparserStreamIsBusy(&device->stream)) {
+        lDirectRxMode = fc41dIsBleDirectRxMode(device);
+        if (lDirectRxMode) {
             fc41dDataStoreRx(&device->dataPlane, lRxBuffer, lReadLen);
-        } else {
-            lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
-            if (lStreamStatus != FLOWPARSER_STREAM_OK) {
-                LOG_W(FC41D_LOG_TAG,
-                      "stream feed failed link=%u len=%u status=%d",
-                      (unsigned int)device->cfg.linkId,
-                      (unsigned int)lReadLen,
-                      (int)lStreamStatus);
+        }
+
+        lStreamStatus = flowparserStreamFeed(&device->stream, lRxBuffer, lReadLen);
+        if (lStreamStatus != FLOWPARSER_STREAM_OK) {
+            LOG_W(FC41D_LOG_TAG,
+                  "stream feed failed link=%u len=%u status=%d",
+                  (unsigned int)device->cfg.linkId,
+                  (unsigned int)lReadLen,
+                  (int)lStreamStatus);
+            if (!lDirectRxMode) {
                 return fc41dMapStreamStatus(lStreamStatus);
+            }
+            flowparserStreamReset(&device->stream);
+        } else if (lDirectRxMode) {
+            lStreamStatus = flowparserStreamProc(&device->stream);
+            fc41dSyncState(device);
+            if ((lStreamStatus != FLOWPARSER_STREAM_OK) && (lStreamStatus != FLOWPARSER_STREAM_EMPTY) &&
+                (lStreamStatus != FLOWPARSER_STREAM_BUSY)) {
+                LOG_W(FC41D_LOG_TAG,
+                      "urc stream process failed link=%u status=%d",
+                      (unsigned int)device->cfg.linkId,
+                      (int)lStreamStatus);
+                flowparserStreamReset(&device->stream);
             }
         }
 
@@ -711,6 +763,13 @@ static eFc41dStatus fc41dBackGround(stFc41dDevice *device)
           (unsigned int)device->cfg.linkId,
           (int)lStreamStatus);
     return fc41dMapStreamStatus(lStreamStatus);
+}
+
+static bool fc41dIsBleDirectRxMode(const stFc41dDevice *device)
+{
+    return (device != NULL) &&
+           (device->state.role == FC41D_ROLE_BLE_PERIPHERAL) &&
+           device->state.isBleConnected;
 }
 
 static eFlowParserStrmSta fc41dStreamSend(void *userData, const uint8_t *buf, uint16_t len)
@@ -812,6 +871,10 @@ static void fc41dStreamDispatchRaw(void *userData, const uint8_t *frameBuf, uint
 
     lDevice = (stFc41dDevice *)userData;
     if ((lDevice == NULL) || (frameBuf == NULL) || (frameLen == 0U)) {
+        return;
+    }
+
+    if (fc41dIsBleDirectRxMode(lDevice)) {
         return;
     }
 

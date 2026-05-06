@@ -77,6 +77,7 @@ static bool fc41dIsTokenBodyChar(uint8_t ch);
 static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
 static bool fc41dTryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
 static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value);
+static bool fc41dTryParseModuleVersion(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
 static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage);
 static const char *fc41dCtrlGetRoleName(eFc41dRole role);
 static void fc41dCtrlSetStage(stFc41dDevice *device, eFc41dCtrlStage stage);
@@ -251,8 +252,10 @@ eFc41dStatus fc41dCtrlStart(stFc41dDevice *device, eFc41dRole role)
     device->state.isBleConnected = false;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
+    device->state.hasModuleVersion = false;
     device->state.lastError = FC41D_STATUS_OK;
     device->state.macAddress[0] = '\0';
+    device->state.moduleVersion[0] = '\0';
     fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_ASSERT_RESET);
     device->ctrlPlane.nextActionTick = 0U;
     device->ctrlPlane.readyDeadlineTick = 0U;
@@ -418,9 +421,11 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
     device->state.isBleConnected = false;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
+    device->state.hasModuleVersion = false;
     device->state.lastError = status;
     device->state.runState = FC41D_RUN_ERROR;
     device->state.macAddress[0] = '\0';
+    device->state.moduleVersion[0] = '\0';
     device->state.role = lRole;
     fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_ASSERT_RESET);
     device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
@@ -513,6 +518,13 @@ void fc41dCtrlHandleTxnLine(stFc41dDevice *device, const uint8_t *lineBuf, uint1
     if ((device->ctrlPlane.stage == FC41D_CTRL_STAGE_QUERY_MAC) &&
         fc41dTryParseMacAddress(lineBuf, lineLen, device->state.macAddress, (uint16_t)sizeof(device->state.macAddress))) {
         device->state.hasMacAddress = true;
+    }
+    if ((device->ctrlPlane.stage == FC41D_CTRL_STAGE_QUERY_VERSION) &&
+        fc41dTryParseModuleVersion(lineBuf,
+                                   lineLen,
+                                   device->state.moduleVersion,
+                                   (uint16_t)sizeof(device->state.moduleVersion))) {
+        device->state.hasModuleVersion = true;
     }
 }
 
@@ -732,6 +744,12 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
     device->ctrlPlane.txnStatus = FC41D_STATUS_OK;
 
     if (lStatus != FC41D_STATUS_OK) {
+        if (device->ctrlPlane.stage == FC41D_CTRL_STAGE_QUERY_VERSION) {
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_QUERY_MAC);
+            LOG_W(FC41D_CTRL_LOG_TAG, "version query failed, continue without cached version");
+            return FC41D_STATUS_OK;
+        }
+
         if (device->ctrlPlane.stage == FC41D_CTRL_STAGE_QUERY_MAC) {
             fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_RUNNING);
             device->state.runState = FC41D_RUN_READY;
@@ -746,6 +764,14 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
             device->ctrlPlane.userTextLineHandler = NULL;
             device->ctrlPlane.userTextUserData = NULL;
             device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            return FC41D_STATUS_OK;
+        }
+
+        if ((device->ctrlPlane.stage == FC41D_CTRL_STAGE_RUNNING) &&
+            (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_BLE_DISCONNECT)) {
+            device->state.isBleConnected = false;
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
+            LOG_W(FC41D_CTRL_LOG_TAG, "ble disconnect command failed status=%d", (int)lStatus);
             return FC41D_STATUS_OK;
         }
 
@@ -793,6 +819,10 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
         case FC41D_CTRL_STAGE_BLE_ADV_START:
             device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
             device->state.isBleAdvertising = true;
+            fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_QUERY_VERSION);
+            break;
+        case FC41D_CTRL_STAGE_QUERY_VERSION:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
             fc41dCtrlSetStage(device, FC41D_CTRL_STAGE_QUERY_MAC);
             break;
         case FC41D_CTRL_STAGE_QUERY_MAC:
@@ -954,6 +984,9 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
         case FC41D_CTRL_STAGE_BLE_ADV_START:
             device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device, "AT+QBLEADVSTART\r\n");
+        case FC41D_CTRL_STAGE_QUERY_VERSION:
+            device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
+            return fc41dSubmitCtrlText(device, "AT+QVERSION\r\n");
         case FC41D_CTRL_STAGE_QUERY_MAC:
             device->ctrlPlane.txnKind = FC41D_CTRL_TXN_STAGE;
             return fc41dSubmitCtrlText(device,
@@ -1226,6 +1259,45 @@ static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value)
     return false;
 }
 
+static bool fc41dTryParseModuleVersion(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize)
+{
+    uint16_t lPrefixLen;
+    uint16_t lCopyLen;
+
+    if ((lineBuf == NULL) || (lineLen == 0U) || (buffer == NULL) || (bufferSize == 0U)) {
+        return false;
+    }
+
+    lPrefixLen = (uint16_t)strlen(FC41D_VERSION_QUERY_PREFIX);
+    if ((lineLen <= lPrefixLen) || (memcmp(lineBuf, FC41D_VERSION_QUERY_PREFIX, lPrefixLen) != 0)) {
+        return false;
+    }
+
+    lCopyLen = (uint16_t)(lineLen - lPrefixLen);
+    if ((lCopyLen > 0U) && (lineBuf[lPrefixLen] == (uint8_t)':')) {
+        lPrefixLen++;
+        lCopyLen--;
+    }
+    while ((lCopyLen > 0U) &&
+           ((lineBuf[lPrefixLen] == (uint8_t)' ') || (lineBuf[lPrefixLen] == (uint8_t)'\t'))) {
+        lPrefixLen++;
+        lCopyLen--;
+    }
+    while ((lCopyLen > 0U) &&
+           ((lineBuf[lPrefixLen + lCopyLen - 1U] == (uint8_t)' ') ||
+            (lineBuf[lPrefixLen + lCopyLen - 1U] == (uint8_t)'\t'))) {
+        lCopyLen--;
+    }
+
+    if ((lCopyLen == 0U) || (lCopyLen >= bufferSize)) {
+        return false;
+    }
+
+    (void)memcpy(buffer, &lineBuf[lPrefixLen], lCopyLen);
+    buffer[lCopyLen] = '\0';
+    return true;
+}
+
 static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage)
 {
     switch (stage) {
@@ -1257,6 +1329,8 @@ static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage)
             return "BLE_SET_CHAR_TX";
         case FC41D_CTRL_STAGE_BLE_ADV_START:
             return "BLE_ADV_START";
+        case FC41D_CTRL_STAGE_QUERY_VERSION:
+            return "QUERY_VERSION";
         case FC41D_CTRL_STAGE_QUERY_MAC:
             return "QUERY_MAC";
         case FC41D_CTRL_STAGE_RUNNING:
