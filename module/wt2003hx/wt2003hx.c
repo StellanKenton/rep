@@ -25,6 +25,7 @@ static eWt2003hxStatus wt2003hxSendCmd(eWt2003hxMapType device, uint8_t cmd, con
 static uint32_t wt2003hxProtocolHeadLen(const uint8_t *buf, uint32_t availLen, void *userCtx);
 static uint32_t wt2003hxProtocolPktLen(const uint8_t *buf, uint32_t headLen, uint32_t availLen, void *userCtx);
 static uint32_t wt2003hxProtocolChecksum(const uint8_t *buf, uint32_t len, void *userCtx);
+static void wt2003hxHandleRawReply(stWt2003hxDevice *device, const uint8_t *buf, uint16_t len);
 static void wt2003hxHandlePacket(stWt2003hxDevice *device, const stFrmPsrPkt *pkt);
 
 __attribute__((weak)) void wt2003hxLoadPlatformDefaultCfg(eWt2003hxMapType device, stWt2003hxCfg *cfg)
@@ -218,6 +219,7 @@ eWt2003hxStatus wt2003hxProcess(eWt2003hxMapType device)
         if (lTransport->read(lDevice->cfg.linkId, lDevice->rxTemp, lReadLen) != WT2003HX_STATUS_OK) {
             return WT2003HX_STATUS_ERROR;
         }
+        wt2003hxHandleRawReply(lDevice, lDevice->rxTemp, lReadLen);
         (void)frmPsrFeed(&lDevice->parser, lDevice->rxTemp, lReadLen);
         lRxLen = (uint16_t)(lRxLen - lReadLen);
     }
@@ -436,6 +438,60 @@ static uint32_t wt2003hxProtocolChecksum(const uint8_t *buf, uint32_t len, void 
     return lChecksum;
 }
 
+static void wt2003hxUpdateReplyTick(stWt2003hxDevice *device, uint8_t cmd)
+{
+    if (device == NULL) {
+        return;
+    }
+
+    device->info.lastReplyCmd = cmd;
+    if (device->parser.protoCfg.getTick != NULL) {
+        device->info.lastReplyTick = device->parser.protoCfg.getTick();
+    }
+}
+
+static void wt2003hxHandleRawReply(stWt2003hxDevice *device, const uint8_t *buf, uint16_t len)
+{
+    uint16_t lIndex;
+    uint8_t lCmd;
+
+    if ((device == NULL) || (buf == NULL) || (len == 0U)) {
+        return;
+    }
+
+    for (lIndex = 0U; lIndex < len; lIndex++) {
+        lCmd = buf[lIndex];
+        switch (lCmd) {
+            case WT2003HX_CMD_CHECK_VOLUME_SET:
+                if ((uint16_t)(len - lIndex) >= 2U) {
+                    wt2003hxUpdateReplyTick(device, lCmd);
+                    device->info.volume = buf[lIndex + 1U];
+                }
+                break;
+            case WT2003HX_CMD_CHECK_STATE:
+                if ((uint16_t)(len - lIndex) >= 2U) {
+                    wt2003hxUpdateReplyTick(device, lCmd);
+                    device->info.playState = (eWt2003hxPlayState)buf[lIndex + 1U];
+                }
+                break;
+            case WT2003HX_CMD_CHECK_MUSIC_NUM:
+                if ((uint16_t)(len - lIndex) >= 3U) {
+                    wt2003hxUpdateReplyTick(device, lCmd);
+                    device->info.musicNum = (uint16_t)(((uint16_t)buf[lIndex + 1U] << 8U) | buf[lIndex + 2U]);
+                }
+                break;
+            case WT2003HX_CMD_CHECK_CONNECT_STATE:
+                if ((uint16_t)(len - lIndex) >= 2U) {
+                    wt2003hxUpdateReplyTick(device, lCmd);
+                    device->info.connectState = buf[lIndex + 1U];
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 static void wt2003hxHandlePacket(stWt2003hxDevice *device, const stFrmPsrPkt *pkt)
 {
     uint8_t lCmd;
@@ -449,10 +505,7 @@ static void wt2003hxHandlePacket(stWt2003hxDevice *device, const stFrmPsrPkt *pk
     lCmd = pkt->buf[2];
     lParam = (pkt->dataBuf != NULL) ? pkt->dataBuf : NULL;
     lParamLen = pkt->dataLen;
-    device->info.lastReplyCmd = lCmd;
-    if (device->parser.protoCfg.getTick != NULL) {
-        device->info.lastReplyTick = device->parser.protoCfg.getTick();
-    }
+    wt2003hxUpdateReplyTick(device, lCmd);
 
     switch (lCmd) {
         case WT2003HX_CMD_CHECK_VERSION:

@@ -25,8 +25,9 @@ extern "C" {
 #define WT2003HX_FRAME_HEAD                    0x7EU
 #define WT2003HX_FRAME_TAIL                    0xEFU
 #define WT2003HX_FRAME_MIN_LEN                 5U
-#define WT2003HX_FRAME_MAX_LEN                 16U
+#define WT2003HX_FRAME_MAX_LEN                 32U
 #define WT2003HX_PARAM_NAME_MAX_LEN            8U
+#define WT2003HX_VERSION_MAX_LEN               24U
 #define WT2003HX_STREAM_BUF_SIZE               64U
 #define WT2003HX_FRAME_BUF_SIZE                32U
 #define WT2003HX_RX_TEMP_SIZE                  32U
@@ -89,7 +90,7 @@ typedef struct stWt2003hxCfg {
 } stWt2003hxCfg;
 
 typedef struct stWt2003hxInfo {
-    uint8_t version[4];
+    uint8_t version[WT2003HX_VERSION_MAX_LEN];
     uint8_t versionLen;
     uint16_t musicNum;
     uint8_t volume;
