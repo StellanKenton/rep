@@ -53,6 +53,14 @@ static const stDrvGpioDebugPinInfo gDrvGpioDebugPinInfo[DRVGPIO_MAX] = {
         .enumName = "DRVGPIO_POWER_ON_CHECK",
         .alias = "power_on_check",
     },
+    [DRVGPIO_BAT_CHARGING_STATUS] = {
+        .enumName = "DRVGPIO_BAT_CHARGING_STATUS",
+        .alias = "bat_charging",
+    },
+    [DRVGPIO_BAT_CHARGE_DONE_STATUS] = {
+        .enumName = "DRVGPIO_BAT_CHARGE_DONE_STATUS",
+        .alias = "bat_charge_done",
+    },
     [DRVGPIO_PCA9535_SCL] = {
         .enumName = "DRVGPIO_PCA9535_SCL",
         .alias = "pca9535_scl",
