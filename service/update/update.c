@@ -887,7 +887,11 @@ static void updateHandleCheckRequest(void)
                            gUpdateContext.bootRecord.stagingCrc32);
             break;
         case E_UPDATE_REQUEST_RUN_APP:
+        case E_UPDATE_REQUEST_APP_RUNING:
             updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
+            break;
+        case E_UPDATE_REQUEST_ENTER_BOOT:
+            updateSetState(E_UPDATE_STATE_IDLE, 0U, 0U);
             break;
         case E_UPDATE_REQUEST_FAILED:
         default:
