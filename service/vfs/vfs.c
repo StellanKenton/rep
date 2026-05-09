@@ -771,11 +771,9 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
 {
     char lPath[VFS_PATH_MAX];
     char lBackendPath[VFS_PATH_MAX];
-    stVfsNodeInfo lEntries[VFS_LIST_BATCH_SIZE];
-    stVfsNodeInfo lMountEntries[VFS_MAX_MOUNTS];
+    stVfsNodeInfo lEntry;
     uint32_t lMountIndex;
     uint32_t lIndex;
-    uint32_t lBatchIndex;
     uint32_t lStartIndex = 0U;
     uint32_t lBatchCount = 0U;
     uint32_t lCount = 0U;
@@ -794,20 +792,39 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
     }
 
     if (strcmp(lPath, "/") == 0) {
-        for (lIndex = 0U; lIndex < VFS_MAX_MOUNTS; ++lIndex) {
-            if (!gVfsMounts[lIndex].isUsed) {
-                continue;
+        lIndex = 0U;
+        while (lIndex < VFS_MAX_MOUNTS) {
+            while ((lIndex < VFS_MAX_MOUNTS) && !gVfsMounts[lIndex].isUsed) {
+                lIndex++;
             }
 
-            (void)memset(&lMountEntries[lCount], 0, sizeof(lMountEntries[lCount]));
-            lMountEntries[lCount].type = eVFS_NODE_DIR;
-            if (!vfsCopyText(lMountEntries[lCount].name, &gVfsMounts[lIndex].mountPath[1], sizeof(lMountEntries[lCount].name))) {
+            if (lIndex >= VFS_MAX_MOUNTS) {
+                break;
+            }
+
+            (void)memset(&lEntry, 0, sizeof(lEntry));
+            lEntry.type = eVFS_NODE_DIR;
+            if (!vfsCopyText(lEntry.name, &gVfsMounts[lIndex].mountPath[1], sizeof(lEntry.name))) {
                 vfsSetStatus(eVFS_STATE_READY, true, eVFS_NAME_TOO_LONG);
                 vfsUnlock();
                 return false;
             }
 
             lCount++;
+            lIndex++;
+            vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+            vfsUnlock();
+
+            if ((visitor != NULL) && !visitor(context, &lEntry)) {
+                if (entryCount != NULL) {
+                    *entryCount = lCount;
+                }
+                return true;
+            }
+
+            if (!vfsLock()) {
+                return false;
+            }
         }
 
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
@@ -815,14 +832,6 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
 
         if (entryCount != NULL) {
             *entryCount = lCount;
-        }
-
-        if (visitor != NULL) {
-            for (lIndex = 0U; lIndex < lCount; ++lIndex) {
-                if (!visitor(context, &lMountEntries[lIndex])) {
-                    break;
-                }
-            }
         }
 
         return true;
@@ -843,8 +852,8 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
         lResult = gVfsMounts[lMountIndex].backendOps->listDir(gVfsMounts[lMountIndex].backendContext,
                                                               lBackendPath,
                                                               lStartIndex,
-                                                              lEntries,
-                                                              VFS_LIST_BATCH_SIZE,
+                                                              &lEntry,
+                                                              1U,
                                                               &lBatchCount,
                                                               &lHasMore,
                                                               &lError);
@@ -855,14 +864,12 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
         }
 
         lCount += lBatchCount;
-        if (visitor != NULL) {
-            for (lBatchIndex = 0U; lBatchIndex < lBatchCount; ++lBatchIndex) {
-                if (!visitor(context, &lEntries[lBatchIndex])) {
-                    if (entryCount != NULL) {
-                        *entryCount = lCount;
-                    }
-                    return true;
+        if ((visitor != NULL) && (lBatchCount > 0U)) {
+            if (!visitor(context, &lEntry)) {
+                if (entryCount != NULL) {
+                    *entryCount = lCount;
                 }
+                return true;
             }
         }
 
