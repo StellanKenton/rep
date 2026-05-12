@@ -24,6 +24,7 @@ copy_minimal_set:
 read_next:
     - log/log.md
     - rtos/rtos.md
+    - system/system.md
     - update/update.md
     - vfs/vfs.md
 ---
@@ -53,6 +54,7 @@ read_next:
 | --- | --- | --- |
 | `log/` | 统一 log/console 输入输出抽象 | `log/log.md` |
 | `rtos/` | RTOS 适配和最小并发抽象 | `rtos/rtos.md` |
+| `system/` | 通用系统模式与版本字符串核心 | `system/system.md` |
 | `update/` | 通用升级状态机与逻辑区域编排 | `update/update.md` |
 | `vfs/` | 统一挂载点、路径与基础文件语义的轻量 VFS 服务 | `vfs/vfs.md` |
 
