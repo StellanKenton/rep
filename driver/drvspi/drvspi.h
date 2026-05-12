@@ -17,18 +17,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVSPI_LOG_SUPPORT
-#define DRVSPI_LOG_SUPPORT                    1
-#endif
-
-#ifndef DRVSPI_CONSOLE_SUPPORT
-#define DRVSPI_CONSOLE_SUPPORT                1
-#endif
-
-#ifndef DRVSPI_MAX
-#define DRVSPI_MAX                            1U
-#endif
-
 #ifndef DRVSPI_LOCK_WAIT_MS
 #define DRVSPI_LOCK_WAIT_MS                   5U
 #endif

@@ -21,18 +21,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVUSB_LOG_SUPPORT
-#define DRVUSB_LOG_SUPPORT                    1
-#endif
-
-#ifndef DRVUSB_CONSOLE_SUPPORT
-#define DRVUSB_CONSOLE_SUPPORT                1
-#endif
-
-#ifndef DRVUSB_MAX
-#define DRVUSB_MAX                            1U
-#endif
-
 #ifndef DRVUSB_LOCK_WAIT_MS
 #define DRVUSB_LOCK_WAIT_MS                   5U
 #endif

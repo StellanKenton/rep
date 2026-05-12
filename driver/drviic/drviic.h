@@ -19,18 +19,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVIIC_LOG_SUPPORT
-#define DRVIIC_LOG_SUPPORT                    1
-#endif
-
-#ifndef DRVIIC_CONSOLE_SUPPORT
-#define DRVIIC_CONSOLE_SUPPORT                1
-#endif
-
-#ifndef DRVIIC_MAX
-#define DRVIIC_MAX                            1U
-#endif
-
 #ifndef DRVIIC_LOCK_WAIT_MS
 #define DRVIIC_LOCK_WAIT_MS                   5U
 #endif

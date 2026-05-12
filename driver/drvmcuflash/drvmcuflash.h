@@ -20,13 +20,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVMCUFLASH_LOG_SUPPORT
-#define DRVMCUFLASH_LOG_SUPPORT              1
-#endif
-
-#ifndef DRVMCUFLASH_CONSOLE_SUPPORT
-#define DRVMCUFLASH_CONSOLE_SUPPORT          0
-#endif
 
 #ifndef DRVMCUFLASH_LOCK_WAIT_MS
 #define DRVMCUFLASH_LOCK_WAIT_MS             50U

@@ -20,13 +20,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVANLOGIIC_LOG_SUPPORT
-#define DRVANLOGIIC_LOG_SUPPORT                 1
-#endif
-
-#ifndef DRVANLOGIIC_CONSOLE_SUPPORT
-#define DRVANLOGIIC_CONSOLE_SUPPORT             1
-#endif
 
 #ifndef DRVANLOGIIC_MAX
 #define DRVANLOGIIC_MAX                         2U
