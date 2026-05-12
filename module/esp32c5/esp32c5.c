@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #include "esp32c5_ctrl.h"
 
 #define ESP32C5_LOG_TAG                     "esp32c5"

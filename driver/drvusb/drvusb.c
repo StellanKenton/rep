@@ -12,13 +12,13 @@
 #include "drvusb.h"
 
 #if (DRVUSB_LOG_SUPPORT == 1)
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #endif
 
 #include <stdbool.h>
 
 #include "drvusb_port.h"
-#include "../../service/rtos/rtos.h"
+#include "../../sys/rtos/rtos.h"
 
 #define DRVUSB_LOG_TAG                   "drvUsb"
 

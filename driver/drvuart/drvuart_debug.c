@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../service/log/console.h"
+#include "../../sys/log/console.h"
 #include "ringbuffer.h"
 
 #define DRVUART_DEBUG_READ_MAX_LENGTH       24U

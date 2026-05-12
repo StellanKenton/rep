@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../service/log/console.h"
+#include "../../sys/log/console.h"
 
 static bool drvGpioDebugParsePin(const char *text, uint8_t *pin);
 static bool drvGpioDebugParseUint32(const char *text, uint32_t *value);

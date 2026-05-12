@@ -32,7 +32,7 @@ read_next:
 
 # Log Hook Guide
 
-这是 `service/log/` 目录中 log 子模块的权威入口文档。
+这是 `sys/log/` 目录中 log 子模块的权威入口文档。
 
 ## 1. 本层目标和边界
 

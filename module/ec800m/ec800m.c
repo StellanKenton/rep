@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #include "ec800m_ctrl.h"
 
 #define EC800M_LOG_TAG                         "ec800m"

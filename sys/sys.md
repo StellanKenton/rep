@@ -1,12 +1,12 @@
 ---
 doc_role: layer-guide
-layer: service
-module: service
+layer: sys
+module: sys
 status: active
 portability: layer-dependent
 public_headers: []
 core_files:
-    - service.md
+    - sys.md
 port_files: []
 debug_files: []
 depends_on:
@@ -20,7 +20,7 @@ common_utils:
     - log
     - driver/drvmcuflash
 copy_minimal_set:
-    - service/
+    - sys/
 read_next:
     - log/log.md
     - rtos/rtos.md
@@ -28,13 +28,13 @@ read_next:
     - vfs/vfs.md
 ---
 
-# Service 层总文档
+# Sys 层总文档
 
-这是 `rep/service/` 的权威入口文档。
+这是 `rep/sys/` 的权威入口文档。
 
 ## 1. 本层目标和边界
 
-`service` 层承载跨项目可复用、但比 `driver` / `module` 更偏流程和生命周期的公共能力。
+`sys` 层承载跨项目可复用、但比 `driver` / `module` 更偏流程和生命周期的公共能力。
 
 本层负责：
 
@@ -58,7 +58,7 @@ read_next:
 
 ## 3. 目录内推荐模式
 
-`service` 层优先采用下面的拆分：
+`sys` 层优先采用下面的拆分：
 
 - `xxx.h/.c`：稳定公共语义和状态机。
 - `xxx_port.h/.c`：项目存储、transport、tick、watchdog 等绑定。
@@ -77,12 +77,12 @@ read_next:
 
 禁止依赖：
 
-- 直接 include `User/` 下的项目头文件进入 service core。
-- 把具体芯片寄存器地址、具体 UART 口、具体 SPI 设备号写死在 service core。
+- 直接 include `User/` 下的项目头文件进入 sys core。
+- 把具体芯片寄存器地址、具体 UART 口、具体 SPI 设备号写死在 sys core。
 
 ## 5. 下级主文档最低要求
 
-每个 service 叶子目录主文档至少要写清：
+每个 sys 叶子目录主文档至少要写清：
 
 - 本目录的稳定公共 API。
 - core 与 port 的边界。
@@ -92,7 +92,7 @@ read_next:
 
 ## 6. 复制到其他工程时的处理方式
 
-`service` 子目录通常属于 `layer-dependent`：
+`sys` 子目录通常属于 `layer-dependent`：
 
 - `core` 可复用。
 - `port` 需要重写或重新绑定。

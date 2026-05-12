@@ -33,7 +33,7 @@ read_next:
 
 # Console 架构设计
 
-这是 `service/log/` 目录中 console 子模块的权威入口文档。
+这是 `sys/log/` 目录中 console 子模块的权威入口文档。
 
 ## 1. 本层目标和边界
 

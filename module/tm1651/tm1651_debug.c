@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../service/log/console.h"
+#include "../../sys/log/console.h"
 
 static bool tm1651DebugParseDevice(const char *name, eTm1651MapType *device);
 static bool tm1651DebugParseUint32(const char *text, uint32_t *value);

@@ -1,6 +1,6 @@
 ---
 doc_role: layer-guide
-layer: service
+layer: sys
 module: update
 status: active
 portability: layer-dependent
@@ -36,10 +36,10 @@ common_utils:
     - drvmcuflash
     - log
 copy_minimal_set:
-    - service/update/update.h
-    - service/update/update.c
-    - service/update/update_port.h
-    - service/update/update_port.c
+    - sys/update/update.h
+    - sys/update/update.c
+    - sys/update/update_port.h
+    - sys/update/update_port.c
 read_next:
     - ../../driver/drvmcuflash/drvmcuflash.md
     - ../log/log.md
@@ -47,7 +47,7 @@ read_next:
 
 # Update Service Guide
 
-这是 `rep/service/update/` 目录的权威入口文档。
+这是 `rep/sys/update/` 目录的权威入口文档。
 
 ## 1. 本层目标和边界
 
@@ -252,7 +252,7 @@ typedef struct stUpdateRegionCfg {
 | 调整回滚策略 | `update.c` | `update_port.c` 的设备读写接口 |
 | 接入实际 jump 汇编清理 | 项目层实现 `updatePortJumpToRegion` | `update.c` 中硬编码 MCU 细节 |
 | 调整日志或状态诊断粒度 | `update_debug.c` 或 `User/port/update_debug_port.c` | 底层 Flash 驱动 |
-| 调整当前产品升级入口和协议流程 | `User/` 目录下的项目 manager | `rep/service/update/` 的公共状态语义 |
+| 调整当前产品升级入口和协议流程 | `User/` 目录下的项目 manager | `rep/sys/update/` 的公共状态语义 |
 
 ## 10. 复制到其他工程的最小步骤
 

@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "frameparser_port.h"
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 
 #define FRM_PSR_LOG_TAG  "FrmPsr"
 

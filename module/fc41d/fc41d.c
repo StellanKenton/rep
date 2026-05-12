@@ -15,7 +15,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #include "fc41d_ctrl.h"
 
 #define FC41D_LOG_TAG                   "fc41d"

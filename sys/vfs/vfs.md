@@ -1,6 +1,6 @@
 ---
 doc_role: layer-guide
-layer: service
+layer: sys
 module: vfs
 status: active
 portability: layer-dependent
@@ -33,10 +33,10 @@ common_utils:
     - log
     - rtos
 copy_minimal_set:
-    - service/vfs/vfs.h
-    - service/vfs/vfs.c
-    - service/vfs/vfs_littlefs.h
-    - service/vfs/vfs_littlefs.c
+    - sys/vfs/vfs.h
+    - sys/vfs/vfs.c
+    - sys/vfs/vfs_littlefs.h
+    - sys/vfs/vfs_littlefs.c
 read_next:
     - ../rtos/rtos.md
     - ../log/log.md
@@ -44,7 +44,7 @@ read_next:
 
 # VFS Service Guide
 
-这是 `rep/service/vfs/` 目录的权威入口文档。
+这是 `rep/sys/vfs/` 目录的权威入口文档。
 
 ## 1. 目标与边界
 
@@ -137,7 +137,7 @@ read_next:
 
 ## 7. 复制到其他工程的最小步骤
 
-1. 复制 `rep/service/vfs/`。
+1. 复制 `rep/sys/vfs/`。
 2. 保留 littlefs 时同步复制 littlefs 依赖和对应 port 绑定。
 3. 在目标工程的 `User/port/` 重新实现 block device 绑定。
 4. 在目标工程启动序列里完成 `vfsInit + mount register + mount`。

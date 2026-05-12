@@ -67,7 +67,7 @@ read_next: []
 ## 5. 依赖白名单与黑名单
 
 - 仅依赖标准头 `stdint.h`、`string.h`。
-- 不依赖 `User/`、`driver/`、`module/`、`service/`。
+- 不依赖 `User/`、`driver/`、`module/`、`sys/`。
 - 禁止在本模块内部保存全局密钥、全局 IV 或调试打印。
 
 ## 6. 函数指针 / port / assembly 契约表

@@ -15,10 +15,10 @@
 
 #include "drvanlogiic_port.h"
 #include "rep_config.h"
-#include "../../service/rtos/rtos.h"
+#include "../../sys/rtos/rtos.h"
 
 #if (DRVANLOGIIC_LOG_SUPPORT == 1)
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #endif
 
 #define DRVANLOGIIC_LOG_TAG                  "drvAnlogIic"

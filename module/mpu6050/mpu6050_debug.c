@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../service/log/console.h"
+#include "../../sys/log/console.h"
 
 static bool mpu6050DebugParseDevice(const char *name, eMPU6050MapType *device);
 static bool mpu6050DebugParseHexNibble(char value, uint8_t *nibble);

@@ -11,7 +11,7 @@
 #include "drvadc.h"
 
 #if (DRVADC_LOG_SUPPORT == 1)
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #endif
 
 #include <stdbool.h>
@@ -19,7 +19,7 @@
 
 #include "rep_config.h"
 #include "drvadc_port.h"
-#include "../../service/rtos/rtos.h"
+#include "../../sys/rtos/rtos.h"
 
 #define DRVADC_LOG_TAG                    "drvAdc"
 

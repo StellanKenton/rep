@@ -12,7 +12,7 @@
 
 当前仓库中，RTOS 相关代码分成两层：
 
-- `rep/service/rtos`
+- `rep/sys/rtos`
   - 公共层
   - 定义统一类型、统一状态码、统一 API
   - 不允许直接调用 FreeRTOS、CMSIS-RTOS、uC/OS 等原生接口
@@ -32,7 +32,7 @@
 上层业务代码的调用链必须保持为：
 
 1. `app` 或业务模块调用 `repRtos*`
-2. `rep/service/rtos/rtos.c` 从 provider 取到 `stRepRtosOps`
+2. `rep/sys/rtos/rtos.c` 从 provider 取到 `stRepRtosOps`
 3. `User/port/rtos_port.c` 提供这张 `ops` 表
 4. `ops` 表里的函数再去调用具体 RTOS 原生接口
 
@@ -534,7 +534,7 @@ const stRepRtosOps *repRtosProviderGetOps(void)
 
 新增 RTOS 时，优先只修改 `User/port/rtos_port.*`。
 
-只有在以下情况，才应该去改 `rep/service/rtos` 公共层：
+只有在以下情况，才应该去改 `rep/sys/rtos` 公共层：
 
 - 新需求确实是公共能力，而不是某个 RTOS 的私有特性
 - 现有 `stRepRtosOps` 无法表达该能力

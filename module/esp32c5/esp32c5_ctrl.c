@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #include "esp32c5_ble.h"
 #include "esp32c5_mqtt.h"
 #include "esp32c5_wifi.h"
