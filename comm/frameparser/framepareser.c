@@ -11,25 +11,44 @@
 
 #include <string.h>
 
+#include "frameparser_port.h"
 #include "../../service/log/log.h"
 
 #define FRM_PSR_LOG_TAG  "FrmPsr"
 
-uint32_t frmPsrGetPlatformTickMs(void);
-void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg);
+static const stFrmPsrOps *frmPsrGetOps(void);
+static uint32_t frmPsrGetPlatformTickMs(void);
+static void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg);
 
-__attribute__((weak)) uint32_t frmPsrGetPlatformTickMs(void)
+static const stFrmPsrOps *frmPsrGetOps(void)
 {
-    return 0U;
+    return frmPsrPortGetOps();
 }
 
-__attribute__((weak)) void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg)
+static uint32_t frmPsrGetPlatformTickMs(void)
 {
-    (void)protocolId;
+    const stFrmPsrOps *lOps = frmPsrGetOps();
+
+    if ((lOps == NULL) || (lOps->getTickMs == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getTickMs();
+}
+
+static void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg)
+{
+    const stFrmPsrOps *lOps = frmPsrGetOps();
 
     if (protoCfg != NULL) {
         (void)memset(protoCfg, 0, sizeof(*protoCfg));
     }
+
+    if ((protoCfg == NULL) || (lOps == NULL) || (lOps->loadDefaultProtoCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultProtoCfg(protocolId, protoCfg);
 }
 
 static uint32_t frmPsrMinU32(uint32_t left, uint32_t right);
@@ -43,7 +62,7 @@ static bool frmPsrIsProtoCfgValid(const stFrmPsrProtoCfg *protoCfg);
 static bool frmPsrIsCfgValid(const stFrmPsrCfg *cfg);
 static void frmPsrClrPend(stFrmPsr *psr);
 static void frmPsrClrReady(stFrmPsr *psr);
-static uint32_t frmPsrGetTickMs(const stFrmPsr *psr);
+static uint32_t frmPsrGetTickMs(void);
 static bool frmPsrIsPktTout(const stFrmPsr *psr);
 static bool frmPsrFixOff(uint32_t pktLen, int32_t off, uint32_t *realOff);
 static bool frmPsrIsFieldCfgValid(uint16_t fieldOff, uint8_t fieldLen, uint16_t headLen);
@@ -250,13 +269,9 @@ static void frmPsrClrReady(stFrmPsr *psr)
     psr->hasReadyPkt = false;
 }
 
-static uint32_t frmPsrGetTickMs(const stFrmPsr *psr)
+static uint32_t frmPsrGetTickMs(void)
 {
-    if ((psr == NULL) || (psr->protoCfg.getTick == NULL)) {
-        return 0U;
-    }
-
-    return psr->protoCfg.getTick();
+    return frmPsrGetPlatformTickMs();
 }
 
 static bool frmPsrIsPktTout(const stFrmPsr *psr)
@@ -267,11 +282,11 @@ static bool frmPsrIsPktTout(const stFrmPsr *psr)
         return false;
     }
 
-    if (psr->protoCfg.getTick == NULL) {
+    if (frmPsrGetTickMs() == 0U) {
         return false;
     }
 
-    lNowTick = frmPsrGetTickMs(psr);
+    lNowTick = frmPsrGetTickMs();
     return (uint32_t)(lNowTick - psr->pendPktTick) >= psr->protoCfg.waitPktToutMs;
 }
 
@@ -425,10 +440,6 @@ eFrmPsrSta frmPsrInit(stFrmPsr *psr, const stFrmPsrCfg *cfg)
         return FRM_PSR_PROTO_INVALID;
     }
 
-    if (psr->protoCfg.getTick == NULL) {
-        psr->protoCfg.getTick = frmPsrGetPlatformTickMs;
-    }
-
     psr->streamBuf = cfg->streamBuf;
     psr->streamBufSize = cfg->streamBufSize;
     psr->frameBuf = cfg->frameBuf;
@@ -516,7 +527,7 @@ eFrmPsrSta frmPsrProcess(stFrmPsr *psr)
         if (lUsedLen < psr->protoCfg.minHeadLen) {
             if (!psr->hasPendPkt) {
                 psr->hasPendPkt = true;
-                psr->pendPktTick = frmPsrGetTickMs(psr);
+                psr->pendPktTick = frmPsrGetTickMs();
                 psr->pendPktLen = 0U;
             }
 
@@ -568,7 +579,7 @@ eFrmPsrSta frmPsrProcess(stFrmPsr *psr)
         if (lUsedLen < lPktLen) {
             if ((!psr->hasPendPkt) || (psr->pendPktLen != lPktLen)) {
                 psr->hasPendPkt = true;
-                psr->pendPktTick = frmPsrGetTickMs(psr);
+                psr->pendPktTick = frmPsrGetTickMs();
                 psr->pendPktLen = (uint16_t)lPktLen;
             }
 

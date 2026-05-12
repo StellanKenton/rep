@@ -81,6 +81,13 @@ typedef struct stW25qxxxCfg {
     uint8_t linkId;
 } stW25qxxxCfg;
 
+typedef struct stW25qxxxOps {
+    void (*loadDefaultCfg)(eW25qxxxMapType device, stW25qxxxCfg *cfg);
+    const stW25qxxxSpiInterface *(*getSpiInterface)(const stW25qxxxCfg *cfg);
+    bool (*isValidCfg)(const stW25qxxxCfg *cfg);
+    void (*delayMs)(uint32_t delayMs);
+} stW25qxxxOps;
+
 typedef struct stW25qxxxInfo {
     uint8_t manufacturerId;
     uint8_t memoryType;
@@ -112,6 +119,8 @@ eW25qxxxStatus w25qxxxWrite(eW25qxxxMapType device, uint32_t address, const uint
 eW25qxxxStatus w25qxxxEraseSector(eW25qxxxMapType device, uint32_t address);
 eW25qxxxStatus w25qxxxEraseBlock64k(eW25qxxxMapType device, uint32_t address);
 eW25qxxxStatus w25qxxxEraseChip(eW25qxxxMapType device);
+
+const stW25qxxxOps *w25qxxxPortGetOps(void);
 
 #ifdef __cplusplus
 }

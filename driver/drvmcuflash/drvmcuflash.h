@@ -53,6 +53,12 @@ typedef struct stDrvMcuFlashBspInterface {
     drvMcuFlashBspGetSectorInfoFunc getSectorInfo;
 } stDrvMcuFlashBspInterface;
 
+typedef struct stDrvMcuFlashOps {
+    const stDrvMcuFlashBspInterface *(*getBspInterface)(void);
+    eDrvStatus (*getAreaInfo)(uint8_t area, stDrvMcuFlashAreaInfo *info);
+    uint8_t (*getAreaCount)(void);
+} stDrvMcuFlashOps;
+
 bool drvMcuFlashInit(void);
 bool drvMcuFlashIsReady(void);
 bool drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info);

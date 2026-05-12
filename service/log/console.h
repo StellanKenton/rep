@@ -64,7 +64,6 @@ bool consoleCoreInit(void);
 bool consoleCoreRegisterCommand(const stConsoleCommand *command);
 void consoleCoreProcess(void);
 int32_t logConsoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
-void logPlatformConsolePoll(void);
 
 #ifndef LOG_CONSOLE_INTERNAL_BUILD
 #define consoleInit() logInit()

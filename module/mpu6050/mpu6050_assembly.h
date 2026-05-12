@@ -36,13 +36,17 @@ typedef struct stMpu6050AssembleCfg {
     uint8_t linkId;
 } stMpu6050AssembleCfg;
 
-void mpu6050LoadPlatformDefaultCfg(eMPU6050MapType device, stMpu6050Cfg *cfg);
-const stMpu6050IicInterface *mpu6050GetPlatformIicInterface(eMPU6050MapType device);
-bool mpu6050PlatformIsValidAssemble(eMPU6050MapType device);
-uint8_t mpu6050PlatformGetLinkId(eMPU6050MapType device);
-uint32_t mpu6050PlatformGetResetDelayMs(void);
-uint32_t mpu6050PlatformGetWakeDelayMs(void);
-void mpu6050PlatformDelayMs(uint32_t delayMs);
+typedef struct stMpu6050Ops {
+    void (*loadDefaultCfg)(eMPU6050MapType device, stMpu6050Cfg *cfg);
+    const stMpu6050IicInterface *(*getIicInterface)(eMPU6050MapType device);
+    bool (*isValidAssemble)(eMPU6050MapType device);
+    uint8_t (*getLinkId)(eMPU6050MapType device);
+    uint32_t (*getResetDelayMs)(void);
+    uint32_t (*getWakeDelayMs)(void);
+    void (*delayMs)(uint32_t delayMs);
+} stMpu6050Ops;
+
+const stMpu6050Ops *mpu6050PortGetOps(void);
 
 #ifdef __cplusplus
 }

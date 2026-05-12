@@ -9,7 +9,9 @@ public_headers:
 core_files:
   - sdcard.c
   - sdcard_assembly.h
-port_files: []
+port_files:
+  - ../../../User/port/sdcard_port.h
+  - ../../../User/port/sdcard_port.c
 debug_files: []
 depends_on:
   - ../../rep.h
@@ -17,9 +19,7 @@ depends_on:
 forbidden_depends_on:
   - 在 core 中直连具体 SDIO/SPI BSP 或项目私有 diskio.c
 required_hooks:
-  - sdcardLoadPlatformDefaultCfg
-  - sdcardGetPlatformInterface
-  - sdcardPlatformIsValidCfg
+  - sdcardPortGetOps
 optional_hooks: []
 common_utils: []
 copy_minimal_set:
@@ -48,6 +48,8 @@ read_next:
 | `sdcard.h` | 公共状态码、配置、卡信息、块读写 API |
 | `sdcard.c` | 设备实例管理、默认配置、状态刷新、范围校验、通用读写流程 |
 | `sdcard_assembly.h` | 项目侧最小 transport 契约和 ioctl 命令定义 |
+| `User/port/sdcard_port.h` | 项目侧 provider 入口声明，暴露 `sdcardPortGetOps()` |
+| `User/port/sdcard_port.c` | 项目侧静态 `stSdcardOps` 表实现，装配默认配置、transport 和配置校验能力 |
 | `sdcard.md` | 当前目录 contract |
 
 ## 3. 对外公共接口
@@ -95,9 +97,10 @@ read_next:
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `sdcardLoadPlatformDefaultCfg` | 必需 | 项目侧 `User/port` | `sdcardGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId 与初始化超时 | weak 默认值只占位 | `cfg != NULL` | 默认值应体现当前板级绑定 |
-| `sdcardGetPlatformInterface` | 必需 | 项目侧 `User/port` | `sdcardInit`、读写流程 | `const stSdcardInterface *(*)(cfg)` | 返回完整 transport 接口 | 返回 `NULL` 视为未绑定 | cfg 已装载 | core 不直接 include SDIO/SPI 私有头 |
-| `sdcardPlatformIsValidCfg` | 必需 | 项目侧 `User/port` | `sdcardSetCfg`、`sdcardInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId 与超时范围 |
+| `sdcardPortGetOps()` | 必需 | 项目侧 `User/port/sdcard_port.*` | `sdcardGetDefCfg`、`sdcardInit`、读写流程 | `const stSdcardOps *(*)(void)` | 返回长期有效的静态 `stSdcardOps` 表 | 返回 `NULL` 时 core 明确失败 | 无 | core 只通过 `ops/provider` 访问项目侧能力 |
+| `stSdcardOps.loadDefaultCfg` | 必需 | `User/port/sdcard_port.c` | `sdcardGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId 与初始化超时 | 缺失时默认配置保持零值，后续 `Init()` 会失败 | `cfg != NULL` | 默认值应体现当前板级绑定 |
+| `stSdcardOps.getInterface` | 必需 | `User/port/sdcard_port.c` | `sdcardInit`、读写流程 | `const stSdcardInterface *(*)(cfg)` | 返回完整 transport 接口 | 返回 `NULL` 视为未绑定 | cfg 已装载 | core 不直接 include SDIO/SPI 私有头 |
+| `stSdcardOps.isValidCfg` | 必需 | `User/port/sdcard_port.c` | `sdcardSetCfg`、`sdcardInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId 与超时范围 |
 | `stSdcardInterface.init` | 必需 | 项目侧 transport provider | `sdcardInit` | `eDrvStatus (*)(bus, timeoutMs)` | 控制器可访问介质 | 返回明确底层错误 | cfg 合法 | 可内部完成卡初始化序列 |
 | `stSdcardInterface.getStatus` | 必需 | 项目侧 transport provider | `sdcardInit`、`sdcardGetStatus` | `eDrvStatus (*)(bus, isPresent, isWriteProtected)` | 返回实时介质状态 | 返回底层状态 | provider 已装配 | 用于卡插拔和写保护检测 |
 | `stSdcardInterface.readBlocks` | 必需 | 项目侧 transport provider | `sdcardReadBlocks` | `eDrvStatus (*)(bus, startBlock, buffer, blockCount)` | 指定块读取成功 | 返回底层状态 | 模块 ready | 块大小由 `GET_INFO` 给出 |

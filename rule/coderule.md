@@ -122,6 +122,10 @@ read_next:
 - “改哪里”要直接写成矩阵，不要让维护者自己猜。
 - 文档中的文件职责描述必须与当前目录真实结构一致，不能引用不存在的 `_port.*` 路径。
 - 项目示例文档必须显式写清自己位于 `example/` 下，避免把示例层误写成仓库顶层公共层。
+- 只要目录真实存在 `port` / provider / platform binding 文件，主文档必须在 front matter 的 `port_files` 中列出真实路径，不能留空或只在正文顺手提及。
+- 只要目录需要维护者自己补 `port`，主文档必须给出最小 `port.c` 骨架，至少覆盖静态 ops/provider 表、公开获取入口、未知配置失败语义。
+- 只要目录存在配置装配函数，例如 `loadDefaultCfg`、`loadDefaultProtoCfg`、`getOps`、`getPlatformInterface`，主文档必须给出一张“必填字段 / 必填成员”检查表，避免维护者靠源码反推。
+- 只要目录支持多协议、多设备、多 linkId 或多映射，主文档必须给出分发规则，明确未知 id 的处理方式、是否允许共享 ops/provider、哪些分支可以复用同一组静态函数。
 
 ## 8. Brace Style: Same line
 ```c

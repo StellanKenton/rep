@@ -70,6 +70,10 @@ typedef struct stDrvSpiBspInterface {
     stDrvSpiCsControl csControl;
 } stDrvSpiBspInterface;
 
+typedef struct stDrvSpiOps {
+    const stDrvSpiBspInterface *(*getBspInterfaces)(void);
+} stDrvSpiOps;
+
 eDrvStatus drvSpiInit(uint8_t spi);
 eDrvStatus drvSpiSetCsControl(uint8_t spi, const stDrvSpiCsControl *control);
 eDrvStatus drvSpiTransfer(uint8_t spi, const stDrvSpiTransfer *transfer);
@@ -82,8 +86,6 @@ eDrvStatus drvSpiWriteRead(uint8_t spi, const uint8_t *writeBuffer, uint16_t wri
 eDrvStatus drvSpiWriteReadTimeout(uint8_t spi, const uint8_t *writeBuffer, uint16_t writeLength, uint8_t *readBuffer, uint16_t readLength, uint32_t timeoutMs);
 eDrvStatus drvSpiExchange(uint8_t spi, const uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length);
 eDrvStatus drvSpiExchangeTimeout(uint8_t spi, const uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length, uint32_t timeoutMs);
-
-const stDrvSpiBspInterface *drvSpiGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

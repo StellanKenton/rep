@@ -36,13 +36,17 @@ typedef struct stLsm6AssembleCfg {
     uint8_t linkId;
 } stLsm6AssembleCfg;
 
-void lsm6LoadPlatformDefaultCfg(eLsm6MapType device, stLsm6Cfg *cfg);
-const stLsm6IicInterface *lsm6GetPlatformIicInterface(eLsm6MapType device);
-bool lsm6PlatformIsValidAssemble(eLsm6MapType device);
-uint8_t lsm6PlatformGetLinkId(eLsm6MapType device);
-uint32_t lsm6PlatformGetResetDelayMs(void);
-uint32_t lsm6PlatformGetResetPollDelayMs(void);
-void lsm6PlatformDelayMs(uint32_t delayMs);
+typedef struct stLsm6Ops {
+    void (*loadDefaultCfg)(eLsm6MapType device, stLsm6Cfg *cfg);
+    const stLsm6IicInterface *(*getIicInterface)(eLsm6MapType device);
+    bool (*isValidAssemble)(eLsm6MapType device);
+    uint8_t (*getLinkId)(eLsm6MapType device);
+    uint32_t (*getResetDelayMs)(void);
+    uint32_t (*getResetPollDelayMs)(void);
+    void (*delayMs)(uint32_t delayMs);
+} stLsm6Ops;
+
+const stLsm6Ops *lsm6PortGetOps(void);
 
 #ifdef __cplusplus
 }

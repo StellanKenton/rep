@@ -36,13 +36,17 @@ typedef struct stLis2hh12AssembleCfg {
     uint8_t linkId;
 } stLis2hh12AssembleCfg;
 
-void lis2hh12LoadPlatformDefaultCfg(eLis2hh12MapType device, stLis2hh12Cfg *cfg);
-const stLis2hh12IicInterface *lis2hh12GetPlatformIicInterface(eLis2hh12MapType device);
-bool lis2hh12PlatformIsValidAssemble(eLis2hh12MapType device);
-uint8_t lis2hh12PlatformGetLinkId(eLis2hh12MapType device);
-uint32_t lis2hh12PlatformGetRetryDelayMs(void);
-uint32_t lis2hh12PlatformGetResetPollDelayMs(void);
-void lis2hh12PlatformDelayMs(uint32_t delayMs);
+typedef struct stLis2hh12Ops {
+    void (*loadDefaultCfg)(eLis2hh12MapType device, stLis2hh12Cfg *cfg);
+    const stLis2hh12IicInterface *(*getIicInterface)(eLis2hh12MapType device);
+    bool (*isValidAssemble)(eLis2hh12MapType device);
+    uint8_t (*getLinkId)(eLis2hh12MapType device);
+    uint32_t (*getRetryDelayMs)(void);
+    uint32_t (*getResetPollDelayMs)(void);
+    void (*delayMs)(uint32_t delayMs);
+} stLis2hh12Ops;
+
+const stLis2hh12Ops *lis2hh12PortGetOps(void);
 
 #ifdef __cplusplus
 }

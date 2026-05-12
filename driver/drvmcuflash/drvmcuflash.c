@@ -18,6 +18,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+
+#include "drvmcuflash_port.h"
 #include "../../service/rtos/rtos.h"
 
 #define DRVMCUFLASH_LOG_TAG                "drvMcuFlash"
@@ -25,21 +27,42 @@
 static bool gDrvMcuFlashInitialized = false;
 static stRepRtosMutex gDrvMcuFlashMutex;
 
-__attribute__((weak)) const stDrvMcuFlashBspInterface *drvMcuFlashGetPlatformBspInterface(void)
+static const stDrvMcuFlashOps *drvMcuFlashGetOps(void)
 {
-    return NULL;
+    return drvMcuFlashPortGetOps();
 }
 
-__attribute__((weak)) eDrvStatus drvMcuFlashGetPlatformAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info)
+static const stDrvMcuFlashBspInterface *drvMcuFlashGetBspInterface(void)
 {
-    (void)area;
-    (void)info;
-    return DRV_STATUS_UNSUPPORTED;
+    const stDrvMcuFlashOps *lOps = drvMcuFlashGetOps();
+
+    if ((lOps == NULL) || (lOps->getBspInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getBspInterface();
 }
 
-__attribute__((weak)) uint8_t drvMcuFlashGetPlatformAreaCount(void)
+static eDrvStatus drvMcuFlashGetAreaInfoFromOps(uint8_t area, stDrvMcuFlashAreaInfo *info)
 {
-    return 0U;
+    const stDrvMcuFlashOps *lOps = drvMcuFlashGetOps();
+
+    if ((lOps == NULL) || (lOps->getAreaInfo == NULL)) {
+        return DRV_STATUS_UNSUPPORTED;
+    }
+
+    return lOps->getAreaInfo(area, info);
+}
+
+static uint8_t drvMcuFlashGetAreaCountFromOps(void)
+{
+    const stDrvMcuFlashOps *lOps = drvMcuFlashGetOps();
+
+    if ((lOps == NULL) || (lOps->getAreaCount == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getAreaCount();
 }
 
 static eDrvStatus drvMcuFlashMapRtosStatus(eRepRtosStatus status)
@@ -74,7 +97,7 @@ static bool drvMcuFlashHasValidMutableBuffer(uint8_t *buffer, uint32_t length)
 
 static bool drvMcuFlashHasValidBspInterface(void)
 {
-    const stDrvMcuFlashBspInterface *lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    const stDrvMcuFlashBspInterface *lBspInterface = drvMcuFlashGetBspInterface();
 
     return (lBspInterface != NULL) &&
            (lBspInterface->init != NULL) &&
@@ -96,9 +119,9 @@ static eDrvStatus drvMcuFlashResolveAbsoluteRange(uint32_t address, uint32_t len
         return DRV_STATUS_INVALID_PARAM;
     }
 
-    lAreaCount = drvMcuFlashGetPlatformAreaCount();
+    lAreaCount = drvMcuFlashGetAreaCountFromOps();
     for (lAreaIndex = 0U; lAreaIndex < lAreaCount; ++lAreaIndex) {
-        if (drvMcuFlashGetPlatformAreaInfo(lAreaIndex, &lAreaInfo) != DRV_STATUS_OK) {
+        if (drvMcuFlashGetAreaInfoFromOps(lAreaIndex, &lAreaInfo) != DRV_STATUS_OK) {
             continue;
         }
 
@@ -179,7 +202,7 @@ bool drvMcuFlashInit(void)
         return false;
     }
 
-    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    lBspInterface = drvMcuFlashGetBspInterface();
     if (lBspInterface == NULL) {
         return false;
     }
@@ -212,7 +235,7 @@ bool drvMcuFlashGetAreaInfo(uint8_t area, stDrvMcuFlashAreaInfo *info)
         return false;
     }
 
-    return drvMcuFlashGetPlatformAreaInfo(area, info) == DRV_STATUS_OK;
+    return drvMcuFlashGetAreaInfoFromOps(area, info) == DRV_STATUS_OK;
 }
 
 bool drvMcuFlashRead(uint32_t address, uint8_t *buffer, uint32_t length)
@@ -229,7 +252,7 @@ bool drvMcuFlashRead(uint32_t address, uint8_t *buffer, uint32_t length)
         return false;
     }
 
-    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    lBspInterface = drvMcuFlashGetBspInterface();
     if (lBspInterface == NULL) {
         return false;
     }
@@ -266,7 +289,7 @@ bool drvMcuFlashWrite(uint32_t address, const uint8_t *buffer, uint32_t length)
         return false;
     }
 
-    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    lBspInterface = drvMcuFlashGetBspInterface();
     if (lBspInterface == NULL) {
         return false;
     }
@@ -320,7 +343,7 @@ bool drvMcuFlashErase(uint32_t address, uint32_t length)
         return false;
     }
 
-    lBspInterface = drvMcuFlashGetPlatformBspInterface();
+    lBspInterface = drvMcuFlashGetBspInterface();
     if (lBspInterface == NULL) {
         return false;
     }

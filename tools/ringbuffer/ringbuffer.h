@@ -37,6 +37,12 @@ typedef struct stRingBuffer {
     uint8_t isPowerOfTwo;
 } stRingBuffer;
 
+typedef struct stRingBufferOps {
+    void (*enterCritical)(void);
+    void (*exitCritical)(void);
+    void (*memoryBarrier)(void);
+} stRingBufferOps;
+
 eRingBufferStatus ringBufferInit(stRingBuffer *rb, uint8_t *storage, uint32_t capacity);
 eRingBufferStatus ringBufferReset(stRingBuffer *rb);
 

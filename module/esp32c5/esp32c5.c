@@ -10,6 +10,8 @@
 ***********************************************************************************/
 #include "esp32c5.h"
 
+#include "esp32c5_port.h"
+
 #include <string.h>
 
 #include "../../service/log/log.h"
@@ -19,44 +21,9 @@
 
 static stEsp32c5Device gEsp32c5Devices[ESP32C5_DEV_MAX];
 static bool gEsp32c5DefCfgDone[ESP32C5_DEV_MAX] = {false};
-
-__attribute__((weak)) void esp32c5LoadPlatformDefaultCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg)
-{
-    (void)device;
-
-    if (cfg == NULL) {
-        return;
-    }
-
-    cfg->linkId = 0U;
-    cfg->resetPin = 0U;
-    cfg->rxPollChunkSize = ESP32C5_RX_POLL_CHUNK_SIZE;
-    cfg->txTimeoutMs = ESP32C5_DEFAULT_TX_TIMEOUT_MS;
-    cfg->bootWaitMs = ESP32C5_DEFAULT_BOOT_WAIT_MS;
-    cfg->resetPulseMs = ESP32C5_DEFAULT_RESET_PULSE_MS;
-    cfg->resetWaitMs = ESP32C5_DEFAULT_RESET_WAIT_MS;
-    cfg->readyTimeoutMs = ESP32C5_DEFAULT_READY_TIMEOUT_MS;
-    cfg->readyProbeMs = ESP32C5_DEFAULT_READY_PROBE_MS;
-    cfg->retryIntervalMs = ESP32C5_DEFAULT_RETRY_INTERVAL_MS;
-}
-
-__attribute__((weak)) const stEsp32c5TransportInterface *esp32c5GetPlatformTransportInterface(const stEsp32c5Cfg *cfg)
-{
-    (void)cfg;
-    return NULL;
-}
-
-__attribute__((weak)) const stEsp32c5ControlInterface *esp32c5GetPlatformControlInterface(eEsp32c5MapType device)
-{
-    (void)device;
-    return NULL;
-}
-
-__attribute__((weak)) bool esp32c5PlatformIsValidCfg(const stEsp32c5Cfg *cfg)
-{
-    (void)cfg;
-    return false;
-}
+static const stEsp32c5Ops *esp32c5GetOps(void);
+static void esp32c5LoadDefaultCfgFromOps(eEsp32c5MapType device, stEsp32c5Cfg *cfg);
+static bool esp32c5IsValidCfgByOps(const stEsp32c5Cfg *cfg);
 
 static bool esp32c5IsValidDevice(eEsp32c5MapType device);
 static stEsp32c5Device *esp32c5GetDevice(eEsp32c5MapType device);
@@ -69,6 +36,29 @@ static bool esp32c5StreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t 
 static void esp32c5StreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static eFlowParserRawMatchSta esp32c5StreamRawMatch(void *userData, const uint8_t *buf, uint16_t availLen, uint16_t *frameLen);
 static void esp32c5StreamDispatchRaw(void *userData, const uint8_t *frameBuf, uint16_t frameLen);
+
+static const stEsp32c5Ops *esp32c5GetOps(void)
+{
+    return esp32c5PortGetOps();
+}
+
+static void esp32c5LoadDefaultCfgFromOps(eEsp32c5MapType device, stEsp32c5Cfg *cfg)
+{
+    const stEsp32c5Ops *lOps = esp32c5GetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultCfg(device, cfg);
+}
+
+static bool esp32c5IsValidCfgByOps(const stEsp32c5Cfg *cfg)
+{
+    const stEsp32c5Ops *lOps = esp32c5GetOps();
+
+    return (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
+}
 
 eEsp32c5Status esp32c5GetDefCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg)
 {
@@ -101,7 +91,7 @@ eEsp32c5Status esp32c5SetCfg(eEsp32c5MapType device, const stEsp32c5Cfg *cfg)
 {
     stEsp32c5Device *deviceObj;
 
-    if ((cfg == NULL) || !esp32c5PlatformIsValidCfg(cfg)) {
+    if ((cfg == NULL) || !esp32c5IsValidCfgByOps(cfg)) {
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
@@ -163,7 +153,7 @@ eEsp32c5Status esp32c5Init(eEsp32c5MapType device)
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
-    if (!esp32c5PlatformIsValidCfg(&deviceObj->cfg)) {
+    if (!esp32c5IsValidCfgByOps(&deviceObj->cfg)) {
         return ESP32C5_STATUS_INVALID_PARAM;
     }
 
@@ -550,7 +540,7 @@ static void esp32c5LoadDefCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg)
         return;
     }
 
-    esp32c5LoadPlatformDefaultCfg(device, cfg);
+    esp32c5LoadDefaultCfgFromOps(device, cfg);
     if (cfg->rxPollChunkSize == 0U) {
         cfg->rxPollChunkSize = ESP32C5_RX_POLL_CHUNK_SIZE;
     }

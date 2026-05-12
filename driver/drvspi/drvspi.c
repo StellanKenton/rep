@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "rep_config.h"
+#include "drvspi_port.h"
 #include "../../service/rtos/rtos.h"
 
 #define DRVSPI_LOG_TAG                   "drvSpi"
@@ -24,9 +25,9 @@
 static bool gDrvSpiInitialized[DRVSPI_MAX];
 static stRepRtosMutex gDrvSpiMutex[DRVSPI_MAX];
 
-__attribute__((weak)) const stDrvSpiBspInterface *drvSpiGetPlatformBspInterfaces(void)
+static const stDrvSpiOps *drvSpiGetOps(void)
 {
-    return NULL;
+    return drvSpiPortGetOps();
 }
 
 static eDrvStatus drvSpiMapRtosStatus(eRepRtosStatus status)
@@ -100,13 +101,19 @@ static bool drvSpiIsInitialized(uint8_t spi)
 
 static stDrvSpiBspInterface *drvSpiGetBspInterface(uint8_t spi)
 {
+    const stDrvSpiOps *lOps;
     const stDrvSpiBspInterface *lInterfaces;
 
     if (!drvSpiIsValid(spi)) {
         return NULL;
     }
 
-    lInterfaces = drvSpiGetPlatformBspInterfaces();
+    lOps = drvSpiGetOps();
+    if ((lOps == NULL) || (lOps->getBspInterfaces == NULL)) {
+        return NULL;
+    }
+
+    lInterfaces = lOps->getBspInterfaces();
     if (lInterfaces == NULL) {
         return NULL;
     }

@@ -16,6 +16,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "drvgpio_port.h"
+
 #define DRVGPIO_LOG_TAG                 "drvGpio"
 
 #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -29,9 +31,23 @@ static bool gDrvGpioToggleHookMissingLogged = false;
 static void drvGpioLogInvalidPinOnce(uint8_t pin);
 #endif
 
-__attribute__((weak)) const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void)
+static const stDrvGpioOps *drvGpioGetOps(void);
+static const stDrvGpioBspInterface *drvGpioGetBspInterface(void);
+
+static const stDrvGpioOps *drvGpioGetOps(void)
 {
-    return NULL;
+    return drvGpioPortGetOps();
+}
+
+static const stDrvGpioBspInterface *drvGpioGetBspInterface(void)
+{
+    const stDrvGpioOps *lOps = drvGpioGetOps();
+
+    if ((lOps == NULL) || (lOps->getBspInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getBspInterface();
 }
 
 #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -74,7 +90,7 @@ static bool drvGpioIsValidPin(uint8_t pin)
 **/
 static bool drvGpioHasValidBspInterface(void)
 {
-    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetBspInterface();
 
     return (lBspInterface != NULL) &&
            (lBspInterface->init != NULL) &&
@@ -90,7 +106,7 @@ static bool drvGpioHasValidBspInterface(void)
 **/
 void drvGpioInit(void)
 {
-    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetBspInterface();
 
     if (!drvGpioHasValidBspInterface()) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -115,7 +131,7 @@ void drvGpioInit(void)
 **/
 void drvGpioWrite(uint8_t pin, eDrvGpioPinState state)
 {
-    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetBspInterface();
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -156,7 +172,7 @@ void drvGpioWrite(uint8_t pin, eDrvGpioPinState state)
 eDrvGpioPinState drvGpioRead(uint8_t pin)
 {
     eDrvGpioPinState lState;
-    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetBspInterface();
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)
@@ -188,7 +204,7 @@ eDrvGpioPinState drvGpioRead(uint8_t pin)
 void drvGpioToggle(uint8_t pin)
 {
     eDrvGpioPinState lTargetState;
-    const stDrvGpioBspInterface *lBspInterface = drvGpioGetPlatformBspInterface();
+    const stDrvGpioBspInterface *lBspInterface = drvGpioGetBspInterface();
 
     if (!drvGpioIsValidPin(pin)) {
         #if (DRVGPIO_LOG_SUPPORT == 1)

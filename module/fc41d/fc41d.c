@@ -11,6 +11,8 @@
 ***********************************************************************************/
 #include "fc41d.h"
 
+#include "fc41dport.h"
+
 #include <string.h>
 
 #include "../../service/log/log.h"
@@ -20,44 +22,9 @@
 
 static stFc41dDevice gFc41dDevices[FC41D_DEV_MAX];
 static bool gFc41dDefCfgDone[FC41D_DEV_MAX] = {false};
-
-__attribute__((weak)) void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stFc41dCfg *cfg)
-{
-    (void)device;
-
-    if (cfg == NULL) {
-        return;
-    }
-
-    cfg->linkId = 0U;
-    cfg->resetPin = 0U;
-    cfg->rxPollChunkSize = FC41D_RX_POLL_CHUNK_SIZE;
-    cfg->txTimeoutMs = FC41D_DEFAULT_TX_TIMEOUT_MS;
-    cfg->bootWaitMs = FC41D_DEFAULT_BOOT_WAIT_MS;
-    cfg->resetPulseMs = FC41D_DEFAULT_RESET_PULSE_MS;
-    cfg->resetWaitMs = FC41D_DEFAULT_RESET_WAIT_MS;
-    cfg->readyTimeoutMs = FC41D_DEFAULT_READY_TIMEOUT_MS;
-    cfg->readySettleMs = FC41D_DEFAULT_READY_SETTLE_MS;
-    cfg->retryIntervalMs = FC41D_DEFAULT_RETRY_INTERVAL_MS;
-}
-
-__attribute__((weak)) const stFc41dTransportInterface *fc41dGetPlatformTransportInterface(const stFc41dCfg *cfg)
-{
-    (void)cfg;
-    return NULL;
-}
-
-__attribute__((weak)) const stFc41dControlInterface *fc41dGetPlatformControlInterface(eFc41dMapType device)
-{
-    (void)device;
-    return NULL;
-}
-
-__attribute__((weak)) bool fc41dPlatformIsValidCfg(const stFc41dCfg *cfg)
-{
-    (void)cfg;
-    return false;
-}
+static const stFc41dOps *fc41dGetOps(void);
+static void fc41dLoadDefaultCfgFromOps(eFc41dMapType device, stFc41dCfg *cfg);
+static bool fc41dIsValidCfgByOps(const stFc41dCfg *cfg);
 
 static bool fc41dIsValidDevice(eFc41dMapType device);
 static stFc41dDevice *fc41dGetDevice(eFc41dMapType device);
@@ -70,6 +37,29 @@ static bool fc41dStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t li
 static void fc41dStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static eFlowParserRawMatchSta fc41dStreamRawMatch(void *userData, const uint8_t *buf, uint16_t availLen, uint16_t *frameLen);
 static void fc41dStreamDispatchRaw(void *userData, const uint8_t *frameBuf, uint16_t frameLen);
+
+static const stFc41dOps *fc41dGetOps(void)
+{
+    return fc41dPortGetOps();
+}
+
+static void fc41dLoadDefaultCfgFromOps(eFc41dMapType device, stFc41dCfg *cfg)
+{
+    const stFc41dOps *lOps = fc41dGetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultCfg(device, cfg);
+}
+
+static bool fc41dIsValidCfgByOps(const stFc41dCfg *cfg)
+{
+    const stFc41dOps *lOps = fc41dGetOps();
+
+    return (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
+}
 
 eFc41dStatus fc41dGetDefCfg(eFc41dMapType device, stFc41dCfg *cfg)
 {
@@ -102,7 +92,7 @@ eFc41dStatus fc41dSetCfg(eFc41dMapType device, const stFc41dCfg *cfg)
 {
     stFc41dDevice *lDevice;
 
-    if ((cfg == NULL) || !fc41dPlatformIsValidCfg(cfg)) {
+    if ((cfg == NULL) || !fc41dIsValidCfgByOps(cfg)) {
         return FC41D_STATUS_INVALID_PARAM;
     }
 
@@ -187,7 +177,7 @@ eFc41dStatus fc41dInit(eFc41dMapType device)
         return FC41D_STATUS_INVALID_PARAM;
     }
 
-    if (!fc41dPlatformIsValidCfg(&lDevice->cfg)) {
+    if (!fc41dIsValidCfgByOps(&lDevice->cfg)) {
         LOG_E(FC41D_LOG_TAG, "init invalid cfg dev=%u", (unsigned int)device);
         return FC41D_STATUS_INVALID_PARAM;
     }
@@ -653,7 +643,7 @@ static void fc41dLoadDefCfg(eFc41dMapType device, stFc41dCfg *cfg)
         return;
     }
 
-    fc41dLoadPlatformDefaultCfg(device, cfg);
+    fc41dLoadDefaultCfgFromOps(device, cfg);
     if (cfg->rxPollChunkSize == 0U) {
         cfg->rxPollChunkSize = FC41D_RX_POLL_CHUNK_SIZE;
     }

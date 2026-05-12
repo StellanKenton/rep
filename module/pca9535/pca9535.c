@@ -15,62 +15,106 @@
 
 static stPca9535Device gPca9535Devices[PCA9535_DEV_MAX];
 static bool gPca9535DefCfgDone[PCA9535_DEV_MAX] = {false};
+static const stPca9535Ops *pca9535GetOps(void);
+static bool pca9535IsAssembleReady(ePca9535MapType device);
+static void pca9535LoadDefaultCfgFromOps(ePca9535MapType device, stPca9535Cfg *cfg);
+static uint8_t pca9535GetLinkIdByDevice(ePca9535MapType device);
+static void pca9535ResetInit(void);
+static void pca9535ResetWrite(bool assertReset);
+static uint32_t pca9535GetResetAssertDelayMs(void);
+static uint32_t pca9535GetResetReleaseDelayMs(void);
+static void pca9535DelayMs(uint32_t delayMs);
 
-__attribute__((weak)) void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg)
+static const stPca9535Ops *pca9535GetOps(void)
 {
-    (void)device;
+    return pca9535PortGetOps();
+}
 
-    if (cfg == NULL) {
+static bool pca9535IsAssembleReady(ePca9535MapType device)
+{
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps == NULL) ||
+        (lOps->loadDefaultCfg == NULL) ||
+        (lOps->getIicInterface == NULL) ||
+        (lOps->isValidAssemble == NULL) ||
+        (lOps->getLinkId == NULL) ||
+        (lOps->delayMs == NULL)) {
+        return false;
+    }
+
+    return lOps->isValidAssemble(device);
+}
+
+static void pca9535LoadDefaultCfgFromOps(ePca9535MapType device, stPca9535Cfg *cfg)
+{
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
         return;
     }
 
-    cfg->address = 0U;
-    cfg->outputValue = 0U;
-    cfg->polarityMask = 0U;
-    cfg->directionMask = 0U;
-    cfg->resetBeforeInit = false;
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stPca9535IicInterface *pca9535GetPlatformIicInterface(ePca9535MapType device)
+static uint8_t pca9535GetLinkIdByDevice(ePca9535MapType device)
 {
-    (void)device;
-    return NULL;
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps == NULL) || (lOps->getLinkId == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getLinkId(device);
 }
 
-__attribute__((weak)) bool pca9535PlatformIsValidAssemble(ePca9535MapType device)
+static void pca9535ResetInit(void)
 {
-    (void)device;
-    return false;
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps != NULL) && (lOps->resetInit != NULL)) {
+        lOps->resetInit();
+    }
 }
 
-__attribute__((weak)) uint8_t pca9535PlatformGetLinkId(ePca9535MapType device)
+static void pca9535ResetWrite(bool assertReset)
 {
-    (void)device;
-    return 0U;
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps != NULL) && (lOps->resetWrite != NULL)) {
+        lOps->resetWrite(assertReset);
+    }
 }
 
-__attribute__((weak)) void pca9535PlatformResetInit(void)
+static uint32_t pca9535GetResetAssertDelayMs(void)
 {
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps == NULL) || (lOps->getResetAssertDelayMs == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getResetAssertDelayMs();
 }
 
-__attribute__((weak)) void pca9535PlatformResetWrite(bool assertReset)
+static uint32_t pca9535GetResetReleaseDelayMs(void)
 {
-    (void)assertReset;
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lOps == NULL) || (lOps->getResetReleaseDelayMs == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getResetReleaseDelayMs();
 }
 
-__attribute__((weak)) void pca9535PlatformDelayMs(uint32_t delayMs)
+static void pca9535DelayMs(uint32_t delayMs)
 {
-    (void)delayMs;
-}
+    const stPca9535Ops *lOps = pca9535GetOps();
 
-__attribute__((weak)) uint32_t pca9535PlatformGetResetAssertDelayMs(void)
-{
-    return 0U;
-}
-
-__attribute__((weak)) uint32_t pca9535PlatformGetResetReleaseDelayMs(void)
-{
-    return 0U;
+    if ((lOps != NULL) && (lOps->delayMs != NULL)) {
+        lOps->delayMs(delayMs);
+    }
 }
 
 static bool pca9535IsValidDevMap(ePca9535MapType device);
@@ -154,23 +198,23 @@ eDrvStatus pca9535Init(ePca9535MapType device)
     }
 
     if (pca9535GetIicIf(lDeviceCtx) == NULL) {
-        return pca9535PlatformIsValidAssemble(device) ?
+        return pca9535IsAssembleReady(device) ?
                PCA9535_STATUS_NOT_READY :
                PCA9535_STATUS_INVALID_PARAM;
     }
 
     lIicIf = pca9535GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(pca9535PlatformGetLinkId(device));
+    lStatus = lIicIf->init(pca9535GetLinkIdByDevice(device));
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }
 
     if (lDeviceCtx->cfg.resetBeforeInit) {
-        pca9535PlatformResetInit();
-        pca9535PlatformResetWrite(true);
-        pca9535PlatformDelayMs(pca9535PlatformGetResetAssertDelayMs());
-        pca9535PlatformResetWrite(false);
-        pca9535PlatformDelayMs(pca9535PlatformGetResetReleaseDelayMs());
+        pca9535ResetInit();
+        pca9535ResetWrite(true);
+        pca9535DelayMs(pca9535GetResetAssertDelayMs());
+        pca9535ResetWrite(false);
+        pca9535DelayMs(pca9535GetResetReleaseDelayMs());
     }
 
     lDeviceCtx->isReady = false;
@@ -404,7 +448,7 @@ static void pca9535LoadDefCfg(ePca9535MapType device, stPca9535Cfg *cfg)
         return;
     }
 
-    pca9535LoadPlatformDefaultCfg(device, cfg);
+    pca9535LoadDefaultCfgFromOps(device, cfg);
 }
 
 static bool pca9535IsValidCfg(const stPca9535Cfg *cfg)
@@ -441,11 +485,13 @@ static const stPca9535IicInterface *pca9535GetIicIf(const stPca9535Device *devic
     }
 
     lDevice = pca9535GetDevMapByCtx(device);
-    if ((lDevice >= PCA9535_DEV_MAX) || !pca9535PlatformIsValidAssemble(lDevice)) {
+    const stPca9535Ops *lOps = pca9535GetOps();
+
+    if ((lDevice >= PCA9535_DEV_MAX) || !pca9535IsAssembleReady(lDevice)) {
         return NULL;
     }
 
-    return pca9535GetPlatformIicInterface(lDevice);
+    return ((lOps != NULL) && (lOps->getIicInterface != NULL)) ? lOps->getIicInterface(lDevice) : NULL;
 }
 
 static eDrvStatus pca9535WriteRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t value)
@@ -463,7 +509,7 @@ static eDrvStatus pca9535WriteRegInt(const stPca9535Device *device, uint8_t regA
         return PCA9535_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->writeReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, &value, 1U);
+    return lIicIf->writeReg(pca9535GetLinkIdByDevice(lDevice), device->cfg.address, &regAddr, 1U, &value, 1U);
 }
 
 static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAddr, uint8_t *value)
@@ -485,7 +531,7 @@ static eDrvStatus pca9535ReadRegInt(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->readReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, value, 1U);
+    return lIicIf->readReg(pca9535GetLinkIdByDevice(lDevice), device->cfg.address, &regAddr, 1U, value, 1U);
 }
 
 static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regAddr, uint16_t value)
@@ -506,7 +552,7 @@ static eDrvStatus pca9535WritePort16(const stPca9535Device *device, uint8_t regA
         return PCA9535_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->writeReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    return lIicIf->writeReg(pca9535GetLinkIdByDevice(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
 }
 
 static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAddr, uint16_t *value)
@@ -530,7 +576,7 @@ static eDrvStatus pca9535ReadPort16(const stPca9535Device *device, uint8_t regAd
         return PCA9535_STATUS_INVALID_PARAM;
     }
 
-    lStatus = lIicIf->readReg(pca9535PlatformGetLinkId(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
+    lStatus = lIicIf->readReg(pca9535GetLinkIdByDevice(lDevice), device->cfg.address, &regAddr, 1U, lBuffer, 2U);
     if (lStatus != PCA9535_STATUS_OK) {
         return lStatus;
     }

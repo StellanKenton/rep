@@ -32,15 +32,19 @@ typedef struct stPca9535AssembleCfg {
     uint8_t linkId;
 } stPca9535AssembleCfg;
 
-void pca9535LoadPlatformDefaultCfg(ePca9535MapType device, stPca9535Cfg *cfg);
-const stPca9535IicInterface *pca9535GetPlatformIicInterface(ePca9535MapType device);
-bool pca9535PlatformIsValidAssemble(ePca9535MapType device);
-uint8_t pca9535PlatformGetLinkId(ePca9535MapType device);
-void pca9535PlatformResetInit(void);
-void pca9535PlatformResetWrite(bool assertReset);
-uint32_t pca9535PlatformGetResetAssertDelayMs(void);
-uint32_t pca9535PlatformGetResetReleaseDelayMs(void);
-void pca9535PlatformDelayMs(uint32_t delayMs);
+typedef struct stPca9535Ops {
+    void (*loadDefaultCfg)(ePca9535MapType device, stPca9535Cfg *cfg);
+    const stPca9535IicInterface *(*getIicInterface)(ePca9535MapType device);
+    bool (*isValidAssemble)(ePca9535MapType device);
+    uint8_t (*getLinkId)(ePca9535MapType device);
+    void (*resetInit)(void);
+    void (*resetWrite)(bool assertReset);
+    uint32_t (*getResetAssertDelayMs)(void);
+    uint32_t (*getResetReleaseDelayMs)(void);
+    void (*delayMs)(uint32_t delayMs);
+} stPca9535Ops;
+
+const stPca9535Ops *pca9535PortGetOps(void);
 
 #ifdef __cplusplus
 }

@@ -73,15 +73,17 @@ typedef struct stDrvAdcData {
     uint16_t mvFiltered;
 } stDrvAdcData;
 
+typedef struct stDrvAdcOps {
+    const stDrvAdcBspInterface *(*getBspInterface)(void);
+    stDrvAdcData *(*getData)(void);
+} stDrvAdcOps;
+
 eDrvStatus drvAdcInit(uint8_t adc);
 eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value);
 eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 eDrvStatus drvAdcReadMv(uint8_t adc, uint16_t *valueMv);
 eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutMs);
 void drvAdcBackground(void);
-
-const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void);
-stDrvAdcData *drvAdcGetPlatformData(void);
 
 #ifdef __cplusplus
 }

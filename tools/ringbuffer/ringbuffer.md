@@ -8,13 +8,19 @@ public_headers:
   - ringbuffer.h
 core_files:
   - ringbuffer.c
-port_files: []
+port_files:
+  - ../../User/port/ringbuffer_port.h
+  - ../../User/port/ringbuffer_port.c
 debug_files: []
 depends_on: []
 forbidden_depends_on:
   - 直接在外部修改 head/tail
-required_hooks: []
-optional_hooks: []
+required_hooks:
+  - ringBufferPortGetOps
+optional_hooks:
+  - enterCritical
+  - exitCritical
+  - memoryBarrier
 common_utils: []
 copy_minimal_set:
   - ringbuffer.h
@@ -69,7 +75,11 @@ read_next:
 
 ## 6. 函数指针 / port / assembly 契约
 
-当前目录无必需 platform hook。若外部项目需要临界区或内存屏障，应在上层封装，不应污染当前公共 API。
+当前目录通过 `ringBufferPortGetOps()` 获取可选 `stRingBufferOps`。
+
+- `enterCritical` / `exitCritical`：仅在 `ringBufferWriteOverwrite()`、`ringBufferReset()` 这类会同时改动 `head/tail` 的路径使用。
+- `memoryBarrier`：用于 SPSC 或跨上下文场景下的可选顺序约束；未提供时退化为空操作。
+- 当前工程默认在 `User/port/ringbuffer_port.c` 提供全空 ops 表，保持 ringbuffer core 不直接依赖 RTOS。
 
 ## 7. 公共函数使用契约
 
@@ -86,7 +96,7 @@ read_next:
 
 最小依赖集：`ringbuffer.h/.c`。
 
-若外部项目有 ISR/任务并发需求，需在调用方补齐临界区约束和 ownership 说明。
+若外部项目有 ISR/任务并发需求，需在 `User/port/ringbuffer_port.c` 中补齐对应 ops 成员，并在调用方文档中补足 ownership 说明。
 
 ## 10. 验证清单
 

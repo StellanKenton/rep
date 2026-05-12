@@ -17,9 +17,14 @@
 extern "C" {
 #endif
 
+typedef void (*updateDbgStateChangedFunc)(eUpdateState from, eUpdateState to);
+
+typedef struct stUpdateDbgOps {
+    updateDbgStateChangedFunc onStateChanged;
+} stUpdateDbgOps;
+
 const char *updateDbgGetStateName(eUpdateState state);
 void updateDbgNotifyStateChanged(eUpdateState from, eUpdateState to);
-void updateDbgOnStateChanged(eUpdateState from, eUpdateState to);
 
 #ifdef __cplusplus
 }

@@ -9,17 +9,18 @@ public_headers:
 core_files:
     - log.c
     - log.md
-port_files: []
+port_files:
+    - ../../User/port/log_port.h
+    - ../../User/port/log_port.c
 debug_files: []
 depends_on:
     - ../tools/ringbuffer/ringbuffer.md
 forbidden_depends_on:
     - 业务层直接操作 transport 私有缓冲
 required_hooks:
-    - logInitFunc
-    - logOutputWriteFunc
-    - logInputGetBufferFunc
-optional_hooks: []
+    - logPortGetOps
+optional_hooks:
+    - consolePoll
 common_utils:
     - tools/ringbuffer
 copy_minimal_set:
@@ -78,7 +79,15 @@ read_next:
 - `logRegisterConsole()`：命令注册统一入口；系统装配层不再直接调用 `consoleRegisterCommand()`。
 - `ConsoleBackGournd()`：单轮执行输出刷写、平台 console 输入轮询和命令处理；系统装配层不再单独调 `logProcessOutput()` 或 `consoleProcess()`。
 
-## 3. transport hook 契约
+## 3. transport ops 契约
+
+项目侧必须在 `User/port/log_port.c` 提供长期有效的 `stLogOps`，并通过 `logPortGetOps()` 暴露给 core。
+
+`stLogOps` 成员：
+
+- `interfaces`：指向静态 transport 接口表。
+- `interfaceCount`：当前 transport 表元素个数。
+- `consolePoll`：可选输入轮询函数；为空时 `ConsoleBackGournd()` 只做输出刷写和命令处理。
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -89,7 +98,7 @@ read_next:
 项目侧补充约束：
 
 - console 开关应放在 log port 配置头中，例如 `LOG_PORT_CONSOLE_ENABLE`。
-- 若 transport 输入需要先从硬件或调试链路搬运到 software ring buffer，则应由项目侧实现 `logPlatformConsolePoll()`，并在 `ConsoleBackGournd()` 中统一调用。
+- 若 transport 输入需要先从硬件或调试链路搬运到 software ring buffer，则应在 `stLogOps.consolePoll` 中提供对应轮询函数，并由 `ConsoleBackGournd()` 统一调用。
 
 ## 4. 公共函数使用契约
 
@@ -117,6 +126,7 @@ read_next:
 
 外部项目必须补齐：
 
+- `logPortGetOps()`
 - transport 接口表
 - 输出 write hook
 - 若要支持 console，再补输入 `getBuffer` hook

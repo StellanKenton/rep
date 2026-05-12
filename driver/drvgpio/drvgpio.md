@@ -30,10 +30,12 @@
 
 ## 3. 当前 core 对 port 的直接依赖
 
-`drvgpio.c` 最终只依赖一个全局钩子表:
+`drvgpio.c` 现在通过 `drvGpioPortGetOps()` 获取项目侧静态 `ops` 表，再由 `ops->getBspInterface()` 返回 BSP 钩子表:
 
 ```c
-stDrvGpioBspInterface gDrvGpioBspInterface;
+typedef struct stDrvGpioOps {
+    const stDrvGpioBspInterface *(*getBspInterface)(void);
+} stDrvGpioOps;
 ```
 
 该结构体的四个成员都是必需项:
@@ -141,11 +143,15 @@ stDrvGpioBspInterface gDrvGpioBspInterface;
 目标结构应保持如下形式:
 
 ```c
-stDrvGpioBspInterface gDrvGpioBspInterface = {
+static const stDrvGpioBspInterface gDrvGpioBspInterface = {
     .init = bspGpioInit,
     .write = bspGpioWrite,
     .read = bspGpioRead,
     .toggle = bspGpioToggle,
+};
+
+static const stDrvGpioOps gDrvGpioOps = {
+    .getBspInterface = drvGpioPortGetBspInterfaceImpl,
 };
 ```
 

@@ -10,6 +10,8 @@
 ***********************************************************************************/
 #include "ec800m.h"
 
+#include "ec800m_port.h"
+
 #include <string.h>
 
 #include "../../service/log/log.h"
@@ -61,45 +63,11 @@ static const stFlowParserSpec gEc800mPromptSpec = {
 
 static stEc800mDevice gEc800mDevices[EC800M_DEV_MAX];
 static bool gEc800mDefCfgDone[EC800M_DEV_MAX] = {false};
-
-__attribute__((weak)) void ec800mLoadPlatformDefaultCfg(eEc800mMapType device, stEc800mCfg *cfg)
-{
-    (void)device;
-
-    if (cfg == NULL) {
-        return;
-    }
-
-    cfg->linkId = 0U;
-    cfg->pwrkeyPin = 0U;
-    cfg->resetPin = 0U;
-    cfg->rxPollChunkSize = EC800M_RX_POLL_CHUNK_SIZE;
-    cfg->txTimeoutMs = EC800M_DEFAULT_TX_TIMEOUT_MS;
-    cfg->bootWaitMs = EC800M_DEFAULT_BOOT_WAIT_MS;
-    cfg->pwrkeyPulseMs = EC800M_DEFAULT_PWRKEY_PULSE_MS;
-    cfg->resetPulseMs = EC800M_DEFAULT_RESET_PULSE_MS;
-    cfg->resetWaitMs = EC800M_DEFAULT_RESET_WAIT_MS;
-    cfg->readyTimeoutMs = EC800M_DEFAULT_READY_TIMEOUT_MS;
-    cfg->retryIntervalMs = EC800M_DEFAULT_RETRY_INTERVAL_MS;
-}
-
-__attribute__((weak)) const stEc800mTransportInterface *ec800mGetPlatformTransportInterface(const stEc800mCfg *cfg)
-{
-    (void)cfg;
-    return NULL;
-}
-
-__attribute__((weak)) const stEc800mControlInterface *ec800mGetPlatformControlInterface(eEc800mMapType device)
-{
-    (void)device;
-    return NULL;
-}
-
-__attribute__((weak)) bool ec800mPlatformIsValidCfg(const stEc800mCfg *cfg)
-{
-    (void)cfg;
-    return false;
-}
+static const stEc800mOps *ec800mGetOps(void);
+static void ec800mLoadDefaultCfgFromOps(eEc800mMapType device, stEc800mCfg *cfg);
+static bool ec800mIsValidCfgByOps(const stEc800mCfg *cfg);
+static const stEc800mTransportInterface *ec800mGetTransport(const stEc800mCfg *cfg);
+static const stEc800mControlInterface *ec800mGetControl(eEc800mMapType device);
 
 static bool ec800mIsValidDevice(eEc800mMapType device);
 static bool ec800mIsValidServiceMode(eEc800mServiceMode serviceMode);
@@ -126,6 +94,51 @@ static bool ec800mStreamIsUrc(void *userData, const uint8_t *lineBuf, uint16_t l
 static void ec800mStreamDispatchUrc(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static void ec800mTxnLineThunk(void *userData, const uint8_t *lineBuf, uint16_t lineLen);
 static void ec800mTxnDoneThunk(void *userData, eFlowParserResult result);
+
+static const stEc800mOps *ec800mGetOps(void)
+{
+    return ec800mPortGetOps();
+}
+
+static void ec800mLoadDefaultCfgFromOps(eEc800mMapType device, stEc800mCfg *cfg)
+{
+    const stEc800mOps *lOps = ec800mGetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultCfg(device, cfg);
+}
+
+static bool ec800mIsValidCfgByOps(const stEc800mCfg *cfg)
+{
+    const stEc800mOps *lOps = ec800mGetOps();
+
+    return (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
+}
+
+static const stEc800mTransportInterface *ec800mGetTransport(const stEc800mCfg *cfg)
+{
+    const stEc800mOps *lOps = ec800mGetOps();
+
+    if ((lOps == NULL) || (lOps->getTransportInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getTransportInterface(cfg);
+}
+
+static const stEc800mControlInterface *ec800mGetControl(eEc800mMapType device)
+{
+    const stEc800mOps *lOps = ec800mGetOps();
+
+    if ((lOps == NULL) || (lOps->getControlInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getControlInterface(device);
+}
 
 eEc800mStatus ec800mGetDefCfg(eEc800mMapType device, stEc800mCfg *cfg)
 {
@@ -158,7 +171,7 @@ eEc800mStatus ec800mSetCfg(eEc800mMapType device, const stEc800mCfg *cfg)
 {
     stEc800mDevice *deviceObj;
 
-    if ((cfg == NULL) || !ec800mPlatformIsValidCfg(cfg)) {
+    if ((cfg == NULL) || !ec800mIsValidCfgByOps(cfg)) {
         return EC800M_STATUS_INVALID_PARAM;
     }
 
@@ -189,11 +202,11 @@ eEc800mStatus ec800mInit(eEc800mMapType device)
         return EC800M_STATUS_INVALID_PARAM;
     }
 
-    if (!ec800mPlatformIsValidCfg(&deviceObj->cfg)) {
+    if (!ec800mIsValidCfgByOps(&deviceObj->cfg)) {
         return EC800M_STATUS_INVALID_PARAM;
     }
 
-    transport = ec800mGetPlatformTransportInterface(&deviceObj->cfg);
+    transport = ec800mGetTransport(&deviceObj->cfg);
     if ((transport == NULL) || (transport->init == NULL) || (transport->write == NULL) ||
         (transport->getRxLen == NULL) || (transport->read == NULL) || (transport->getTickMs == NULL)) {
         return EC800M_STATUS_NOT_READY;
@@ -204,7 +217,7 @@ eEc800mStatus ec800mInit(eEc800mMapType device)
         return ec800mMapDrvStatus(drvStatus);
     }
 
-    control = ec800mGetPlatformControlInterface(device);
+    control = ec800mGetControl(device);
     if ((control != NULL) && (control->init != NULL)) {
         control->init(deviceObj->cfg.pwrkeyPin, deviceObj->cfg.resetPin);
     }
@@ -267,7 +280,7 @@ eEc800mStatus ec800mStart(eEc800mMapType device, eEc800mServiceMode serviceMode)
         return EC800M_STATUS_NOT_READY;
     }
 
-    control = ec800mGetPlatformControlInterface(device);
+    control = ec800mGetControl(device);
     if ((control == NULL) || (control->setPwrkeyLevel == NULL) || (control->setResetLevel == NULL)) {
         return EC800M_STATUS_UNSUPPORTED;
     }
@@ -426,7 +439,7 @@ static void ec800mLoadDefCfg(eEc800mMapType device, stEc800mCfg *cfg)
     }
 
     (void)memset(cfg, 0, sizeof(*cfg));
-    ec800mLoadPlatformDefaultCfg(device, cfg);
+    ec800mLoadDefaultCfgFromOps(device, cfg);
 }
 
 static void ec800mResetState(stEc800mDevice *device)
@@ -559,7 +572,7 @@ static eEc800mStatus ec800mPollTransport(stEc800mDevice *device)
         return EC800M_STATUS_INVALID_PARAM;
     }
 
-    transport = ec800mGetPlatformTransportInterface(&device->cfg);
+    transport = ec800mGetTransport(&device->cfg);
     if (transport == NULL) {
         return EC800M_STATUS_NOT_READY;
     }
@@ -609,7 +622,7 @@ static eEc800mStatus ec800mProcessCtrl(stEc800mDevice *device, eEc800mMapType de
         return EC800M_STATUS_OK;
     }
 
-    control = ec800mGetPlatformControlInterface(deviceId);
+    control = ec800mGetControl(deviceId);
     if (control == NULL) {
         return EC800M_STATUS_UNSUPPORTED;
     }
@@ -824,7 +837,7 @@ static eFlowParserStrmSta ec800mStreamSend(void *userData, const uint8_t *buf, u
         return FLOWPARSER_STREAM_INVALID_PARAM;
     }
 
-    transport = ec800mGetPlatformTransportInterface(&device->cfg);
+    transport = ec800mGetTransport(&device->cfg);
     if ((transport == NULL) || (transport->write == NULL)) {
         return FLOWPARSER_STREAM_PORT_FAIL;
     }
@@ -842,7 +855,7 @@ static uint32_t ec800mStreamGetTickMs(void *userData)
         return 0U;
     }
 
-    transport = ec800mGetPlatformTransportInterface(&device->cfg);
+    transport = ec800mGetTransport(&device->cfg);
     if ((transport == NULL) || (transport->getTickMs == NULL)) {
         return 0U;
     }

@@ -10,6 +10,8 @@
 ***********************************************************************************/
 #include "fc41d_ctrl.h"
 
+#include "fc41dport.h"
+
 #include <string.h>
 
 #include "../../service/log/log.h"
@@ -163,16 +165,29 @@ void fc41dSyncState(stFc41dDevice *device)
 
 const stFc41dTransportInterface *fc41dGetTransport(const stFc41dDevice *device)
 {
+    const stFc41dOps *lOps;
+
     if (device == NULL) {
         return NULL;
     }
 
-    return fc41dGetPlatformTransportInterface(&device->cfg);
+    lOps = fc41dPortGetOps();
+    if ((lOps == NULL) || (lOps->getTransportInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getTransportInterface(&device->cfg);
 }
 
 const stFc41dControlInterface *fc41dGetControl(eFc41dMapType device)
 {
-    return fc41dGetPlatformControlInterface(device);
+    const stFc41dOps *lOps = fc41dPortGetOps();
+
+    if ((lOps == NULL) || (lOps->getControlInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getControlInterface(device);
 }
 
 eFc41dStatus fc41dMapDrvStatus(eDrvStatus status)

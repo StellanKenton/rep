@@ -13,29 +13,31 @@
 
 static stSdcardDevice gSdcardDevices[SDCARD_DEV_MAX];
 static bool gSdcardDefCfgDone[SDCARD_DEV_MAX] = {false};
+static const stSdcardOps *sdcardGetOps(void);
+static void sdcardLoadDefaultCfgFromOps(eSdcardMapType device, stSdcardCfg *cfg);
+static bool sdcardIsValidCfgByOps(const stSdcardCfg *cfg);
 
-__attribute__((weak)) void sdcardLoadPlatformDefaultCfg(eSdcardMapType device, stSdcardCfg *cfg)
+static const stSdcardOps *sdcardGetOps(void)
 {
-    (void)device;
+    return sdcardPortGetOps();
+}
 
-    if (cfg == NULL) {
+static void sdcardLoadDefaultCfgFromOps(eSdcardMapType device, stSdcardCfg *cfg)
+{
+    const stSdcardOps *lOps = sdcardGetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
         return;
     }
 
-    cfg->linkId = 0U;
-    cfg->initTimeoutMs = SDCARD_DEFAULT_INIT_TIMEOUT_MS;
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stSdcardInterface *sdcardGetPlatformInterface(const stSdcardCfg *cfg)
+static bool sdcardIsValidCfgByOps(const stSdcardCfg *cfg)
 {
-    (void)cfg;
-    return NULL;
-}
+    const stSdcardOps *lOps = sdcardGetOps();
 
-__attribute__((weak)) bool sdcardPlatformIsValidCfg(const stSdcardCfg *cfg)
-{
-    (void)cfg;
-    return false;
+    return (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
 }
 
 static bool sdcardIsValidDevMap(eSdcardMapType device);
@@ -81,7 +83,7 @@ eSdcardStatus sdcardSetCfg(eSdcardMapType device, const stSdcardCfg *cfg)
 {
     stSdcardDevice *lDeviceCtx;
 
-    if ((cfg == NULL) || !sdcardPlatformIsValidCfg(cfg)) {
+    if ((cfg == NULL) || !sdcardIsValidCfgByOps(cfg)) {
         return SDCARD_STATUS_INVALID_PARAM;
     }
 
@@ -110,7 +112,7 @@ eSdcardStatus sdcardInit(eSdcardMapType device)
 
     lSdIf = sdcardGetIf(lDeviceCtx);
     if ((lSdIf == NULL) || (lSdIf->init == NULL) || (lSdIf->getStatus == NULL) || (lSdIf->readBlocks == NULL)) {
-        return sdcardPlatformIsValidCfg(&lDeviceCtx->cfg) ?
+        return sdcardIsValidCfgByOps(&lDeviceCtx->cfg) ?
                SDCARD_STATUS_NOT_READY :
                SDCARD_STATUS_INVALID_PARAM;
     }
@@ -305,7 +307,7 @@ static stSdcardDevice *sdcardGetDevCtx(eSdcardMapType device)
 
 static void sdcardLoadDefCfg(eSdcardMapType device, stSdcardCfg *cfg)
 {
-    sdcardLoadPlatformDefaultCfg(device, cfg);
+    sdcardLoadDefaultCfgFromOps(device, cfg);
 }
 
 static void sdcardClrInfo(stSdcardInfo *info)
@@ -325,7 +327,7 @@ static void sdcardClrInfo(stSdcardInfo *info)
 
 static bool sdcardIsValidDev(const stSdcardDevice *device)
 {
-    return (device != NULL) && sdcardPlatformIsValidCfg(&device->cfg);
+    return (device != NULL) && sdcardIsValidCfgByOps(&device->cfg);
 }
 
 static bool sdcardIsReadyXfer(const stSdcardDevice *device)
@@ -366,7 +368,10 @@ static void sdcardNormalizeInfo(stSdcardInfo *info)
 
 static const stSdcardInterface *sdcardGetIf(const stSdcardDevice *device)
 {
-    return sdcardIsValidDev(device) ? sdcardGetPlatformInterface(&device->cfg) : NULL;
+        const stSdcardOps *lOps = sdcardGetOps();
+
+        return (sdcardIsValidDev(device) && (lOps != NULL) && (lOps->getInterface != NULL)) ?
+            lOps->getInterface(&device->cfg) : NULL;
 }
 
 static eSdcardStatus sdcardRefreshStatusInt(stSdcardDevice *device, bool *isPresent, bool *isWriteProtected)

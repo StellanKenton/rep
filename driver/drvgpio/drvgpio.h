@@ -49,12 +49,14 @@ typedef struct stDrvGpioBspInterface {
     drvGpioBspToggleFunc toggle;
 } stDrvGpioBspInterface;
 
+typedef struct stDrvGpioOps {
+    const stDrvGpioBspInterface *(*getBspInterface)(void);
+} stDrvGpioOps;
+
 void drvGpioInit(void);
 void drvGpioWrite(uint8_t pin, eDrvGpioPinState state);
 eDrvGpioPinState drvGpioRead(uint8_t pin);
 void drvGpioToggle(uint8_t pin);
-
-const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void);
 
 #ifdef __cplusplus
 }

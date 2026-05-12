@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "drvanlogiic_port.h"
 #include "rep_config.h"
 #include "../../service/rtos/rtos.h"
 
@@ -25,9 +26,9 @@
 static bool gDrvAnlogIicInitialized[DRVANLOGIIC_MAX];
 static stRepRtosMutex gDrvAnlogIicMutex[DRVANLOGIIC_MAX];
 
-__attribute__((weak)) const stDrvAnlogIicBspInterface *drvAnlogIicGetPlatformBspInterfaces(void)
+static const stDrvAnlogIicOps *drvAnlogIicGetOps(void)
 {
-    return NULL;
+    return drvAnlogIicPortGetOps();
 }
 
 static eDrvStatus drvAnlogIicMapRtosStatus(eRepRtosStatus status)
@@ -72,13 +73,19 @@ static bool drvAnlogIicIsValidReadBuffer(uint8_t *buffer, uint16_t length)
 
 static stDrvAnlogIicBspInterface *drvAnlogIicGetBspInterface(uint8_t iic)
 {
+    const stDrvAnlogIicOps *lOps;
     const stDrvAnlogIicBspInterface *lInterfaces;
 
     if (!drvAnlogIicIsValid(iic)) {
         return NULL;
     }
 
-    lInterfaces = drvAnlogIicGetPlatformBspInterfaces();
+    lOps = drvAnlogIicGetOps();
+    if ((lOps == NULL) || (lOps->getBspInterfaces == NULL)) {
+        return NULL;
+    }
+
+    lInterfaces = lOps->getBspInterfaces();
     if (lInterfaces == NULL) {
         return NULL;
     }

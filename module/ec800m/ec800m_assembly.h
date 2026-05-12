@@ -39,10 +39,12 @@ typedef struct stEc800mControlInterface {
     ec800mControlSetPinLevelFunc setResetLevel;
 } stEc800mControlInterface;
 
-void ec800mLoadPlatformDefaultCfg(eEc800mMapType device, stEc800mCfg *cfg);
-const stEc800mTransportInterface *ec800mGetPlatformTransportInterface(const stEc800mCfg *cfg);
-const stEc800mControlInterface *ec800mGetPlatformControlInterface(eEc800mMapType device);
-bool ec800mPlatformIsValidCfg(const stEc800mCfg *cfg);
+typedef struct stEc800mOps {
+    void (*loadDefaultCfg)(eEc800mMapType device, stEc800mCfg *cfg);
+    const stEc800mTransportInterface *(*getTransportInterface)(const stEc800mCfg *cfg);
+    const stEc800mControlInterface *(*getControlInterface)(eEc800mMapType device);
+    bool (*isValidCfg)(const stEc800mCfg *cfg);
+} stEc800mOps;
 
 #ifdef __cplusplus
 }

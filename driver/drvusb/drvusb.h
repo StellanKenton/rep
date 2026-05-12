@@ -102,6 +102,10 @@ typedef struct stDrvUsbBspInterface {
     eDrvUsbRole role;
 } stDrvUsbBspInterface;
 
+typedef struct stDrvUsbOps {
+    const stDrvUsbBspInterface *(*getBspInterfaces)(void);
+} stDrvUsbOps;
+
 eDrvStatus drvUsbInit(uint8_t usb);
 eDrvStatus drvUsbStart(uint8_t usb);
 eDrvStatus drvUsbStop(uint8_t usb);
@@ -118,8 +122,6 @@ bool drvUsbIsConnected(uint8_t usb);
 bool drvUsbIsConfigured(uint8_t usb);
 eDrvUsbSpeed drvUsbGetSpeed(uint8_t usb);
 eDrvUsbRole drvUsbGetRole(uint8_t usb);
-
-const stDrvUsbBspInterface *drvUsbGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

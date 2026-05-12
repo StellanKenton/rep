@@ -31,7 +31,7 @@ optional_hooks:
     - updatePortGetTickMs
     - updatePortFeedWatchdog
     - updatePortJumpToRegion
-    - updateDbgOnStateChanged
+    - updateDebugPortGetOps
 common_utils:
     - drvmcuflash
     - log
@@ -77,7 +77,7 @@ read_next:
 | `update.c` | core | 升级状态机、元数据双槽读写、镜像校验、备份/编程/回滚编排 |
 | `update_port.h` | port | 存储设备枚举、区域映射、存储操作表、watchdog/tick/jump hook 契约 |
 | `update_port.c` | port | 当前工程默认把 MCU App 区和 GD25Q32 staging/backup/record 区绑定到逻辑区域 |
-| `update_debug.h/.c` | debug | 状态名和状态切换通知桥接，便于项目层做日志或诊断 |
+| `update_debug.h/.c` | debug | 状态名和状态切换通知桥接，通过 `updateDebugPortGetOps()` 对接项目诊断 |
 
 ## 3. 核心抽象模型
 
@@ -178,8 +178,8 @@ typedef struct stUpdateRegionCfg {
 | `updatePortGetRegionMap` | 必需 | port | 诊断或项目层查询 | `bool (*)(uint8_t, stUpdateRegionCfg *)` | 返回合法区域配置 | `false` 表示未绑定 | `cfg != NULL` | 当前默认实现直接回放默认 map |
 | `updatePortGetTickMs` | 可选 | port | `updateProcess()` | `uint32_t (*)(void)` | 返回单调 tick | `0` 时由调用者参数兜底 | 系统时基已启动 | 默认实现走 `repRtosGetTickMs()` |
 | `updatePortFeedWatchdog` | 可选 | port | 长耗时擦写状态 | `void (*)(void)` | 完成一次 watchdog 续期 | 空实现表示项目自担超时策略 | 无 | 每个分块完成后调用一次 |
-| `updatePortJumpToRegion` | 可选 | port | `updateJumpToTargetIfValid()` | `bool (*)(uint8_t)` | 已完成目标跳转 | `false` 表示当前工程未接入跳转实现 | 目标向量表已通过校验 | 默认实现是 weak stub |
-| `updateDbgOnStateChanged` | 可选 | debug | `updateSetState()` | `void (*)(eUpdateState, eUpdateState)` | 调试输出完成 | 空实现视为关闭调试 | 日志通道可用 | 建议仅做轻量诊断 |
+| `updatePortJumpToRegion` | 可选 | port | `updateJumpToTargetIfValid()` | `bool (*)(uint8_t)` | 已完成目标跳转 | `false` 表示当前工程未接入跳转实现 | 目标向量表已通过校验 | 未接入时由 core 明确返回失败 |
+| `updateDebugPortGetOps` 暴露的 `onStateChanged` | 可选 | debug port | `updateSetState()` | `void (*)(eUpdateState, eUpdateState)` | 调试输出完成 | `NULL` 视为关闭调试 | 日志通道可用 | 建议仅做轻量诊断 |
 
 ## 6. 公共函数使用契约表
 
@@ -251,7 +251,7 @@ typedef struct stUpdateRegionCfg {
 | 新增外部 Flash2 作为 staging 或 backup | `update_port.c/.h` | `update.h` 的逻辑区域定义 |
 | 调整回滚策略 | `update.c` | `update_port.c` 的设备读写接口 |
 | 接入实际 jump 汇编清理 | 项目层实现 `updatePortJumpToRegion` | `update.c` 中硬编码 MCU 细节 |
-| 调整日志或状态诊断粒度 | `update_debug.c` 或项目层 `updateDbgOnStateChanged` | 底层 Flash 驱动 |
+| 调整日志或状态诊断粒度 | `update_debug.c` 或 `User/port/update_debug_port.c` | 底层 Flash 驱动 |
 | 调整当前产品升级入口和协议流程 | `User/` 目录下的项目 manager | `rep/service/update/` 的公共状态语义 |
 
 ## 10. 复制到其他工程的最小步骤

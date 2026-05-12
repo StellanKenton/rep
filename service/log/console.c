@@ -448,10 +448,6 @@ void consoleCoreProcess(void)
     }
 }
 
-__attribute__((weak)) void logPlatformConsolePoll(void)
-{
-}
-
 int32_t logConsoleReply(uint32_t transport, const char *format, ...)
 {
     int lLength = 0;

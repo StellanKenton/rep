@@ -1,8 +1,8 @@
 /***********************************************************************************
 * @file     : update_debug.c
 * @brief    : Optional update service debug helpers.
-* @details  : Keeps state-name mapping and a weak transition callback outside
-*             the reusable update core.
+* @details  : Keeps state-name mapping and an optional transition callback bridge
+*             outside the reusable update core.
 * @author   : GitHub Copilot
 * @date     : 2026-04-16
 * @version  : V1.0.0
@@ -10,10 +10,11 @@
 **********************************************************************************/
 #include "update_debug.h"
 
-__attribute__((weak)) void updateDbgOnStateChanged(eUpdateState from, eUpdateState to)
+#include "update_debug_port.h"
+
+static const stUpdateDbgOps *updateDbgGetOps(void)
 {
-    (void)from;
-    (void)to;
+    return updateDebugPortGetOps();
 }
 
 const char *updateDbgGetStateName(eUpdateState state)
@@ -58,7 +59,11 @@ const char *updateDbgGetStateName(eUpdateState state)
 
 void updateDbgNotifyStateChanged(eUpdateState from, eUpdateState to)
 {
-    updateDbgOnStateChanged(from, to);
+    const stUpdateDbgOps *lOps = updateDbgGetOps();
+
+    if ((lOps != NULL) && (lOps->onStateChanged != NULL)) {
+        lOps->onStateChanged(from, to);
+    }
 }
 
 /**************************End of file********************************/

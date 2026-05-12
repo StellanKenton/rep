@@ -61,6 +61,10 @@ typedef struct stDrvAnlogIicBspInterface {
     uint8_t recoveryClockCount;
 } stDrvAnlogIicBspInterface;
 
+typedef struct stDrvAnlogIicOps {
+    const stDrvAnlogIicBspInterface *(*getBspInterfaces)(void);
+} stDrvAnlogIicOps;
+
 typedef struct stDrvAnlogIicTransfer {
     uint8_t address;
     const uint8_t *writeBuffer;
@@ -86,8 +90,6 @@ eDrvStatus drvAnlogIicWriteRegister(uint8_t iic, uint8_t address, const uint8_t 
 eDrvStatus drvAnlogIicWriteRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
 eDrvStatus drvAnlogIicReadRegister(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length);
 eDrvStatus drvAnlogIicReadRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
-
-const stDrvAnlogIicBspInterface *drvAnlogIicGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

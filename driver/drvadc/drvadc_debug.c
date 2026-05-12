@@ -94,8 +94,13 @@ static eDrvStatus drvAdcDebugRefreshChannel(uint8_t adc)
 
 static eConsoleCommandResult drvAdcDebugReplyAllChannels(uint32_t transport)
 {
-    stDrvAdcData *lDataCache = drvAdcGetPlatformData();
+    const stDrvAdcOps *lOps = drvAdcPortGetOps();
+    stDrvAdcData *lDataCache = NULL;
     uint8_t lAdc;
+
+    if ((lOps != NULL) && (lOps->getData != NULL)) {
+        lDataCache = lOps->getData();
+    }
 
     if (lDataCache == NULL) {
         return CONSOLE_COMMAND_RESULT_ERROR;

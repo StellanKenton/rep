@@ -60,6 +60,10 @@ typedef struct stDrvIicBspInterface {
     uint32_t defaultTimeoutMs;
 } stDrvIicBspInterface;
 
+typedef struct stDrvIicOps {
+    const stDrvIicBspInterface *(*getBspInterfaces)(void);
+} stDrvIicOps;
+
 eDrvStatus drvIicInit(uint8_t iic);
 eDrvStatus drvIicRecoverBus(uint8_t iic);
 eDrvStatus drvIicTransfer(uint8_t iic, const stDrvIicTransfer *transfer);
@@ -72,8 +76,6 @@ eDrvStatus drvIicWriteRegister(uint8_t iic, uint8_t address, const uint8_t *regi
 eDrvStatus drvIicWriteRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
 eDrvStatus drvIicReadRegister(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length);
 eDrvStatus drvIicReadRegisterTimeout(uint8_t iic, uint8_t address, const uint8_t *registerBuffer, uint16_t registerLength, uint8_t *buffer, uint16_t length, uint32_t timeoutMs);
-
-const stDrvIicBspInterface *drvIicGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

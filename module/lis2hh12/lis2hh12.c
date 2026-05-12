@@ -11,63 +11,100 @@
 #include "lis2hh12_assembly.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static stLis2hh12Device gLis2hh12Devices[LIS2HH12_DEV_MAX];
 static bool gLis2hh12DefCfgDone[LIS2HH12_DEV_MAX] = {false};
+static const uint32_t gLis2hh12RetryDelayMsDefault = 10U;
+static const uint32_t gLis2hh12ResetPollDelayMsDefault = 1U;
 
-__attribute__((weak)) void lis2hh12LoadPlatformDefaultCfg(eLis2hh12MapType device, stLis2hh12Cfg *cfg)
+static const stLis2hh12Ops *lis2hh12GetOps(void);
+static bool lis2hh12IsAssembleReady(eLis2hh12MapType device);
+static void lis2hh12LoadDefaultCfgFromOps(eLis2hh12MapType device, stLis2hh12Cfg *cfg);
+static uint8_t lis2hh12GetLinkIdByDevice(eLis2hh12MapType device);
+static uint32_t lis2hh12GetRetryDelayMs(void);
+static uint32_t lis2hh12GetResetPollDelayMs(void);
+static void lis2hh12DelayMs(uint32_t delayMs);
+
+static const stLis2hh12Ops *lis2hh12GetOps(void)
 {
-    (void)device;
+    return lis2hh12PortGetOps();
+}
+
+static bool lis2hh12IsAssembleReady(eLis2hh12MapType device)
+{
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
+
+    if ((lOps == NULL) ||
+        (lOps->loadDefaultCfg == NULL) ||
+        (lOps->getIicInterface == NULL) ||
+        (lOps->isValidAssemble == NULL) ||
+        (lOps->getLinkId == NULL) ||
+        (lOps->delayMs == NULL)) {
+        return false;
+    }
+
+    return lOps->isValidAssemble(device);
+}
+
+static void lis2hh12LoadDefaultCfgFromOps(eLis2hh12MapType device, stLis2hh12Cfg *cfg)
+{
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
 
     if (cfg == NULL) {
         return;
     }
 
-    cfg->address = LIS2HH12_IIC_ADDRESS_LOW;
-    cfg->fifoWatermark = 10U;
-    cfg->retryMax = 10U;
-    cfg->dataRate = LIS2HH12_DATA_RATE_100HZ;
-    cfg->fullScale = LIS2HH12_FULL_SCALE_4G;
-    cfg->filterIntPath = LIS2HH12_FILTER_INT_DISABLE;
-    cfg->filterOutPath = LIS2HH12_FILTER_OUT_LP;
-    cfg->filterLowBandwidth = LIS2HH12_FILTER_LOW_BW_ODR_DIV_9;
-    cfg->filterAntiAliasBandwidth = LIS2HH12_FILTER_AA_AUTO;
-    cfg->fifoMode = LIS2HH12_FIFO_MODE_STREAM;
-    cfg->blockDataUpdate = true;
-    cfg->autoIncrement = true;
+    (void)memset(cfg, 0, sizeof(*cfg));
+    if ((lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stLis2hh12IicInterface *lis2hh12GetPlatformIicInterface(eLis2hh12MapType device)
+static uint8_t lis2hh12GetLinkIdByDevice(eLis2hh12MapType device)
 {
-    (void)device;
-    return NULL;
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
+
+    if ((lOps == NULL) || (lOps->getLinkId == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getLinkId(device);
 }
 
-__attribute__((weak)) bool lis2hh12PlatformIsValidAssemble(eLis2hh12MapType device)
+static uint32_t lis2hh12GetRetryDelayMs(void)
 {
-    (void)device;
-    return false;
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
+
+    if ((lOps == NULL) || (lOps->getRetryDelayMs == NULL)) {
+        return gLis2hh12RetryDelayMsDefault;
+    }
+
+    return lOps->getRetryDelayMs();
 }
 
-__attribute__((weak)) uint8_t lis2hh12PlatformGetLinkId(eLis2hh12MapType device)
+static uint32_t lis2hh12GetResetPollDelayMs(void)
 {
-    (void)device;
-    return 0U;
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
+
+    if ((lOps == NULL) || (lOps->getResetPollDelayMs == NULL)) {
+        return gLis2hh12ResetPollDelayMsDefault;
+    }
+
+    return lOps->getResetPollDelayMs();
 }
 
-__attribute__((weak)) uint32_t lis2hh12PlatformGetRetryDelayMs(void)
+static void lis2hh12DelayMs(uint32_t delayMs)
 {
-    return 10U;
-}
+    const stLis2hh12Ops *lOps = lis2hh12GetOps();
 
-__attribute__((weak)) uint32_t lis2hh12PlatformGetResetPollDelayMs(void)
-{
-    return 1U;
-}
+    if ((lOps == NULL) || (lOps->delayMs == NULL)) {
+        return;
+    }
 
-__attribute__((weak)) void lis2hh12PlatformDelayMs(uint32_t delayMs)
-{
-    (void)delayMs;
+    lOps->delayMs(delayMs);
 }
 
 static bool lis2hh12IsValidDevMap(eLis2hh12MapType device);
@@ -98,7 +135,7 @@ eDrvStatus lis2hh12GetDefCfg(eLis2hh12MapType device, stLis2hh12Cfg *cfg)
     }
 
     lis2hh12LoadDefCfg(device, cfg);
-    return LIS2HH12_STATUS_OK;
+    return lis2hh12IsValidCfg(cfg) ? LIS2HH12_STATUS_OK : LIS2HH12_STATUS_NOT_READY;
 }
 
 eDrvStatus lis2hh12GetCfg(eLis2hh12MapType device, stLis2hh12Cfg *cfg)
@@ -155,13 +192,13 @@ eDrvStatus lis2hh12Init(eLis2hh12MapType device)
     }
 
     if (lis2hh12GetIicIf(lDeviceCtx) == NULL) {
-        return lis2hh12PlatformIsValidAssemble(device) ?
+        return lis2hh12IsAssembleReady(device) ?
                LIS2HH12_STATUS_NOT_READY :
                LIS2HH12_STATUS_INVALID_PARAM;
     }
 
     lIicIf = lis2hh12GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(lis2hh12PlatformGetLinkId(device));
+    lStatus = lIicIf->init(lis2hh12GetLinkIdByDevice(device));
     if (lStatus != LIS2HH12_STATUS_OK) {
         return lStatus;
     }
@@ -208,7 +245,7 @@ eDrvStatus lis2hh12ReadId(eLis2hh12MapType device, uint8_t *devId)
         return LIS2HH12_STATUS_NOT_READY;
     }
 
-    lStatus = lIicIf->init(lis2hh12PlatformGetLinkId(device));
+    lStatus = lIicIf->init(lis2hh12GetLinkIdByDevice(device));
     if (lStatus != LIS2HH12_STATUS_OK) {
         return lStatus;
     }
@@ -364,11 +401,7 @@ static eLis2hh12MapType lis2hh12GetDevMapByCtx(const stLis2hh12Device *device)
 
 static void lis2hh12LoadDefCfg(eLis2hh12MapType device, stLis2hh12Cfg *cfg)
 {
-    if (cfg == NULL) {
-        return;
-    }
-
-    lis2hh12LoadPlatformDefaultCfg(device, cfg);
+    lis2hh12LoadDefaultCfgFromOps(device, cfg);
 }
 
 static bool lis2hh12IsValidCfg(const stLis2hh12Cfg *cfg)
@@ -443,15 +476,17 @@ static bool lis2hh12IsReadyXfer(const stLis2hh12Device *device)
 
 static const stLis2hh12IicInterface *lis2hh12GetIicIf(const stLis2hh12Device *device)
 {
+    const stLis2hh12Ops *lOps;
     const stLis2hh12IicInterface *lIicIf;
     eLis2hh12MapType lDeviceMap;
 
     lDeviceMap = lis2hh12GetDevMapByCtx(device);
-    if (lDeviceMap >= LIS2HH12_DEV_MAX) {
+    if ((lDeviceMap >= LIS2HH12_DEV_MAX) || !lis2hh12IsAssembleReady(lDeviceMap)) {
         return NULL;
     }
 
-    lIicIf = lis2hh12GetPlatformIicInterface(lDeviceMap);
+    lOps = lis2hh12GetOps();
+    lIicIf = lOps->getIicInterface(lDeviceMap);
     if ((lIicIf == NULL) || (lIicIf->init == NULL) || (lIicIf->writeReg == NULL) || (lIicIf->readReg == NULL)) {
         return NULL;
     }
@@ -468,7 +503,7 @@ static eDrvStatus lis2hh12WriteRegInt(const stLis2hh12Device *device, uint8_t re
         return LIS2HH12_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeReg(lis2hh12PlatformGetLinkId(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, &value, 1U);
+    return lIicIf->writeReg(lis2hh12GetLinkIdByDevice(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, &value, 1U);
 }
 
 static eDrvStatus lis2hh12ReadRegInt(const stLis2hh12Device *device, uint8_t regAddr, uint8_t *value)
@@ -484,7 +519,7 @@ static eDrvStatus lis2hh12ReadRegInt(const stLis2hh12Device *device, uint8_t reg
         return LIS2HH12_STATUS_NOT_READY;
     }
 
-    return lIicIf->readReg(lis2hh12PlatformGetLinkId(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, value, 1U);
+    return lIicIf->readReg(lis2hh12GetLinkIdByDevice(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, value, 1U);
 }
 
 static eDrvStatus lis2hh12ReadRegsInt(const stLis2hh12Device *device, uint8_t regAddr, uint8_t *buffer, uint16_t length)
@@ -500,7 +535,7 @@ static eDrvStatus lis2hh12ReadRegsInt(const stLis2hh12Device *device, uint8_t re
         return LIS2HH12_STATUS_NOT_READY;
     }
 
-    return lIicIf->readReg(lis2hh12PlatformGetLinkId(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, buffer, length);
+    return lIicIf->readReg(lis2hh12GetLinkIdByDevice(lis2hh12GetDevMapByCtx(device)), device->cfg.address, &regAddr, 1U, buffer, length);
 }
 
 static eDrvStatus lis2hh12UpdateRegInt(const stLis2hh12Device *device, uint8_t regAddr, uint8_t mask, uint8_t value)
@@ -593,7 +628,7 @@ static eDrvStatus lis2hh12ProbeDevice(stLis2hh12Device *device)
             return LIS2HH12_STATUS_OK;
         }
 
-        lis2hh12PlatformDelayMs(lis2hh12PlatformGetRetryDelayMs());
+        lis2hh12DelayMs(lis2hh12GetRetryDelayMs());
     }
 
     if (lStatus != LIS2HH12_STATUS_OK) {
@@ -624,7 +659,7 @@ static eDrvStatus lis2hh12ResetDevice(stLis2hh12Device *device)
             return LIS2HH12_STATUS_OK;
         }
 
-        lis2hh12PlatformDelayMs(lis2hh12PlatformGetResetPollDelayMs());
+        lis2hh12DelayMs(lis2hh12GetResetPollDelayMs());
     }
 
     return LIS2HH12_STATUS_TIMEOUT;

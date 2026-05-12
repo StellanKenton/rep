@@ -18,6 +18,7 @@
 #include <stddef.h>
 
 #include "rep_config.h"
+#include "drvadc_port.h"
 #include "../../service/rtos/rtos.h"
 
 #define DRVADC_LOG_TAG                    "drvAdc"
@@ -31,17 +32,37 @@ static uint32_t gDrvAdcFilterSum[DRVADC_MAX];
 static uint8_t gDrvAdcFilterIndex[DRVADC_MAX];
 static uint8_t gDrvAdcFilterCount[DRVADC_MAX];
 
+static const stDrvAdcOps *drvAdcGetOps(void);
+static stDrvAdcData *drvAdcGetDataCache(void);
+static stDrvAdcBspInterface *drvAdcGetBspInterface(void);
 static eDrvStatus drvAdcReadRawLocked(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 static eDrvStatus drvAdcConvertRawToMv(uint8_t adc, uint16_t rawValue, uint16_t *valueMv);
 
-__attribute__((weak)) const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void)
+static const stDrvAdcOps *drvAdcGetOps(void)
 {
-    return NULL;
+    return drvAdcPortGetOps();
 }
 
-__attribute__((weak)) stDrvAdcData *drvAdcGetPlatformData(void)
+static stDrvAdcData *drvAdcGetDataCache(void)
 {
-    return NULL;
+    const stDrvAdcOps *lOps = drvAdcGetOps();
+
+    if ((lOps == NULL) || (lOps->getData == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getData();
+}
+
+static stDrvAdcBspInterface *drvAdcGetBspInterface(void)
+{
+    const stDrvAdcOps *lOps = drvAdcGetOps();
+
+    if ((lOps == NULL) || (lOps->getBspInterface == NULL)) {
+        return NULL;
+    }
+
+    return (stDrvAdcBspInterface *)lOps->getBspInterface();
 }
 
 static eDrvStatus drvAdcMapRtosStatus(eRepRtosStatus status)
@@ -82,16 +103,6 @@ static bool drvAdcIsValidResolutionBits(uint8_t resolutionBits)
 static bool drvAdcIsInitialized(uint8_t adc)
 {
     return drvAdcIsValid(adc) && gDrvAdcInitialized[adc];
-}
-
-static stDrvAdcData *drvAdcGetDataCache(void)
-{
-    return drvAdcGetPlatformData();
-}
-
-static stDrvAdcBspInterface *drvAdcGetBspInterface(void)
-{
-    return (stDrvAdcBspInterface *)drvAdcGetPlatformBspInterface();
 }
 
 static bool drvAdcHasValidBspInterface(void)

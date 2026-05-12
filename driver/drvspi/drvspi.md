@@ -8,7 +8,9 @@ public_headers:
   - drvspi.h
 core_files:
   - drvspi.c
-port_files: []
+port_files:
+  - ../../../User/port/drvspi_port.h
+  - ../../../User/port/drvspi_port.c
 debug_files:
   - drvspi_debug.h
   - drvspi_debug.c
@@ -16,9 +18,7 @@ depends_on: []
 forbidden_depends_on:
   - 在 core 中直连 CS GPIO 或 SPI 控制器私有实现
 required_hooks:
-  - drvSpiBspInterface.init
-  - drvSpiBspInterface.transfer
-  - drvSpiBspInterface.csControl.write
+  - stDrvSpiOps.getBspInterfaces
 optional_hooks:
   - drvSpiBspInterface.csControl.init
 common_utils: []
@@ -41,12 +41,13 @@ read_next:
 
 | 文件 | 职责 |
 | --- | --- |
-| `drvspi.h` | 事务结构体、CS 控制结构、BSP hook 类型、公共 API |
-| `drvspi.c` | 参数检查、总线互斥、CS 时序、事务封装 |
+| `drvspi.h` | 事务结构体、CS 控制结构、BSP hook 类型、`stDrvSpiOps`、公共 API |
+| `drvspi.c` | 参数检查、总线互斥、CS 时序、通过 `drvSpiPortGetOps()` 获取 BSP 表 |
+| `User/port/drvspi_port.h/.c` | 项目侧 `ops` 入口与静态 SPI/CS 绑定 |
 | `drvspi_debug.h/.c` | 可选 debug / console 能力 |
 | `drvspi.md` | 当前目录 contract |
 
-当前目录没有独立 `_port.*` 文件，默认总线和 CS 绑定由外部 provider 提供。
+当前目录的项目绑定固定落在 `User/port/drvspi_port.h/.c`，core 不再依赖 weak provider。
 
 ## 3. 对外公共接口
 
@@ -82,6 +83,7 @@ read_next:
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `stDrvSpiOps.getBspInterfaces` | 必需 | `User/port/drvspi_port.c` | `drvspi.c` 内部 helper | `const stDrvSpiBspInterface *(*)(void)` | 返回长期有效的 BSP 表 | 返回 `NULL` 时 core 进入 `NOT_READY` | 无 | 统一替代旧 weak provider |
 | `init` | 必需 | 当前工程 SPI BSP | `drvSpiInit()` | `eDrvStatus (*)(uint8_t spi)` | 总线可用 | 返回明确错误码 | spi 合法 | 不负责 CS 初始化 |
 | `transfer` | 必需 | 当前工程 SPI BSP | 所有事务 helper | `eDrvStatus (*)(uint8_t, const uint8_t *, uint8_t *, uint16_t, uint8_t, uint32_t)` | 一段原始字节流收发成功 | 超时/忙/错误 | 已初始化 | `txBuffer == NULL` 时必须发 `fillData` |
 | `csControl.init` | 可选 | 当前工程 CS provider | `drvSpiInit()` | `void (*)(void *context)` | CS 进入可控状态 | `NULL` 表示无需额外初始化 | context 合法 | 初始化后应保持非选中状态 |
@@ -96,7 +98,7 @@ read_next:
 | 需求 | 应改文件 | 不该改的文件 |
 | --- | --- | --- |
 | 改事务语义或 helper | `drvspi.c/.h` | BSP 控制器实现 |
-| 改默认片选、极性或超时 | 当前工程 SPI/CS provider | `drvspi.c` 主流程 |
+| 改默认片选、极性或超时 | `User/port/drvspi_port.*` / BSP | `drvspi.c` 主流程 |
 | 增加调试命令 | `drvspi_debug.*` | `drvspi.c` |
 
 ## 9. 复制到其他工程的最小步骤

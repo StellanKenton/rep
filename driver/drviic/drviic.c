@@ -18,6 +18,7 @@
 #include <stddef.h>
 
 #include "rep_config.h"
+#include "drviic_port.h"
 #include "../../service/rtos/rtos.h"
 
 #define DRVIIC_LOG_TAG                   "drvIic"
@@ -25,9 +26,9 @@
 static bool gDrvIicInitialized[DRVIIC_MAX];
 static stRepRtosMutex gDrvIicMutex[DRVIIC_MAX];
 
-__attribute__((weak)) const stDrvIicBspInterface *drvIicGetPlatformBspInterfaces(void)
+static const stDrvIicOps *drvIicGetOps(void)
 {
-    return NULL;
+    return drvIicPortGetOps();
 }
 
 static eDrvStatus drvIicMapRtosStatus(eRepRtosStatus status)
@@ -113,13 +114,19 @@ static bool drvIicIsInitialized(uint8_t iic)
 
 static stDrvIicBspInterface *drvIicGetBspInterface(uint8_t iic)
 {
+    const stDrvIicOps *lOps;
     const stDrvIicBspInterface *lInterfaces;
 
     if (!drvIicIsValid(iic)) {
         return NULL;
     }
 
-    lInterfaces = drvIicGetPlatformBspInterfaces();
+    lOps = drvIicGetOps();
+    if ((lOps == NULL) || (lOps->getBspInterfaces == NULL)) {
+        return NULL;
+    }
+
+    lInterfaces = lOps->getBspInterfaces();
     if (lInterfaces == NULL) {
         return NULL;
     }

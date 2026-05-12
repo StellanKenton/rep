@@ -76,6 +76,13 @@ typedef struct stGd25qxxxCfg {
     uint8_t linkId;
 } stGd25qxxxCfg;
 
+typedef struct stGd25qxxxOps {
+    void (*loadDefaultCfg)(eGd25qxxxMapType device, stGd25qxxxCfg *cfg);
+    const stGd25qxxxSpiInterface *(*getSpiInterface)(const stGd25qxxxCfg *cfg);
+    bool (*isValidCfg)(const stGd25qxxxCfg *cfg);
+    void (*delayMs)(uint32_t delayMs);
+} stGd25qxxxOps;
+
 typedef struct stGd25qxxxInfo {
     uint8_t manufacturerId;
     uint8_t memoryType;
@@ -107,6 +114,8 @@ eGd25qxxxStatus gd25qxxxWrite(eGd25qxxxMapType device, uint32_t address, const u
 eGd25qxxxStatus gd25qxxxEraseSector(eGd25qxxxMapType device, uint32_t address);
 eGd25qxxxStatus gd25qxxxEraseBlock64k(eGd25qxxxMapType device, uint32_t address);
 eGd25qxxxStatus gd25qxxxEraseChip(eGd25qxxxMapType device);
+
+const stGd25qxxxOps *gd25qxxxPortGetOps(void);
 
 #ifdef __cplusplus
 }

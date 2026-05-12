@@ -35,10 +35,12 @@ typedef struct stEsp32c5ControlInterface {
     esp32c5ControlSetResetLevelFunc setResetLevel;
 } stEsp32c5ControlInterface;
 
-void esp32c5LoadPlatformDefaultCfg(eEsp32c5MapType device, stEsp32c5Cfg *cfg);
-const stEsp32c5TransportInterface *esp32c5GetPlatformTransportInterface(const stEsp32c5Cfg *cfg);
-const stEsp32c5ControlInterface *esp32c5GetPlatformControlInterface(eEsp32c5MapType device);
-bool esp32c5PlatformIsValidCfg(const stEsp32c5Cfg *cfg);
+typedef struct stEsp32c5Ops {
+    void (*loadDefaultCfg)(eEsp32c5MapType device, stEsp32c5Cfg *cfg);
+    const stEsp32c5TransportInterface *(*getTransportInterface)(const stEsp32c5Cfg *cfg);
+    const stEsp32c5ControlInterface *(*getControlInterface)(eEsp32c5MapType device);
+    bool (*isValidCfg)(const stEsp32c5Cfg *cfg);
+} stEsp32c5Ops;
 
 #ifdef __cplusplus
 }

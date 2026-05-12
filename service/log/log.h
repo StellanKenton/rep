@@ -59,6 +59,7 @@ typedef uint32_t (*logTimestampProvider)(void);
 typedef void (*logInitFunc)(void);
 typedef int32_t (*logOutputWriteFunc)(const uint8_t *buffer, uint16_t length);
 typedef stRingBuffer *(*logInputGetBufferFunc)(void);
+typedef void (*logConsolePollFunc)(void);
 
 typedef struct stLogInterface {
     uint32_t transport;
@@ -68,6 +69,12 @@ typedef struct stLogInterface {
     bool isOutputEnabled;
     bool isInputEnabled;
 } stLogInterface;
+
+typedef struct stLogOps {
+    const stLogInterface *interfaces;
+    uint32_t interfaceCount;
+    logConsolePollFunc consolePoll;
+} stLogOps;
 
 typedef struct stLogOutputStats {
     uint32_t transport;

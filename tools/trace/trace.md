@@ -8,15 +8,21 @@ public_headers:
   - trace.h
 core_files:
   - trace.c
-port_files: []
+port_files:
+  - ../../User/port/trace_port.h
+  - ../../User/port/trace_port.c
 debug_files: []
 depends_on:
   - ../tools.md
 forbidden_depends_on:
   - 直接依赖 RTT、UART、console 等输出实现
   - 在模块内部进入死循环或重启系统
-required_hooks: []
-optional_hooks: []
+required_hooks:
+  - tracePortGetOps
+optional_hooks:
+  - transportInit
+  - transportWrite
+  - halt
 common_utils: []
 copy_minimal_set:
   - trace.h
@@ -45,8 +51,8 @@ read_next: []
 
 | 文件 | 职责 |
 | --- | --- |
-| `trace.h` | fault 类型、堆栈帧与快照结构体、公共 API、platform hook 声明 |
-| `trace.c` | Cortex-M fault handler、寄存器采集、默认文本输出和弱符号 hook |
+| `trace.h` | fault 类型、堆栈帧与快照结构体、公共 API、`stTraceOps` 契约 |
+| `trace.c` | Cortex-M fault handler、寄存器采集、默认文本输出和 ops 分发 |
 | `trace.md` | 当前目录主文档 |
 
 ## 3. 对外公共接口
@@ -77,8 +83,8 @@ read_next: []
 | 类型 | 当前要求 |
 | --- | --- |
 | assembly 入口 | 模块内部已提供 ARM Cortex-M fault handler 包装，当前实现适配 Keil ARMCC 风格异常汇编 |
-| platform hook | 项目层可覆盖 `traceFaultPlatformTransportInit()`、`traceFaultPlatformTransportWrite()`、`traceFaultPlatformHalt()` |
-| 输出绑定 | 默认通过弱符号 transport hook 注入，不能把具体 RTT/UART 绑定写死回当前模块 |
+| port 入口 | 项目层通过 `tracePortGetOps()` 提供长期有效的 `stTraceOps` |
+| 输出绑定 | core 只通过 `stTraceOps.transportInit/transportWrite/halt` 访问项目侧能力，不能把具体 RTT/UART 绑定写死回当前模块 |
 
 ## 7. 公共函数使用契约
 
@@ -86,7 +92,7 @@ read_next: []
 | --- | --- | --- |
 | `traceFaultCapture()` | 异常入口 C 层、故障诊断路径 | `snapshot` 不能为空；允许在中断/异常上下文调用；只负责采集 |
 | `traceFaultHandle()` | 自定义异常入口、项目侧主动转发 | 允许在异常上下文调用；会关闭中断、输出快照并进入停机 hook |
-| `traceFaultPlatformTransportWrite()` | 项目层 override | 必须无阻塞风险可控，且能在 fault 上下文使用 |
+| `tracePortGetOps()` 暴露的 `transportWrite` | 项目层 port | 必须无阻塞风险可控，且能在 fault 上下文使用 |
 
 ## 8. 改动落点矩阵
 
@@ -105,7 +111,7 @@ read_next: []
 
 - 目标芯片属于 Cortex-M3/M4/M7，或具备相同的 fault 状态寄存器布局。
 - 若不是 Keil ARMCC，需要把 `trace.c` 中的异常汇编包装改成目标编译器写法。
-- 项目层按需覆盖 transport/halt hook。
+- 项目层在 `User/port/trace_port.c` 中按需补齐 transport/halt ops。
 
 ## 10. 验证清单
 

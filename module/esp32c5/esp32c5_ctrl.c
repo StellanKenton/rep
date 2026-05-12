@@ -10,6 +10,8 @@
 ***********************************************************************************/
 #include "esp32c5_ctrl.h"
 
+#include "esp32c5_port.h"
+
 #include <string.h>
 
 #include "../../service/log/log.h"
@@ -143,16 +145,29 @@ void esp32c5SyncState(stEsp32c5Device *device)
 
 const stEsp32c5TransportInterface *esp32c5GetTransport(const stEsp32c5Device *device)
 {
+    const stEsp32c5Ops *lOps;
+
     if (device == NULL) {
         return NULL;
     }
 
-    return esp32c5GetPlatformTransportInterface(&device->cfg);
+    lOps = esp32c5PortGetOps();
+    if ((lOps == NULL) || (lOps->getTransportInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getTransportInterface(&device->cfg);
 }
 
 const stEsp32c5ControlInterface *esp32c5GetControl(eEsp32c5MapType device)
 {
-    return esp32c5GetPlatformControlInterface(device);
+    const stEsp32c5Ops *lOps = esp32c5PortGetOps();
+
+    if ((lOps == NULL) || (lOps->getControlInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getControlInterface(device);
 }
 
 eEsp32c5Status esp32c5MapDrvStatus(eDrvStatus status)

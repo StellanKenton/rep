@@ -9,6 +9,8 @@
 ***********************************************************************************/
 #include "log.h"
 
+#include "log_port.h"
+
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -59,14 +61,9 @@ static bool logLoadNextFrame(stLogOutputState *state);
 static void logProcessInterface(const stLogInterface *interface, stLogOutputState *state);
 static void logProcessOutputCore(void);
 
-__attribute__((weak)) const stLogInterface *logGetPlatformInterfaces(void)
+static const stLogOps *logGetOps(void)
 {
-    return NULL;
-}
-
-__attribute__((weak)) uint32_t logGetPlatformInterfaceCount(void)
-{
-    return 0U;
+    return logPortGetOps();
 }
 
 static uint32_t logGetDefaultTimestamp(void)
@@ -82,7 +79,13 @@ static stLogOutputState gLogOutputStates[REP_LOG_OUTPUT_PORT];
 
 static const stLogInterface *logGetInterfaces(void)
 {
-    return logGetPlatformInterfaces();
+    const stLogOps *lOps = logGetOps();
+
+    if (lOps == NULL) {
+        return NULL;
+    }
+
+    return lOps->interfaces;
 }
 
 static bool logIsValidOutputInterface(const stLogInterface *interface)
@@ -373,7 +376,13 @@ static bool logLoadNextFrame(stLogOutputState *state)
 
 static uint32_t logGetAvailableInterfaceCount(void)
 {
-    return logGetPlatformInterfaceCount();
+    const stLogOps *lOps = logGetOps();
+
+    if ((lOps == NULL) || (lOps->interfaces == NULL)) {
+        return 0U;
+    }
+
+    return lOps->interfaceCount;
 }
 
 static uint32_t logGetInterfaceCount(void)
@@ -698,12 +707,16 @@ void logProcessOutput(void)
 
 void ConsoleBackGournd(void)
 {
+    const stLogOps *lOps = logGetOps();
+
     if (!logInit()) {
         return;
     }
 
     logProcessOutputCore();
-    logPlatformConsolePoll();
+    if ((lOps != NULL) && (lOps->consolePoll != NULL)) {
+        lOps->consolePoll();
+    }
     consoleCoreProcess();
 }
 

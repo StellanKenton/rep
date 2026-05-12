@@ -9,86 +9,61 @@
 **********************************************************************************/
 #include "wt2003hx.h"
 
+#include "wt2003hx_port.h"
+
 #include <stddef.h>
 #include <string.h>
 
-#include "wt2003hx_assembly.h"
-
 static stWt2003hxDevice gWt2003hxDevices[WT2003HX_DEV_MAX];
-static const uint8_t gWt2003hxFrameHead[] = {WT2003HX_FRAME_HEAD};
 
 static bool wt2003hxIsValidDevice(eWt2003hxMapType device);
 static bool wt2003hxIsValidCfg(const stWt2003hxCfg *cfg);
 static stWt2003hxDevice *wt2003hxGetDevice(eWt2003hxMapType device);
 static uint8_t wt2003hxChecksum(const uint8_t *buffer, uint8_t length);
 static eWt2003hxStatus wt2003hxSendCmd(eWt2003hxMapType device, uint8_t cmd, const uint8_t *param, uint8_t paramLen);
-static uint32_t wt2003hxProtocolHeadLen(const uint8_t *buf, uint32_t availLen, void *userCtx);
-static uint32_t wt2003hxProtocolPktLen(const uint8_t *buf, uint32_t headLen, uint32_t availLen, void *userCtx);
-static uint32_t wt2003hxProtocolChecksum(const uint8_t *buf, uint32_t len, void *userCtx);
 static void wt2003hxHandleRawReply(stWt2003hxDevice *device, const uint8_t *buf, uint16_t len);
 static void wt2003hxHandlePacket(stWt2003hxDevice *device, const stFrmPsrPkt *pkt);
+static const stWt2003hxOps *wt2003hxGetOps(void);
+static void wt2003hxLoadDefaultCfgFromOps(eWt2003hxMapType device, stWt2003hxCfg *cfg);
+static const stWt2003hxTransportInterface *wt2003hxGetTransport(const stWt2003hxCfg *cfg);
+static const stWt2003hxControlInterface *wt2003hxGetControl(eWt2003hxMapType device);
 
-__attribute__((weak)) void wt2003hxLoadPlatformDefaultCfg(eWt2003hxMapType device, stWt2003hxCfg *cfg)
+static const stWt2003hxOps *wt2003hxGetOps(void)
 {
-    (void)device;
+    return wt2003hxPortGetOps();
+}
 
-    if (cfg == NULL) {
+static void wt2003hxLoadDefaultCfgFromOps(eWt2003hxMapType device, stWt2003hxCfg *cfg)
+{
+    const stWt2003hxOps *lOps = wt2003hxGetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
         return;
     }
 
-    (void)memset(cfg, 0, sizeof(*cfg));
-    cfg->powerDelayMs = WT2003HX_POWER_DELAY_MS;
-    cfg->txTimeoutMs = WT2003HX_TX_TIMEOUT_MS;
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stWt2003hxTransportInterface *wt2003hxGetPlatformTransportInterface(const stWt2003hxCfg *cfg)
+static const stWt2003hxTransportInterface *wt2003hxGetTransport(const stWt2003hxCfg *cfg)
 {
-    (void)cfg;
-    return NULL;
-}
+    const stWt2003hxOps *lOps = wt2003hxGetOps();
 
-__attribute__((weak)) const stWt2003hxControlInterface *wt2003hxGetPlatformControlInterface(eWt2003hxMapType device)
-{
-    (void)device;
-    return NULL;
-}
-
-__attribute__((weak)) bool wt2003hxPlatformIsValidCfg(const stWt2003hxCfg *cfg)
-{
-    (void)cfg;
-    return false;
-}
-
-void frmPsrLoadPlatformDefaultProtoCfg(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg)
-{
-    if (protoCfg == NULL) {
-        return;
+    if ((lOps == NULL) || (lOps->getTransportInterface == NULL)) {
+        return NULL;
     }
 
-    (void)memset(protoCfg, 0, sizeof(*protoCfg));
-    if (protocolId != WT2003HX_PROTOCOL_ID) {
-        return;
+    return lOps->getTransportInterface(cfg);
+}
+
+static const stWt2003hxControlInterface *wt2003hxGetControl(eWt2003hxMapType device)
+{
+    const stWt2003hxOps *lOps = wt2003hxGetOps();
+
+    if ((lOps == NULL) || (lOps->getControlInterface == NULL)) {
+        return NULL;
     }
 
-    protoCfg->headPatList[0] = gWt2003hxFrameHead;
-    protoCfg->headPatCount = 1U;
-    protoCfg->headPatLen = 1U;
-    protoCfg->minHeadLen = 3U;
-    protoCfg->minPktLen = WT2003HX_FRAME_MIN_LEN;
-    protoCfg->maxPktLen = WT2003HX_FRAME_MAX_LEN;
-    protoCfg->waitPktToutMs = 100U;
-    protoCfg->crcRangeStartOff = 1;
-    protoCfg->crcRangeEndOff = -3;
-    protoCfg->crcFieldOff = -2;
-    protoCfg->crcFieldLen = 1U;
-    protoCfg->cmdindex = 2U;
-    protoCfg->cmdLen = 1U;
-    protoCfg->packlenindex = 1U;
-    protoCfg->packlenLen = 1U;
-    protoCfg->crcFieldEnd = FRM_PSR_CRC_END_LITTLE;
-    protoCfg->headLenFunc = wt2003hxProtocolHeadLen;
-    protoCfg->pktLenFunc = wt2003hxProtocolPktLen;
-    protoCfg->crcCalcFunc = wt2003hxProtocolChecksum;
+    return lOps->getControlInterface(device);
 }
 
 eWt2003hxStatus wt2003hxGetDefCfg(eWt2003hxMapType device, stWt2003hxCfg *cfg)
@@ -97,7 +72,7 @@ eWt2003hxStatus wt2003hxGetDefCfg(eWt2003hxMapType device, stWt2003hxCfg *cfg)
         return WT2003HX_STATUS_INVALID_PARAM;
     }
 
-    wt2003hxLoadPlatformDefaultCfg(device, cfg);
+    wt2003hxLoadDefaultCfgFromOps(device, cfg);
     return wt2003hxIsValidCfg(cfg) ? WT2003HX_STATUS_OK : WT2003HX_STATUS_INVALID_PARAM;
 }
 
@@ -151,8 +126,8 @@ eWt2003hxStatus wt2003hxInit(eWt2003hxMapType device)
         return WT2003HX_STATUS_INVALID_PARAM;
     }
 
-    lTransport = wt2003hxGetPlatformTransportInterface(&lDevice->cfg);
-    lControl = wt2003hxGetPlatformControlInterface(device);
+    lTransport = wt2003hxGetTransport(&lDevice->cfg);
+    lControl = wt2003hxGetControl(device);
     if ((lTransport == NULL) || (lTransport->init == NULL) || (lTransport->write == NULL) ||
         (lTransport->getRxLen == NULL) || (lTransport->read == NULL) || (lTransport->getTickMs == NULL) ||
         (lControl == NULL) || (lControl->setEnable == NULL) || (lControl->delayMs == NULL)) {
@@ -180,7 +155,6 @@ eWt2003hxStatus wt2003hxInit(eWt2003hxMapType device)
     if (frmPsrInit(&lDevice->parser, &lParserCfg) != FRM_PSR_OK) {
         return WT2003HX_STATUS_ERROR;
     }
-    lDevice->parser.protoCfg.getTick = lTransport->getTickMs;
 
     lDevice->isReady = true;
     return WT2003HX_STATUS_OK;
@@ -205,7 +179,7 @@ eWt2003hxStatus wt2003hxProcess(eWt2003hxMapType device)
         return WT2003HX_STATUS_NOT_READY;
     }
 
-    lTransport = wt2003hxGetPlatformTransportInterface(&lDevice->cfg);
+    lTransport = wt2003hxGetTransport(&lDevice->cfg);
     if ((lTransport == NULL) || (lTransport->getRxLen == NULL) || (lTransport->read == NULL)) {
         return WT2003HX_STATUS_NOT_READY;
     }
@@ -327,7 +301,9 @@ static bool wt2003hxIsValidDevice(eWt2003hxMapType device)
 
 static bool wt2003hxIsValidCfg(const stWt2003hxCfg *cfg)
 {
-    return (cfg != NULL) && wt2003hxPlatformIsValidCfg(cfg);
+    const stWt2003hxOps *lOps = wt2003hxGetOps();
+
+    return (cfg != NULL) && (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
 }
 
 static stWt2003hxDevice *wt2003hxGetDevice(eWt2003hxMapType device)
@@ -381,7 +357,7 @@ static eWt2003hxStatus wt2003hxSendCmd(eWt2003hxMapType device, uint8_t cmd, con
     lFrame[3U + paramLen] = wt2003hxChecksum(&lFrame[1], (uint8_t)(paramLen + 2U));
     lFrame[4U + paramLen] = WT2003HX_FRAME_TAIL;
 
-    lTransport = wt2003hxGetPlatformTransportInterface(&lDevice->cfg);
+    lTransport = wt2003hxGetTransport(&lDevice->cfg);
     if ((lTransport == NULL) || (lTransport->write == NULL)) {
         return WT2003HX_STATUS_NOT_READY;
     }
@@ -389,64 +365,18 @@ static eWt2003hxStatus wt2003hxSendCmd(eWt2003hxMapType device, uint8_t cmd, con
     return lTransport->write(lDevice->cfg.linkId, lFrame, lFrameLen, lDevice->cfg.txTimeoutMs);
 }
 
-static uint32_t wt2003hxProtocolHeadLen(const uint8_t *buf, uint32_t availLen, void *userCtx)
-{
-    (void)buf;
-    (void)userCtx;
-
-    return (availLen >= 3U) ? 3U : 0U;
-}
-
-static uint32_t wt2003hxProtocolPktLen(const uint8_t *buf, uint32_t headLen, uint32_t availLen, void *userCtx)
-{
-    uint32_t lPktLen;
-
-    (void)headLen;
-    (void)userCtx;
-
-    if ((buf == NULL) || (availLen < 2U)) {
-        return 0U;
-    }
-
-    lPktLen = (uint32_t)buf[1] + 2U;
-    if ((lPktLen < WT2003HX_FRAME_MIN_LEN) || (lPktLen > WT2003HX_FRAME_MAX_LEN)) {
-        return 0U;
-    }
-
-    if ((availLen >= lPktLen) && (buf[lPktLen - 1U] != WT2003HX_FRAME_TAIL)) {
-        return 0U;
-    }
-
-    return lPktLen;
-}
-
-static uint32_t wt2003hxProtocolChecksum(const uint8_t *buf, uint32_t len, void *userCtx)
-{
-    uint32_t lIndex;
-    uint8_t lChecksum = 0U;
-
-    (void)userCtx;
-
-    if (buf == NULL) {
-        return 0U;
-    }
-
-    for (lIndex = 0U; lIndex < len; lIndex++) {
-        lChecksum = (uint8_t)(lChecksum + buf[lIndex]);
-    }
-
-    return lChecksum;
-}
-
 static void wt2003hxUpdateReplyTick(stWt2003hxDevice *device, uint8_t cmd)
 {
+    const stWt2003hxTransportInterface *lTransport;
+
     if (device == NULL) {
         return;
     }
 
     device->info.lastReplyCmd = cmd;
-    if (device->parser.protoCfg.getTick != NULL) {
-        device->info.lastReplyTick = device->parser.protoCfg.getTick();
+    lTransport = wt2003hxGetTransport(&device->cfg);
+    if ((lTransport != NULL) && (lTransport->getTickMs != NULL)) {
+        device->info.lastReplyTick = lTransport->getTickMs();
     }
 }
 

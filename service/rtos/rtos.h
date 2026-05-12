@@ -101,8 +101,6 @@ eRepRtosStatus repRtosQueueReset(stRepRtosQueue *queue);
 eRepRtosStatus repRtosTaskCreate(const stRepRtosTaskConfig *config);
 eRepRtosStatus repRtosTaskDelayUntilMs(uint32_t *lastWakeTimeMs, uint32_t periodMs);
 eRepRtosStatus repRtosStatsInit(void);
-const char *repRtosGetName(void);
-uint32_t repRtosGetSystem(void);
 
 #ifdef __cplusplus
 }

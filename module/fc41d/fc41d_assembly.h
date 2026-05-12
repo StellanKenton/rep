@@ -35,10 +35,12 @@ typedef struct stFc41dControlInterface {
     fc41dControlSetResetLevelFunc setResetLevel;
 } stFc41dControlInterface;
 
-void fc41dLoadPlatformDefaultCfg(eFc41dMapType device, stFc41dCfg *cfg);
-const stFc41dTransportInterface *fc41dGetPlatformTransportInterface(const stFc41dCfg *cfg);
-const stFc41dControlInterface *fc41dGetPlatformControlInterface(eFc41dMapType device);
-bool fc41dPlatformIsValidCfg(const stFc41dCfg *cfg);
+typedef struct stFc41dOps {
+    void (*loadDefaultCfg)(eFc41dMapType device, stFc41dCfg *cfg);
+    const stFc41dTransportInterface *(*getTransportInterface)(const stFc41dCfg *cfg);
+    const stFc41dControlInterface *(*getControlInterface)(eFc41dMapType device);
+    bool (*isValidCfg)(const stFc41dCfg *cfg);
+} stFc41dOps;
 
 #ifdef __cplusplus
 }
