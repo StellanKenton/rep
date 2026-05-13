@@ -80,6 +80,10 @@ read_next:
 - `logConsoleReply()`：按来源 transport 定向回复 console 文本，并自动补齐结尾换行。
 - `logProcess()`：单轮执行输出刷写、平台 console 输入轮询和命令处理；系统装配层不再单独调 `logProcessOutput()` 或 `consoleProcess()`。
 
+兼容说明：
+
+- `console.h` 已删除；新旧代码统一直接 include `log.h`。
+
 ## 3. transport ops 契约
 
 项目侧必须在 `User/port/log_port.c` 提供长期有效的 `stLogOps`，并通过 `logPortGetOps()` 暴露给 core。

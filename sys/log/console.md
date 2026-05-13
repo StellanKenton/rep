@@ -24,7 +24,6 @@ optional_hooks: []
 common_utils:
   - tools/ringbuffer
 copy_minimal_set:
-  - log/console.h
   - log/console.c
   - log/log.h
 read_next:
@@ -64,7 +63,6 @@ read_next:
 
 兼容说明：
 
-- `console.h` 仅保留为兼容 include 包装头，不再暴露额外 API；系统装配层应直接 include `log.h`。
 - 旧的 `consoleReply()`、`consoleRegisterCommand()`、`consoleProcess()` 名字已不再作为公开入口。
 
 内置保留命令：
@@ -81,7 +79,6 @@ read_next:
 
 | 文件 | 职责 |
 | --- | --- |
-| `console.h` | 兼容 include 包装头；对外首选 `log.h` |
 | `console.c` | session 轮询、拆行、分词、查表分发、回复 |
 | `console.md` | console contract |
 | `log.h/.c` | 对外统一入口，负责 log core、console 装配和后台轮询 |
@@ -120,7 +117,7 @@ read_next:
 
 | 需求 | 应改文件 | 不该改的文件 |
 | --- | --- | --- |
-| 新增命令框架能力 | `console.h/.c` | 业务驱动 core |
+| 新增命令框架能力 | `console.c`、`log.h/.c` | 业务驱动 core |
 | 新增某模块命令 | 该模块 `*_debug.*` 或注册文件 | `console.c` 中硬编码业务 |
 | 调整回复路径 | `log.h/.c`、`console.c` | 业务模块公共 API |
 | 调整系统侧初始化顺序 | `log.c`、系统装配文件 | 各 debug 模块里手工补 `consoleInit()` |
@@ -129,7 +126,7 @@ read_next:
 
 最小依赖集：
 
-- `console.h/.c`
+- `console.c`
 - `log.h/.c` 暴露的 transport 抽象
 - `ringbuffer` 模块
 
