@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 static bool pca9535DebugParseDevice(const char *name, ePca9535MapType *device);
 static bool pca9535DebugParseUint32(const char *text, uint32_t *value);
@@ -178,7 +178,7 @@ static eConsoleCommandResult pca9535DebugReplyDeviceList(uint32_t transport)
     for (lIndex = 0U; lIndex < (uint32_t)PCA9535_DEV_MAX; lIndex++) {
         pca9535GetDefCfg((ePca9535MapType)lIndex, &lCfg);
         pca9535PortGetAssembleCfg((ePca9535MapType)lIndex, &lAssembleCfg);
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s bus=%u addr=%02X ready=%s\n",
             pca9535DebugGetDeviceName((ePca9535MapType)lIndex),
             (unsigned int)lAssembleCfg.linkId,
@@ -188,7 +188,7 @@ static eConsoleCommandResult pca9535DebugReplyDeviceList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -199,7 +199,7 @@ static eConsoleCommandResult pca9535DebugHandleInit(uint32_t transport, ePca9535
 {
     eDrvStatus lStatus = pca9535Init(device);
 
-    if (consoleReply(transport, "%s init=%s\nOK", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -219,7 +219,7 @@ static eConsoleCommandResult pca9535DebugHandleInfo(uint32_t transport, ePca9535
     lDirStatus = pca9535GetDirectionPort(device, &lDirValue);
     lInputStatus = pca9535ReadInputPort(device, &lInputValue);
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s ready=%s out=%04X(%s) dir=%04X(%s) in=%04X(%s)\nOK",
         pca9535DebugGetDeviceName(device),
         pca9535IsReady(device) ? "yes" : "no",
@@ -249,14 +249,14 @@ static eConsoleCommandResult pca9535DebugHandleRegGet(uint32_t transport, ePca95
 
     lStatus = pca9535ReadReg(device, lReg, &lValue);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s reg=%02X status=%s", pca9535DebugGetDeviceName(device), (unsigned int)lReg, pca9535DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s reg=%02X status=%s", pca9535DebugGetDeviceName(device), (unsigned int)lReg, pca9535DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s reg=%02X value=%02X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lReg, (unsigned int)lValue) <= 0) {
+    if (logConsoleReply(transport, "%s reg=%02X value=%02X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lReg, (unsigned int)lValue) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -274,7 +274,7 @@ static eConsoleCommandResult pca9535DebugHandleRegSet(uint32_t transport, ePca95
     }
 
     lStatus = pca9535WriteReg(device, lReg, lValue);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s reg=%02X write=%02X status=%s\nOK",
         pca9535DebugGetDeviceName(device),
         (unsigned int)lReg,
@@ -292,14 +292,14 @@ static eConsoleCommandResult pca9535DebugHandleInput(uint32_t transport, ePca953
     eDrvStatus lStatus = pca9535ReadInputPort(device, &lValue);
 
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s input=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s input=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s input=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
+    if (logConsoleReply(transport, "%s input=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -314,14 +314,14 @@ static eConsoleCommandResult pca9535DebugHandleOutput(uint32_t transport, ePca95
     if (argc == 3) {
         lStatus = pca9535GetOutputPort(device, &lValue);
         if (lStatus != DRV_STATUS_OK) {
-            if (consoleReply(transport, "%s output=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
+            if (logConsoleReply(transport, "%s output=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
                 return CONSOLE_COMMAND_RESULT_ERROR;
             }
 
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
-        if (consoleReply(transport, "%s output=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
+        if (logConsoleReply(transport, "%s output=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
@@ -333,7 +333,7 @@ static eConsoleCommandResult pca9535DebugHandleOutput(uint32_t transport, ePca95
     }
 
     lStatus = pca9535SetOutputPort(device, lValue);
-    if (consoleReply(transport, "%s output_set=%04X status=%s\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s output_set=%04X status=%s\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -352,14 +352,14 @@ static eConsoleCommandResult pca9535DebugHandleDir(uint32_t transport, ePca9535M
 
         lStatus = pca9535GetDirectionPort(device, &lValue);
         if (lStatus != DRV_STATUS_OK) {
-            if (consoleReply(transport, "%s dir=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
+            if (logConsoleReply(transport, "%s dir=%s", pca9535DebugGetDeviceName(device), pca9535DebugGetStatusText(lStatus)) <= 0) {
                 return CONSOLE_COMMAND_RESULT_ERROR;
             }
 
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
-        if (consoleReply(transport, "%s dir=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
+        if (logConsoleReply(transport, "%s dir=%04X\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
@@ -371,7 +371,7 @@ static eConsoleCommandResult pca9535DebugHandleDir(uint32_t transport, ePca9535M
     }
 
     lStatus = pca9535SetDirectionPort(device, lValue);
-    if (consoleReply(transport, "%s dir_set=%04X status=%s\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s dir_set=%04X status=%s\nOK", pca9535DebugGetDeviceName(device), (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -382,7 +382,7 @@ static eConsoleCommandResult pca9535DebugHandleLedOff(uint32_t transport)
 {
     eDrvStatus lStatus = pca9535PortLedOff();
 
-    if (consoleReply(transport, "ledoff status=%s\nOK", pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "ledoff status=%s\nOK", pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -399,7 +399,7 @@ static eConsoleCommandResult pca9535DebugHandleLedNum(uint32_t transport, int ar
     }
 
     lStatus = pca9535PortLedLightNum((uint8_t)lValue);
-    if (consoleReply(transport, "lednum=%u status=%s\nOK", (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "lednum=%u status=%s\nOK", (unsigned int)lValue, pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -421,7 +421,7 @@ static eConsoleCommandResult pca9535DebugHandleLedPower(uint32_t transport, int 
     }
 
     lStatus = pca9535PortLedPowerShow((lRed != 0U), (lGreen != 0U), (lBlue != 0U));
-    if (consoleReply(transport, "ledpower=%u,%u,%u status=%s\nOK", (unsigned int)lRed, (unsigned int)lGreen, (unsigned int)lBlue, pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "ledpower=%u,%u,%u status=%s\nOK", (unsigned int)lRed, (unsigned int)lGreen, (unsigned int)lBlue, pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -443,7 +443,7 @@ static eConsoleCommandResult pca9535DebugHandleLedPress(uint32_t transport, int 
     }
 
     lStatus = pca9535PortLedPressShow((lRed != 0U), (lGreen != 0U), (lBlue != 0U));
-    if (consoleReply(transport, "ledpress=%u,%u,%u status=%s\nOK", (unsigned int)lRed, (unsigned int)lGreen, (unsigned int)lBlue, pca9535DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "ledpress=%u,%u,%u status=%s\nOK", (unsigned int)lRed, (unsigned int)lGreen, (unsigned int)lBlue, pca9535DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -455,7 +455,7 @@ static eConsoleCommandResult pca9535DebugReplyHelp(uint32_t transport, int argc,
     (void)argc;
     (void)argv;
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "pca9535 list\n"
         "pca9535 init <dev0|0|pca>\n"
         "pca9535 info <dev0|0|pca>\n"
@@ -545,7 +545,7 @@ static eConsoleCommandResult pca9535DebugConsoleHandler(uint32_t transport, int 
 
 bool pca9535DebugConsoleRegister(void)
 {
-    return consoleRegisterCommand(&gPca9535ConsoleCommand);
+    return logRegisterConsole(&gPca9535ConsoleCommand);
 }
 
 #else

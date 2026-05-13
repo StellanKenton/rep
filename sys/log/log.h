@@ -120,8 +120,8 @@ typedef struct stLogOutputState {
 bool logInit(void);
 int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 bool logRegisterConsole(const stConsoleCommand *command);
-void logProcessOutput(void);
-void ConsoleBackGournd(void);
+int32_t logConsoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
+void logProcess(void);
 
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
 void logVWrite(eLogLevel level, const char *tag, const char *format, va_list args);

@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 static const char *drvAdcDebugGetChannelName(uint8_t adc);
 static const char *drvAdcDebugGetStatusText(eDrvStatus status);
@@ -109,7 +109,7 @@ static eConsoleCommandResult drvAdcDebugReplyAllChannels(uint32_t transport)
     for (lAdc = 0U; lAdc < DRVADC_MAX; lAdc++) {
         eDrvStatus lStatus = drvAdcDebugRefreshChannel(lAdc);
 
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s status=%s raw=%u mv=%u rawf=%u mvf=%u",
             drvAdcDebugGetChannelName(lAdc),
             drvAdcDebugGetStatusText(lStatus),
@@ -121,7 +121,7 @@ static eConsoleCommandResult drvAdcDebugReplyAllChannels(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -133,7 +133,7 @@ static eConsoleCommandResult drvAdcDebugReplyHelp(uint32_t transport, int argc, 
     (void)argc;
     (void)argv;
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "adc\n"
         "  sample all adc channels once and print raw/mv/rawf/mvf\n"
         "adc help\n"
@@ -166,7 +166,7 @@ static eConsoleCommandResult drvAdcDebugConsoleHandler(uint32_t transport, int a
 bool drvAdcDebugConsoleRegister(void)
 {
 #if (DRVADC_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvAdcConsoleCommand);
+    return logRegisterConsole(&gDrvAdcConsoleCommand);
 #else
     return true;
 #endif

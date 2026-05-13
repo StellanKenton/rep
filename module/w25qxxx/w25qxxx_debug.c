@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 #define W25QXXX_DEBUG_MAX_DATA_LENGTH    16U
 #define W25QXXX_DEBUG_MAX_REPLY_LENGTH   96U
@@ -217,7 +217,7 @@ static eConsoleCommandResult w25qxxxDebugReplyDeviceList(uint32_t transport)
 
     for (lIndex = 0U; lIndex < (uint32_t)W25QXXX_DEV_MAX; lIndex++) {
         w25qxxxPortGetDefCfg((eW25qxxxMapType)lIndex, &lCfg);
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s bus=%u ready=%s\n",
             w25qxxxDebugGetDeviceName((eW25qxxxMapType)lIndex),
             (unsigned int)lCfg.linkId,
@@ -226,7 +226,7 @@ static eConsoleCommandResult w25qxxxDebugReplyDeviceList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -237,7 +237,7 @@ static eConsoleCommandResult w25qxxxDebugHandleInit(uint32_t transport, eW25qxxx
 {
     eW25qxxxStatus lStatus = w25qxxxInit(device);
 
-    if (consoleReply(transport, "%s init=%s\nOK", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -252,14 +252,14 @@ static eConsoleCommandResult w25qxxxDebugHandleJedec(uint32_t transport, eW25qxx
     eW25qxxxStatus lStatus = w25qxxxReadJedecId(device, &lManufacturerId, &lMemoryType, &lCapacityId);
 
     if (lStatus != W25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s jedec=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s jedec=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s jedec=%02X %02X %02X\nOK",
         w25qxxxDebugGetDeviceName(device),
         (unsigned int)lManufacturerId,
@@ -277,14 +277,14 @@ static eConsoleCommandResult w25qxxxDebugHandleStatus(uint32_t transport, eW25qx
     eW25qxxxStatus lStatus = w25qxxxReadStatus1(device, &lStatusValue);
 
     if (lStatus != W25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s status=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s status=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s sr1=%02X\nOK", w25qxxxDebugGetDeviceName(device), (unsigned int)lStatusValue) <= 0) {
+    if (logConsoleReply(transport, "%s sr1=%02X\nOK", w25qxxxDebugGetDeviceName(device), (unsigned int)lStatusValue) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -296,14 +296,14 @@ static eConsoleCommandResult w25qxxxDebugHandleInfo(uint32_t transport, eW25qxxx
     const stW25qxxxInfo *lInfo = w25qxxxGetInfo(device);
 
     if (lInfo == NULL) {
-        if (consoleReply(transport, "%s info=not_ready", w25qxxxDebugGetDeviceName(device)) <= 0) {
+        if (logConsoleReply(transport, "%s info=not_ready", w25qxxxDebugGetDeviceName(device)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s size=%lu page=%u sector=%lu block=%lu addrw=%u\nOK",
         w25qxxxDebugGetDeviceName(device),
         (unsigned long)lInfo->totalSizeBytes,
@@ -332,7 +332,7 @@ static eConsoleCommandResult w25qxxxDebugHandleRead(uint32_t transport, eW25qxxx
 
     lStatus = w25qxxxRead(device, lAddress, lBuffer, lLength);
     if (lStatus != W25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s read=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s read=%s", w25qxxxDebugGetDeviceName(device), w25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
@@ -343,7 +343,7 @@ static eConsoleCommandResult w25qxxxDebugHandleRead(uint32_t transport, eW25qxxx
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s addr=%08lX data=%s\nOK", w25qxxxDebugGetDeviceName(device), (unsigned long)lAddress, lReply) <= 0) {
+    if (logConsoleReply(transport, "%s addr=%08lX data=%s\nOK", w25qxxxDebugGetDeviceName(device), (unsigned long)lAddress, lReply) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -375,7 +375,7 @@ static eConsoleCommandResult w25qxxxDebugHandleWrite(uint32_t transport, eW25qxx
     }
 
     lStatus = w25qxxxWrite(device, lAddress, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%08lX write=%u status=%s\nOK",
         w25qxxxDebugGetDeviceName(device),
         (unsigned long)lAddress,
@@ -397,7 +397,7 @@ static eConsoleCommandResult w25qxxxDebugHandleErase(uint32_t transport, eW25qxx
     }
 
     lStatus = w25qxxxEraseSector(device, lAddress);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s erase_sector=%08lX status=%s\nOK",
         w25qxxxDebugGetDeviceName(device),
         (unsigned long)lAddress,
@@ -411,7 +411,7 @@ static eConsoleCommandResult w25qxxxDebugHandleErase(uint32_t transport, eW25qxx
 static eConsoleCommandResult w25qxxxDebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "w25qxxx <list|init|jedec|status|info|read|write|erase|help> ...\n"
             "  list\n"
             "  init <dev0|dev1>\n"
@@ -432,7 +432,7 @@ static eConsoleCommandResult w25qxxxDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if (strcmp(argv[2], "read") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "w25qxxx read <dev0|dev1> <addr> <len>\n"
             "  addr supports decimal or 0xhex, len=1..16\n"
             "  example: w25qxxx read dev1 0x1234 4\n"
@@ -444,7 +444,7 @@ static eConsoleCommandResult w25qxxxDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if (strcmp(argv[2], "write") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "w25qxxx write <dev0|dev1> <addr> <b0> [b1 ... b15]\n"
             "  each data byte supports decimal or 0xhex, max 16 bytes\n"
             "  example: w25qxxx write dev1 0x1234 00\n"
@@ -457,7 +457,7 @@ static eConsoleCommandResult w25qxxxDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if (strcmp(argv[2], "erase") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "w25qxxx erase <dev0|dev1> sector <addr>\n"
             "  addr must be sector aligned\n"
             "  example: w25qxxx erase dev1 sector 0x1000\n"
@@ -530,7 +530,7 @@ static eConsoleCommandResult w25qxxxDebugConsoleHandler(uint32_t transport, int 
 bool w25qxxxDebugConsoleRegister(void)
 {
 #if (W25QXXX_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gW25qxxxConsoleCommand);
+    return logRegisterConsole(&gW25qxxxConsoleCommand);
 #else
     return true;
 #endif

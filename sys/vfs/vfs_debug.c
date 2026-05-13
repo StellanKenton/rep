@@ -16,12 +16,14 @@
 #include <string.h>
 
 #include "vfs.h"
-#include "../log/console.h"
+#include "../log/log.h"
 
 #define VFS_DEBUG_LOG_TAG "vfs_dbg"
 #define VFS_DEBUG_CWD_MAX  96U
 #define VFS_DEBUG_RW_BUFFER_MAX  256U
 #define VFS_DEBUG_REPLY_LINE_MAX  64U
+#define VFS_DEBUG_REPLY_BUFFER_MAX  512U
+#define VFS_DEBUG_SESSION_MAX  4U
 
 struct stVfsDebugSession {
     uint32_t transport;
@@ -37,7 +39,7 @@ struct stVfsDebugLsContext {
     uint16_t replyLength;
     bool isReplyTruncated;
     bool hasReplyError;
-    char replyBuffer[CONSOLE_REPLY_BUFFER_SIZE];
+    char replyBuffer[VFS_DEBUG_REPLY_BUFFER_MAX];
 };
 
 struct stVfsDebugDeleteFirstChildContext {
@@ -52,7 +54,7 @@ struct stVfsDebugDfContext {
     uint16_t replyLength;
     bool isReplyTruncated;
     bool hasReplyError;
-    char replyBuffer[CONSOLE_REPLY_BUFFER_SIZE];
+    char replyBuffer[VFS_DEBUG_REPLY_BUFFER_MAX];
 };
 
 static struct stVfsDebugSession *vfsDebugGetSession(uint32_t transport);
@@ -83,7 +85,7 @@ static eConsoleCommandResult vfsDebugConsoleMvHandler(uint32_t transport, int ar
 static eConsoleCommandResult vfsDebugConsoleRmHandler(uint32_t transport, int argc, char *argv[]);
 static eConsoleCommandResult vfsDebugConsoleDfHandler(uint32_t transport, int argc, char *argv[]);
 
-static struct stVfsDebugSession gVfsDebugSessions[CONSOLE_MAX_SESSIONS];
+static struct stVfsDebugSession gVfsDebugSessions[VFS_DEBUG_SESSION_MAX];
 static stVfsNodeInfo gVfsDebugNodeInfo;
 static char gVfsDebugRootPath[VFS_PATH_MAX];
 static char gVfsDebugPathBuffer[VFS_PATH_MAX];
@@ -159,7 +161,7 @@ static struct stVfsDebugSession *vfsDebugGetSession(uint32_t transport)
     uint32_t lIndex;
     struct stVfsDebugSession *lFreeSession = NULL;
 
-    for (lIndex = 0U; lIndex < CONSOLE_MAX_SESSIONS; ++lIndex) {
+    for (lIndex = 0U; lIndex < VFS_DEBUG_SESSION_MAX; ++lIndex) {
         if (gVfsDebugSessions[lIndex].isUsed && (gVfsDebugSessions[lIndex].transport == transport)) {
             return &gVfsDebugSessions[lIndex];
         }

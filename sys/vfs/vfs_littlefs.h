@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include "vfs.h"
+#include "../rtos/rtos.h"
 #include "../../lib/littlefs/lfs.h"
 
 #ifdef __cplusplus
@@ -54,6 +55,7 @@ typedef struct stVfsLittlefsContext {
     lfs_t lfs;
     struct lfs_config lfsCfg;
     stVfsLittlefsCfg cfg;
+    stRepRtosMutex mutex;
     uint8_t readBuffer[VFS_LITTLEFS_CACHE_SIZE];
     uint8_t progBuffer[VFS_LITTLEFS_CACHE_SIZE];
     uint8_t lookaheadBuffer[VFS_LITTLEFS_LOOKAHEAD_SIZE];

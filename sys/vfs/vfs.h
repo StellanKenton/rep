@@ -35,11 +35,19 @@ extern "C" {
 #endif
 
 #ifndef VFS_FILE_CONTEXT_SIZE
-#define VFS_FILE_CONTEXT_SIZE                  640U
+#define VFS_FILE_CONTEXT_SIZE                  576U
 #endif
 
 #ifndef VFS_FILE_CONTEXT_WORD_COUNT
 #define VFS_FILE_CONTEXT_WORD_COUNT            ((VFS_FILE_CONTEXT_SIZE + sizeof(uint32_t) - 1U) / sizeof(uint32_t))
+#endif
+
+#ifndef VFS_DIR_CONTEXT_SIZE
+#define VFS_DIR_CONTEXT_SIZE                   128U
+#endif
+
+#ifndef VFS_DIR_CONTEXT_WORD_COUNT
+#define VFS_DIR_CONTEXT_WORD_COUNT             ((VFS_DIR_CONTEXT_SIZE + sizeof(uint32_t) - 1U) / sizeof(uint32_t))
 #endif
 
 #ifndef VFS_LIST_BATCH_SIZE
@@ -108,6 +116,9 @@ typedef struct stVfsBackendOps {
     bool (*format)(void *backendContext, eVfsResult *error);
     bool (*getSpaceInfo)(void *backendContext, stVfsSpaceInfo *info, eVfsResult *error);
     bool (*stat)(void *backendContext, const char *path, stVfsNodeInfo *info, eVfsResult *error);
+    bool (*dirOpen)(void *backendContext, const char *path, void *dirContext, eVfsResult *error);
+    bool (*dirRead)(void *backendContext, void *dirContext, stVfsNodeInfo *entry, bool *hasEntry, eVfsResult *error);
+    bool (*dirClose)(void *backendContext, void *dirContext, eVfsResult *error);
     bool (*listDir)(void *backendContext,
                     const char *path,
                     uint32_t startIndex,
@@ -144,10 +155,29 @@ struct stVfsMountEntry {
     bool isUsed;
 };
 
+typedef struct stVfsFile {
+    uint8_t mountIndex;
+    bool isOpen;
+    uint32_t flags;
+    const stVfsBackendOps *backendOps;
+    void *backendContext;
+    uint32_t context[VFS_FILE_CONTEXT_WORD_COUNT];
+} stVfsFile;
+
 struct stVfsBackendFile {
     uint8_t mountIndex;
     bool isOpen;
+    uint32_t flags;
+    const stVfsBackendOps *backendOps;
+    void *backendContext;
     uint32_t context[VFS_FILE_CONTEXT_WORD_COUNT];
+};
+
+struct stVfsBackendDir {
+    bool isOpen;
+    const stVfsBackendOps *backendOps;
+    void *backendContext;
+    uint32_t context[VFS_DIR_CONTEXT_WORD_COUNT];
 };
 
 bool vfsInit(void);
@@ -173,6 +203,12 @@ bool vfsGetFileSize(const char *path, uint32_t *size);
 bool vfsReadFile(const char *path, void *buffer, uint32_t bufferSize, uint32_t *actualSize);
 bool vfsWriteFile(const char *path, const void *data, uint32_t size);
 bool vfsAppendFile(const char *path, const void *data, uint32_t size);
+bool vfsFileOpen(const char *path, uint32_t flags, stVfsFile *file);
+bool vfsFileGetSize(stVfsFile *file, uint32_t *size);
+bool vfsFileRead(stVfsFile *file, void *buffer, uint32_t bufferSize, uint32_t *actualSize);
+bool vfsFileWrite(stVfsFile *file, const void *data, uint32_t size, uint32_t *actualSize);
+bool vfsFileClose(stVfsFile *file);
+bool vfsFileIsOpen(const stVfsFile *file);
 
 #ifdef __cplusplus
 }

@@ -16,12 +16,13 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 #include "ringbuffer.h"
 
 #define DRVUART_DEBUG_READ_MAX_LENGTH       24U
 #define DRVUART_DEBUG_SEND_TEXT_MAX_LENGTH  64U
 #define DRVUART_DEBUG_SEND_HEX_MAX_LENGTH   24U
+#define DRVUART_DEBUG_REPLY_BUFFER_MAX      480U
 
 typedef enum eDrvUartDebugReadMode {
     DRVUART_DEBUG_READ_MODE_HEX = 0,
@@ -159,7 +160,7 @@ static eConsoleCommandResult drvUartDebugReplyPortList(uint32_t transport)
     uint32_t lIndex;
 
     for (lIndex = 0U; lIndex < (uint32_t)(sizeof(gDrvUartDebugPorts) / sizeof(gDrvUartDebugPorts[0])); lIndex++) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s read=%s write=%s tx=%s",
             gDrvUartDebugPorts[lIndex].portName,
             gDrvUartDebugPorts[lIndex].isReadable ? "yes" : "no",
@@ -169,7 +170,7 @@ static eConsoleCommandResult drvUartDebugReplyPortList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -192,7 +193,7 @@ static eConsoleCommandResult drvUartDebugReplyPortStatus(uint32_t transport)
         lReadyText = "yes";
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s ready=%s rx_used=%lu rx_free=%lu rx_capacity=%lu tx=%s\nOK",
         lPort->portName,
         lReadyText,
@@ -211,7 +212,7 @@ static eConsoleCommandResult drvUartDebugReplyRxLength(uint32_t transport)
     const stDrvUartDebugPortDescriptor *lPort = drvUartDebugGetDefaultPort();
     uint16_t lLength = drvUartGetDataLen(lPort->uart);
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s rx_pending=%u\nOK",
         lPort->portName,
         (unsigned int)lLength) <= 0) {
@@ -241,7 +242,7 @@ static eConsoleCommandResult drvUartDebugFlushRxBuffer(uint32_t transport)
         lDiscarded += lChunk;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s flushed=%lu\nOK",
         lPort->portName,
         (unsigned long)lDiscarded) <= 0) {
@@ -349,7 +350,7 @@ static eConsoleCommandResult drvUartDebugReadRxData(uint32_t transport, uint32_t
 {
     const stDrvUartDebugPortDescriptor *lPort = drvUartDebugGetDefaultPort();
     uint8_t lData[DRVUART_DEBUG_READ_MAX_LENGTH];
-    char lReplyBuffer[CONSOLE_REPLY_BUFFER_SIZE - 32U];
+    char lReplyBuffer[DRVUART_DEBUG_REPLY_BUFFER_MAX];
     uint16_t lReadLength;
     uint16_t lPendingLength;
     eConsoleCommandResult lResult;
@@ -378,7 +379,7 @@ static eConsoleCommandResult drvUartDebugReadRxData(uint32_t transport, uint32_t
         return lResult;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s read=%u mode=%s data=%s\nOK",
         lPort->portName,
         (unsigned int)lReadLength,
@@ -433,7 +434,7 @@ static eConsoleCommandResult drvUartDebugSendText(uint32_t transport, int argc, 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s sent=%u mode=text\nOK",
         lPort->portName,
         (unsigned int)lLength) <= 0) {
@@ -470,7 +471,7 @@ static eConsoleCommandResult drvUartDebugSendHex(uint32_t transport, int argc, c
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "port=%s sent=%u mode=hex\nOK",
         lPort->portName,
         (unsigned int)lLength) <= 0) {
@@ -560,7 +561,7 @@ static eConsoleCommandResult drvUartDebugConsoleHandler(uint32_t transport, int 
 static eConsoleCommandResult drvUartDebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "uart <list|stat|rxlen|read|flush|send|sendhex|help> ...\n"
             "  list\n"
             "  stat\n"
@@ -580,7 +581,7 @@ static eConsoleCommandResult drvUartDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if ((strcmp(argv[2], "read") == 0) || (strcmp(argv[2], "recv") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "uart read <len> [text|hex]\n"
             "  alias: recv\n"
             "  len is decimal 1..24, mode defaults to hex\n"
@@ -593,7 +594,7 @@ static eConsoleCommandResult drvUartDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if ((strcmp(argv[2], "send") == 0) || (strcmp(argv[2], "tx") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "uart send <word0> [word1 ...]\n"
             "  alias: tx\n"
             "  words are joined with spaces, total text length max 64 chars\n"
@@ -606,7 +607,7 @@ static eConsoleCommandResult drvUartDebugReplyHelp(uint32_t transport, int argc,
     }
 
     if ((strcmp(argv[2], "sendhex") == 0) || (strcmp(argv[2], "txhex") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "uart sendhex <b0> [b1 ... b23]\n"
             "  alias: txhex\n"
             "  data bytes support hex, max 24 bytes\n"
@@ -625,7 +626,7 @@ static eConsoleCommandResult drvUartDebugReplyHelp(uint32_t transport, int argc,
 bool drvUartDebugConsoleRegister(void)
 {
 #if (DRVUART_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvUartConsoleCommand);
+    return logRegisterConsole(&gDrvUartConsoleCommand);
 #else
     return true;
 #endif

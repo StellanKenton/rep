@@ -43,7 +43,7 @@ read_next:
 - `LOG_E/W/I/D` 和 `LOG_T` 统一入口。
 - `logInit()` 统一初始化 log core 和 console 分支。
 - `logRegisterConsole()` 统一注册 console 命令。
-- `ConsoleBackGournd()` 统一轮询输出刷写、平台输入拉取和 console 命令处理。
+- `logProcess()` 统一轮询输出刷写、平台输入拉取和 console 命令处理。
 - transport 初始化、输出写接口、输入 ring buffer provider。
 - 为 `console` 提供输入枚举和定向回复能力。
 
@@ -65,9 +65,9 @@ read_next:
 稳定 API：
 
 - `logInit()`
-- `logDirectWriteToTransport()`
 - `logRegisterConsole()`
-- `ConsoleBackGournd()`
+- `logConsoleReply()`
+- `logProcess()`
 
 补充语义：
 
@@ -77,7 +77,8 @@ read_next:
 - `LOG_T(transport, buffer, length)`：`logDirectWriteToTransport()` 的兼容封装，适合在调用点直接做 transport 级直写。
 - `logInit()`：先完成 transport 初始化，再初始化 console 内部分支。
 - `logRegisterConsole()`：命令注册统一入口；系统装配层不再直接调用 `consoleRegisterCommand()`。
-- `ConsoleBackGournd()`：单轮执行输出刷写、平台 console 输入轮询和命令处理；系统装配层不再单独调 `logProcessOutput()` 或 `consoleProcess()`。
+- `logConsoleReply()`：按来源 transport 定向回复 console 文本，并自动补齐结尾换行。
+- `logProcess()`：单轮执行输出刷写、平台 console 输入轮询和命令处理；系统装配层不再单独调 `logProcessOutput()` 或 `consoleProcess()`。
 
 ## 3. transport ops 契约
 
@@ -87,7 +88,7 @@ read_next:
 
 - `interfaces`：指向静态 transport 接口表。
 - `interfaceCount`：当前 transport 表元素个数。
-- `consolePoll`：可选输入轮询函数；为空时 `ConsoleBackGournd()` 只做输出刷写和命令处理。
+- `consolePoll`：可选输入轮询函数；为空时 `logProcess()` 只做输出刷写和命令处理。
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -98,7 +99,7 @@ read_next:
 项目侧补充约束：
 
 - console 开关应放在 log port 配置头中，例如 `LOG_PORT_CONSOLE_ENABLE`。
-- 若 transport 输入需要先从硬件或调试链路搬运到 software ring buffer，则应在 `stLogOps.consolePoll` 中提供对应轮询函数，并由 `ConsoleBackGournd()` 统一调用。
+- 若 transport 输入需要先从硬件或调试链路搬运到 software ring buffer，则应在 `stLogOps.consolePoll` 中提供对应轮询函数，并由 `logProcess()` 统一调用。
 
 ## 4. 公共函数使用契约
 
@@ -136,6 +137,6 @@ read_next:
 - `logInit()` 后所有启用 transport 都能完成初始化。
 - 广播日志能写到所有启用输出口。
 - `logDirectWriteToTransport()` 能在不调用 `logProcessOutput()` 的前提下直接写到目标 transport。
-- `logRegisterConsole()` 后命令可被 `ConsoleBackGournd()` 正常分发。
-- `ConsoleBackGournd()` 能同时完成输出刷新和 console 输入处理。
+- `logRegisterConsole()` 后命令可被 `logProcess()` 正常分发。
+- `logProcess()` 能同时完成输出刷新和 console 输入处理。
 - 输入缓冲为空或 `NULL` 时行为可预期。

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 static bool tm1651DebugParseDevice(const char *name, eTm1651MapType *device);
 static bool tm1651DebugParseUint32(const char *text, uint32_t *value);
@@ -233,7 +233,7 @@ static eConsoleCommandResult tm1651DebugReplyDeviceList(uint32_t transport)
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s bus=%u bright=%u digits=%u display=%s ready=%s\n",
             tm1651DebugGetDeviceName((eTm1651MapType)lIndex),
             (unsigned int)lAssembleCfg.linkId,
@@ -245,7 +245,7 @@ static eConsoleCommandResult tm1651DebugReplyDeviceList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -256,7 +256,7 @@ static eConsoleCommandResult tm1651DebugHandleInit(uint32_t transport, eTm1651Ma
 {
     eTm1651Status lStatus = tm1651Init(device);
 
-    if (consoleReply(transport, "%s init=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -273,7 +273,7 @@ static eConsoleCommandResult tm1651DebugHandleInfo(uint32_t transport, eTm1651Ma
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s bus=%u bright=%u digits=%u display=%s ready=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lAssembleCfg.linkId,
@@ -297,7 +297,7 @@ static eConsoleCommandResult tm1651DebugHandleBrightness(uint32_t transport, eTm
     }
 
     lStatus = tm1651SetBrightness(device, (uint8_t)lBrightness);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s brightness=%u status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lBrightness,
@@ -318,7 +318,7 @@ static eConsoleCommandResult tm1651DebugHandleDisplay(uint32_t transport, eTm165
     }
 
     lStatus = tm1651SetDisplayOn(device, lIsDisplayOn);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s display=%s status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         lIsDisplayOn ? "on" : "off",
@@ -346,7 +346,7 @@ static eConsoleCommandResult tm1651DebugHandleDigits(uint32_t transport, eTm1651
     }
 
     lStatus = tm1651DisplayDigits(device, lSymbol[0], lSymbol[1], lSymbol[2], lSymbol[3]);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s digits=%u,%u,%u,%u status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lSymbol[0],
@@ -380,7 +380,7 @@ static eConsoleCommandResult tm1651DebugHandleRaw(uint32_t transport, eTm1651Map
     }
 
     lStatus = tm1651DisplayRaw(device, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s raw_len=%u status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lLength,
@@ -395,7 +395,7 @@ static eConsoleCommandResult tm1651DebugHandleClear(uint32_t transport, eTm1651M
 {
     eTm1651Status lStatus = tm1651ClearDisplay(device);
 
-    if (consoleReply(transport, "%s clear=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s clear=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -406,7 +406,7 @@ static eConsoleCommandResult tm1651DebugHandleNone(uint32_t transport, eTm1651Ma
 {
     eTm1651Status lStatus = tm1651ShowNone(device);
 
-    if (consoleReply(transport, "%s none=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s none=%s\nOK", tm1651DebugGetDeviceName(device), tm1651DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -423,7 +423,7 @@ static eConsoleCommandResult tm1651DebugHandleNumber(uint32_t transport, eTm1651
     }
 
     lStatus = tm1651ShowNumber3(device, (uint16_t)lValue);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s number=%u status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lValue,
@@ -444,7 +444,7 @@ static eConsoleCommandResult tm1651DebugHandleError(uint32_t transport, eTm1651M
     }
 
     lStatus = tm1651ShowError(device, (uint16_t)lValue);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s error=%u status=%s\nOK",
         tm1651DebugGetDeviceName(device),
         (unsigned int)lValue,
@@ -460,7 +460,7 @@ static eConsoleCommandResult tm1651DebugReplyHelp(uint32_t transport, int argc, 
     (void)argc;
     (void)argv;
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "tm1651 list\n"
         "tm1651 init <dev0|0|tm|tm1651>\n"
         "tm1651 info <dev0|0|tm|tm1651>\n"
@@ -545,7 +545,7 @@ static eConsoleCommandResult tm1651DebugConsoleHandler(uint32_t transport, int a
 
 bool tm1651DebugConsoleRegister(void)
 {
-    return consoleRegisterCommand(&gTm1651ConsoleCommand);
+    return logRegisterConsole(&gTm1651ConsoleCommand);
 }
 
 #else

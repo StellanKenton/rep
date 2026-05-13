@@ -15,8 +15,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#define LOG_CONSOLE_INTERNAL_BUILD 1
-#include "console.h"
+#include "log_internal.h"
 #include "../rtos/rtos.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_NONE) && (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
@@ -696,16 +695,7 @@ static void logProcessOutputCore(void)
     }
 }
 
-void logProcessOutput(void)
-{
-    if (!logInit()) {
-        return;
-    }
-
-    logProcessOutputCore();
-}
-
-void ConsoleBackGournd(void)
+void logProcess(void)
 {
     const stLogOps *lOps = logGetOps();
 

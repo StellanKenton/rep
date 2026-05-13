@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 static bool drvGpioDebugParsePin(const char *text, uint8_t *pin);
 static bool drvGpioDebugParseUint32(const char *text, uint32_t *value);
@@ -114,7 +114,7 @@ static eConsoleCommandResult drvGpioDebugReplyPinList(uint32_t transport)
     for (lPin = 0U; lPin < DRVGPIO_MAX; lPin++) {
         eDrvGpioPinState lState = drvGpioRead(lPin);
 
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%u state=%s",
             (unsigned int)lPin,
             drvGpioDebugGetStateText(lState)) <= 0) {
@@ -122,7 +122,7 @@ static eConsoleCommandResult drvGpioDebugReplyPinList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -133,7 +133,7 @@ static eConsoleCommandResult drvGpioDebugReplyPinState(uint32_t transport, uint8
 {
     eDrvGpioPinState lState = drvGpioRead(pin);
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%u state=%s\nOK",
         (unsigned int)pin,
         drvGpioDebugGetStateText(lState)) <= 0) {
@@ -145,7 +145,7 @@ static eConsoleCommandResult drvGpioDebugReplyPinState(uint32_t transport, uint8
 
 static eConsoleCommandResult drvGpioDebugReplyHelp(uint32_t transport)
 {
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "gpio list\n"
         "gpio read <pin>\n"
         "gpio write <pin> <0|1|low|high|reset|set>\n"
@@ -178,7 +178,7 @@ static eConsoleCommandResult drvGpioDebugConsoleHandler(uint32_t transport, int 
 
     if (strcmp(argv[1], "init") == 0) {
         drvGpioInit();
-        if (consoleReply(transport, "gpio init=ok\nOK") <= 0) {
+        if (logConsoleReply(transport, "gpio init=ok\nOK") <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
         return CONSOLE_COMMAND_RESULT_OK;
@@ -209,7 +209,7 @@ static eConsoleCommandResult drvGpioDebugConsoleHandler(uint32_t transport, int 
 bool drvGpioDebugConsoleRegister(void)
 {
 #if (DRVGPIO_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvGpioConsoleCommand);
+    return logRegisterConsole(&gDrvGpioConsoleCommand);
 #else
     return true;
 #endif

@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 #define DRVSPI_DEBUG_MAX_DATA_LENGTH     16U
 #define DRVSPI_DEBUG_MAX_REPLY_LENGTH    96U
@@ -206,7 +206,7 @@ static eConsoleCommandResult drvSpiDebugReplyBusList(uint32_t transport)
     uint32_t lIndex;
 
     for (lIndex = 0U; lIndex < (uint32_t)DRVSPI_MAX; ++lIndex) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s cs=%s timeout_ms=%lu\n",
             drvSpiDebugGetBusName((eDrvSpiPortMap)lIndex),
             (gDrvSpiBspInterface[lIndex].csControl.write != NULL) ? "yes" : "no",
@@ -215,7 +215,7 @@ static eConsoleCommandResult drvSpiDebugReplyBusList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -226,7 +226,7 @@ static eConsoleCommandResult drvSpiDebugHandleInit(uint32_t transport, eDrvSpiPo
 {
     eDrvStatus lStatus = drvSpiInit(spi);
 
-    if (consoleReply(transport, "%s init=%s\nOK", drvSpiDebugGetBusName(spi), drvSpiDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", drvSpiDebugGetBusName(spi), drvSpiDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -257,7 +257,7 @@ static eConsoleCommandResult drvSpiDebugHandleWrite(uint32_t transport, eDrvSpiP
     }
 
     lStatus = drvSpiWrite(spi, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s write=%u status=%s\nOK",
         drvSpiDebugGetBusName(spi),
         (unsigned int)lLength,
@@ -283,7 +283,7 @@ static eConsoleCommandResult drvSpiDebugHandleRead(uint32_t transport, eDrvSpiPo
 
     lStatus = drvSpiRead(spi, lBuffer, (uint16_t)lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s read=%lu status=%s",
             drvSpiDebugGetBusName(spi),
             (unsigned long)lLength,
@@ -298,7 +298,7 @@ static eConsoleCommandResult drvSpiDebugHandleRead(uint32_t transport, eDrvSpiPo
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s data=%s\nOK",
         drvSpiDebugGetBusName(spi),
         lReply) <= 0) {
@@ -338,7 +338,7 @@ static eConsoleCommandResult drvSpiDebugHandleWriteRead(uint32_t transport, eDrv
 
     lStatus = drvSpiWriteRead(spi, lWriteBuffer, lWriteLength, lReadBuffer, (uint16_t)lReadLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s writeread status=%s",
             drvSpiDebugGetBusName(spi),
             drvSpiDebugGetStatusText(lStatus)) <= 0) {
@@ -352,7 +352,7 @@ static eConsoleCommandResult drvSpiDebugHandleWriteRead(uint32_t transport, eDrv
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s data=%s\nOK",
         drvSpiDebugGetBusName(spi),
         lReply) <= 0) {
@@ -389,7 +389,7 @@ static eConsoleCommandResult drvSpiDebugHandleExchange(uint32_t transport, eDrvS
 
     lStatus = drvSpiExchange(spi, lWriteBuffer, lReadBuffer, lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s exchange status=%s",
             drvSpiDebugGetBusName(spi),
             drvSpiDebugGetStatusText(lStatus)) <= 0) {
@@ -403,7 +403,7 @@ static eConsoleCommandResult drvSpiDebugHandleExchange(uint32_t transport, eDrvS
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s data=%s\nOK",
         drvSpiDebugGetBusName(spi),
         lReply) <= 0) {
@@ -467,7 +467,7 @@ static eConsoleCommandResult drvSpiDebugConsoleHandler(uint32_t transport, int a
 static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "spi <list|init|write|read|writeread|exchange|help> ...\n"
             "  list\n"
             "  init <bus0|0>\n"
@@ -485,7 +485,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if (strcmp(argv[2], "read") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "spi read <bus0|0> <len>\n"
             "  len is decimal 1..16\n"
             "  example: spi read bus0 4\n"
@@ -497,7 +497,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if (strcmp(argv[2], "write") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "spi write <bus0|0> <b0> [b1 ... b15]\n"
             "  data bytes support hex, max 16 bytes\n"
             "  example: spi write bus0 0x9F\n"
@@ -509,7 +509,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if ((strcmp(argv[2], "writeread") == 0) || (strcmp(argv[2], "wr") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "spi writeread <bus0|0> <b0> [b1 ... b15] <len>\n"
             "  alias: wr\n"
             "  write bytes support hex, read len is decimal 1..16\n"
@@ -522,7 +522,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if ((strcmp(argv[2], "exchange") == 0) || (strcmp(argv[2], "xfer") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "spi exchange <bus0|0> <b0> [b1 ... b15]\n"
             "  alias: xfer\n"
             "  data bytes support hex, max 16 bytes\n"
@@ -541,7 +541,7 @@ static eConsoleCommandResult drvSpiDebugReplyHelp(uint32_t transport, int argc, 
 bool drvSpiDebugConsoleRegister(void)
 {
 #if (DRVSPI_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvSpiConsoleCommand);
+    return logRegisterConsole(&gDrvSpiConsoleCommand);
 #else
     return true;
 #endif

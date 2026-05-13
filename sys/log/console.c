@@ -1,4 +1,3 @@
-#define LOG_CONSOLE_INTERNAL_BUILD 1
 /************************************************************************************
 * @file     : console.c
 * @brief    : Text command console core implementation.
@@ -8,15 +7,13 @@
 * @version  : V1.0.0
 * @copyright: Copyright (c) 2050
 ***********************************************************************************/
-#include "console.h"
+#include "log_internal.h"
 
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "log.h"
-#include "ringbuffer.h"
 #include "../rtos/rtos.h"
 
 static bool gConsoleIsInitialized = false;
@@ -400,7 +397,7 @@ bool consoleCoreInit(void)
     return true;
 }
 
-bool consoleRegisterCommand(const stConsoleCommand *command)
+static bool consoleRegisterCommandInternal(const stConsoleCommand *command)
 {
     const stConsoleCommand *lExistingCommand = NULL;
 
@@ -432,7 +429,7 @@ bool consoleRegisterCommand(const stConsoleCommand *command)
 
 bool consoleCoreRegisterCommand(const stConsoleCommand *command)
 {
-    return consoleRegisterCommand(command);
+    return consoleRegisterCommandInternal(command);
 }
 
 void consoleCoreProcess(void)

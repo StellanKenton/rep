@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 #define DRVIIC_DEBUG_MAX_DATA_LENGTH    16U
 #define DRVIIC_DEBUG_MAX_REPLY_LENGTH   96U
@@ -212,7 +212,7 @@ static eConsoleCommandResult drvIicDebugReplyBusList(uint32_t transport)
     const char *lBusName = drvIicDebugGetBusName(DRVIIC_BUS0);
 
     if ((lBusName == NULL) ||
-        (consoleReply(transport,
+        (logConsoleReply(transport,
             "%s recover=%s timeout_ms=%lu\nOK",
             lBusName,
             (gDrvIicBspInterface[DRVIIC_BUS0].recoverBus != NULL) ? "yes" : "no",
@@ -227,7 +227,7 @@ static eConsoleCommandResult drvIicDebugHandleInit(uint32_t transport, eDrvIicPo
 {
     eDrvStatus lStatus = drvIicInit(iic);
 
-    if (consoleReply(transport, "%s init=%s\nOK", drvIicDebugGetBusName(iic), drvIicDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", drvIicDebugGetBusName(iic), drvIicDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -238,7 +238,7 @@ static eConsoleCommandResult drvIicDebugHandleRecover(uint32_t transport, eDrvIi
 {
     eDrvStatus lStatus = drvIicRecoverBus(iic);
 
-    if (consoleReply(transport, "%s recover=%s\nOK", drvIicDebugGetBusName(iic), drvIicDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s recover=%s\nOK", drvIicDebugGetBusName(iic), drvIicDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -270,7 +270,7 @@ static eConsoleCommandResult drvIicDebugHandleWrite(uint32_t transport, eDrvIicP
     }
 
     lStatus = drvIicWrite(iic, lAddress, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X write=%u status=%s\nOK",
         drvIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -299,7 +299,7 @@ static eConsoleCommandResult drvIicDebugHandleRead(uint32_t transport, eDrvIicPo
 
     lStatus = drvIicRead(iic, lAddress, lBuffer, (uint16_t)lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s addr=%02X read=%lu status=%s",
             drvIicDebugGetBusName(iic),
             (unsigned int)lAddress,
@@ -315,7 +315,7 @@ static eConsoleCommandResult drvIicDebugHandleRead(uint32_t transport, eDrvIicPo
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X data=%s\nOK",
         drvIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -354,7 +354,7 @@ static eConsoleCommandResult drvIicDebugHandleWriteReg(uint32_t transport, eDrvI
     }
 
     lStatus = drvIicWriteRegister(iic, lAddress, &lRegister, 1U, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X reg=%02X write=%u status=%s\nOK",
         drvIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -386,7 +386,7 @@ static eConsoleCommandResult drvIicDebugHandleReadReg(uint32_t transport, eDrvIi
 
     lStatus = drvIicReadRegister(iic, lAddress, &lRegister, 1U, lBuffer, (uint16_t)lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s addr=%02X reg=%02X read=%lu status=%s",
             drvIicDebugGetBusName(iic),
             (unsigned int)lAddress,
@@ -403,7 +403,7 @@ static eConsoleCommandResult drvIicDebugHandleReadReg(uint32_t transport, eDrvIi
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X reg=%02X data=%s\nOK",
         drvIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -473,7 +473,7 @@ static eConsoleCommandResult drvIicDebugConsoleHandler(uint32_t transport, int a
 static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "iic <list|init|recover|write|read|writereg|readreg|help> ...\n"
             "  list\n"
             "  init <bus0|0>\n"
@@ -492,7 +492,7 @@ static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if (strcmp(argv[2], "read") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "iic read <bus0|0> <addr> <len>\n"
             "  addr supports hex byte, len is decimal 1..16\n"
             "  example: iic read bus0 0x68 4\n"
@@ -504,7 +504,7 @@ static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if (strcmp(argv[2], "write") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "iic write <bus0|0> <addr> <b0> [b1 ... b15]\n"
             "  addr and data bytes support hex, max 16 bytes\n"
             "  example: iic write bus0 0x68 0x75\n"
@@ -516,7 +516,7 @@ static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if ((strcmp(argv[2], "writereg") == 0) || (strcmp(argv[2], "wr") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "iic writereg <bus0|0> <addr> <reg> <b0> [b1 ... b15]\n"
             "  alias: wr\n"
             "  addr, reg and data bytes support hex, max 16 bytes\n"
@@ -529,7 +529,7 @@ static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, 
     }
 
     if ((strcmp(argv[2], "readreg") == 0) || (strcmp(argv[2], "rr") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "iic readreg <bus0|0> <addr> <reg> <len>\n"
             "  alias: rr\n"
             "  addr and reg support hex, len is decimal 1..16\n"
@@ -548,7 +548,7 @@ static eConsoleCommandResult drvIicDebugReplyHelp(uint32_t transport, int argc, 
 bool drvIicDebugConsoleRegister(void)
 {
 #if (DRVIIC_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvIicConsoleCommand);
+    return logRegisterConsole(&gDrvIicConsoleCommand);
 #else
     return true;
 #endif

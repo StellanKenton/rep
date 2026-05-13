@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 static bool mpu6050DebugParseDevice(const char *name, eMPU6050MapType *device);
 static bool mpu6050DebugParseHexNibble(char value, uint8_t *nibble);
@@ -175,7 +175,7 @@ static eConsoleCommandResult mpu6050DebugReplyDeviceList(uint32_t transport)
     for (lIndex = 0U; lIndex < (uint32_t)MPU6050_DEV_MAX; lIndex++) {
         mpu6050GetDefCfg((eMPU6050MapType)lIndex, &lCfg);
         mpu6050PortGetAssembleCfg((eMPU6050MapType)lIndex, &lAssembleCfg);
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s bind=%s bus=%u addr=%02X ready=%s\n",
             mpu6050DebugGetDeviceName((eMPU6050MapType)lIndex),
             mpu6050DebugGetBindTypeText(lAssembleCfg.transportType),
@@ -186,7 +186,7 @@ static eConsoleCommandResult mpu6050DebugReplyDeviceList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -197,7 +197,7 @@ static eConsoleCommandResult mpu6050DebugHandleInit(uint32_t transport, eMPU6050
 {
     eDrvStatus lStatus = mpu6050Init(device);
 
-    if (consoleReply(transport, "%s init=%s\nOK", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -210,14 +210,14 @@ static eConsoleCommandResult mpu6050DebugHandleId(uint32_t transport, eMPU6050Ma
     eDrvStatus lStatus = mpu6050ReadId(device, &lDevId);
 
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s id=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s id=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s whoami=%02X\nOK", mpu6050DebugGetDeviceName(device), (unsigned int)lDevId) <= 0) {
+    if (logConsoleReply(transport, "%s whoami=%02X\nOK", mpu6050DebugGetDeviceName(device), (unsigned int)lDevId) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -236,14 +236,14 @@ static eConsoleCommandResult mpu6050DebugHandleRegGet(uint32_t transport, eMPU60
 
     lStatus = mpu6050ReadReg(device, lReg, &lValue);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s reg=%02X status=%s", mpu6050DebugGetDeviceName(device), (unsigned int)lReg, mpu6050DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s reg=%02X status=%s", mpu6050DebugGetDeviceName(device), (unsigned int)lReg, mpu6050DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s reg=%02X value=%02X\nOK", mpu6050DebugGetDeviceName(device), (unsigned int)lReg, (unsigned int)lValue) <= 0) {
+    if (logConsoleReply(transport, "%s reg=%02X value=%02X\nOK", mpu6050DebugGetDeviceName(device), (unsigned int)lReg, (unsigned int)lValue) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -261,7 +261,7 @@ static eConsoleCommandResult mpu6050DebugHandleRegSet(uint32_t transport, eMPU60
     }
 
     lStatus = mpu6050WriteReg(device, lReg, lValue);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s reg=%02X write=%02X status=%s\nOK",
         mpu6050DebugGetDeviceName(device),
         (unsigned int)lReg,
@@ -279,14 +279,14 @@ static eConsoleCommandResult mpu6050DebugHandleRaw(uint32_t transport, eMPU6050M
     eDrvStatus lStatus = mpu6050ReadRaw(device, &lSample);
 
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s raw=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s raw=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s ax=%d ay=%d az=%d temp=%d gx=%d gy=%d gz=%d\nOK",
         mpu6050DebugGetDeviceName(device),
         (int)lSample.accelX,
@@ -308,14 +308,14 @@ static eConsoleCommandResult mpu6050DebugHandleTemp(uint32_t transport, eMPU6050
     eDrvStatus lStatus = mpu6050ReadTempCdC(device, &lTempCdC);
 
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport, "%s temp=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s temp=%s", mpu6050DebugGetDeviceName(device), mpu6050DebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s temp_cdc=%ld\nOK", mpu6050DebugGetDeviceName(device), (long)lTempCdC) <= 0) {
+    if (logConsoleReply(transport, "%s temp_cdc=%ld\nOK", mpu6050DebugGetDeviceName(device), (long)lTempCdC) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -376,7 +376,7 @@ static eConsoleCommandResult mpu6050DebugConsoleHandler(uint32_t transport, int 
 static eConsoleCommandResult mpu6050DebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "mpu6050 <list|init|id|regget|regset|raw|temp|help> ...\n"
             "  list\n"
             "  init <dev0|dev1>\n"
@@ -397,7 +397,7 @@ static eConsoleCommandResult mpu6050DebugReplyHelp(uint32_t transport, int argc,
     }
 
     if ((strcmp(argv[2], "regget") == 0) || (strcmp(argv[2], "rg") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "mpu6050 regget <dev0|dev1> <reg>\n"
             "  alias: rg\n"
             "  reg supports hex byte\n"
@@ -410,7 +410,7 @@ static eConsoleCommandResult mpu6050DebugReplyHelp(uint32_t transport, int argc,
     }
 
     if ((strcmp(argv[2], "regset") == 0) || (strcmp(argv[2], "rs") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "mpu6050 regset <dev0|dev1> <reg> <value>\n"
             "  alias: rs\n"
             "  reg and value support hex byte\n"
@@ -429,7 +429,7 @@ static eConsoleCommandResult mpu6050DebugReplyHelp(uint32_t transport, int argc,
 bool mpu6050DebugConsoleRegister(void)
 {
 #if (MPU6050_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gMpu6050ConsoleCommand);
+    return logRegisterConsole(&gMpu6050ConsoleCommand);
 #else
     return true;
 #endif

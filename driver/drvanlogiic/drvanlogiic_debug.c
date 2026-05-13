@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 #define DRVANLOGIIC_DEBUG_MAX_DATA_LENGTH    16U
 #define DRVANLOGIIC_DEBUG_MAX_REPLY_LENGTH   96U
@@ -225,7 +225,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyBusList(uint32_t transport)
 
     if ((lPcaBusName == NULL) ||
         (lTmBusName == NULL) ||
-        (consoleReply(transport,
+        (logConsoleReply(transport,
             "%s half_period_us=%u recovery_clocks=%u\n%s half_period_us=%u recovery_clocks=%u\nOK",
             lPcaBusName,
             (unsigned int)gDrvAnlogIicBspInterface[DRVANLOGIIC_PCA].halfPeriodUs,
@@ -243,7 +243,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleInit(uint32_t transport, eDrv
 {
     eDrvStatus lStatus = drvAnlogIicInit(iic);
 
-    if (consoleReply(transport, "%s init=%s\nOK", drvAnlogIicDebugGetBusName(iic), drvAnlogIicDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", drvAnlogIicDebugGetBusName(iic), drvAnlogIicDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -254,7 +254,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleRecover(uint32_t transport, e
 {
     eDrvStatus lStatus = drvAnlogIicRecoverBus(iic);
 
-    if (consoleReply(transport, "%s recover=%s\nOK", drvAnlogIicDebugGetBusName(iic), drvAnlogIicDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s recover=%s\nOK", drvAnlogIicDebugGetBusName(iic), drvAnlogIicDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -286,7 +286,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleWrite(uint32_t transport, eDr
     }
 
     lStatus = drvAnlogIicWrite(iic, lAddress, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X write=%u status=%s\nOK",
         drvAnlogIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -315,7 +315,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleRead(uint32_t transport, eDrv
 
     lStatus = drvAnlogIicRead(iic, lAddress, lBuffer, (uint16_t)lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s addr=%02X read=%lu status=%s",
             drvAnlogIicDebugGetBusName(iic),
             (unsigned int)lAddress,
@@ -331,7 +331,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleRead(uint32_t transport, eDrv
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X data=%s\nOK",
         drvAnlogIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -370,7 +370,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleWriteReg(uint32_t transport, 
     }
 
     lStatus = drvAnlogIicWriteRegister(iic, lAddress, &lRegister, 1U, lBuffer, lLength);
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X reg=%02X write=%u status=%s\nOK",
         drvAnlogIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -402,7 +402,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleReadReg(uint32_t transport, e
 
     lStatus = drvAnlogIicReadRegister(iic, lAddress, &lRegister, 1U, lBuffer, (uint16_t)lLength);
     if (lStatus != DRV_STATUS_OK) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s addr=%02X reg=%02X read=%lu status=%s",
             drvAnlogIicDebugGetBusName(iic),
             (unsigned int)lAddress,
@@ -419,7 +419,7 @@ static eConsoleCommandResult drvAnlogIicDebugHandleReadReg(uint32_t transport, e
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s addr=%02X reg=%02X data=%s\nOK",
         drvAnlogIicDebugGetBusName(iic),
         (unsigned int)lAddress,
@@ -489,7 +489,7 @@ static eConsoleCommandResult drvAnlogIicDebugConsoleHandler(uint32_t transport, 
 static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int argc, char *argv[])
 {
     if (argc == 2) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "anlogiic <list|init|recover|write|read|writereg|readreg|help> ...\n"
             "  list\n"
             "  init <bus0|0>\n"
@@ -508,7 +508,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int a
     }
 
     if (strcmp(argv[2], "read") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "anlogiic read <bus0|0> <addr> <len>\n"
             "  addr supports hex byte, len is decimal 1..16\n"
             "  example: anlogiic read bus0 0x68 4\n"
@@ -520,7 +520,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int a
     }
 
     if (strcmp(argv[2], "write") == 0) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "anlogiic write <bus0|0> <addr> <b0> [b1 ... b15]\n"
             "  addr and data bytes support hex, max 16 bytes\n"
             "  example: anlogiic write bus0 0x68 0x75\n"
@@ -532,7 +532,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int a
     }
 
     if ((strcmp(argv[2], "writereg") == 0) || (strcmp(argv[2], "wr") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "anlogiic writereg <bus0|0> <addr> <reg> <b0> [b1 ... b15]\n"
             "  alias: wr\n"
             "  addr, reg and data bytes support hex, max 16 bytes\n"
@@ -545,7 +545,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int a
     }
 
     if ((strcmp(argv[2], "readreg") == 0) || (strcmp(argv[2], "rr") == 0)) {
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "anlogiic readreg <bus0|0> <addr> <reg> <len>\n"
             "  alias: rr\n"
             "  addr and reg support hex, len is decimal 1..16\n"
@@ -564,7 +564,7 @@ static eConsoleCommandResult drvAnlogIicDebugReplyHelp(uint32_t transport, int a
 bool drvAnlogIicDebugConsoleRegister(void)
 {
 #if (DRVANLOGIIC_CONSOLE_SUPPORT == 1)
-    return consoleRegisterCommand(&gDrvAnlogIicConsoleCommand);
+    return logRegisterConsole(&gDrvAnlogIicConsoleCommand);
 #else
     return true;
 #endif

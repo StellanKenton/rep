@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../sys/log/console.h"
+#include "../../sys/log/log.h"
 
 #define GD25QXXX_DEBUG_MAX_DATA_LENGTH    16U
 #define GD25QXXX_DEBUG_MAX_REPLY_LENGTH   96U
@@ -213,7 +213,7 @@ static eConsoleCommandResult gd25qxxxDebugReplyDeviceList(uint32_t transport)
 
     for (lIndex = 0U; lIndex < (uint32_t)GD25QXXX_DEV_MAX; lIndex++) {
         gd25qxxxPortGetDefCfg((eGd25qxxxMapType)lIndex, &lCfg);
-        if (consoleReply(transport,
+        if (logConsoleReply(transport,
             "%s bus=%u ready=%s\n",
             gd25qxxxDebugGetDeviceName((eGd25qxxxMapType)lIndex),
             (unsigned int)lCfg.linkId,
@@ -222,7 +222,7 @@ static eConsoleCommandResult gd25qxxxDebugReplyDeviceList(uint32_t transport)
         }
     }
 
-    if (consoleReply(transport, "OK") <= 0) {
+    if (logConsoleReply(transport, "OK") <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -233,7 +233,7 @@ static eConsoleCommandResult gd25qxxxDebugHandleInit(uint32_t transport, eGd25qx
 {
     eGd25qxxxStatus lStatus = gd25qxxxInit(device);
 
-    if (consoleReply(transport, "%s init=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s init=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -248,14 +248,14 @@ static eConsoleCommandResult gd25qxxxDebugHandleJedec(uint32_t transport, eGd25q
     eGd25qxxxStatus lStatus = gd25qxxxReadJedecId(device, &lManufacturerId, &lMemoryType, &lCapacityId);
 
     if (lStatus != GD25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s jedec=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s jedec=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s jedec=%02X %02X %02X\nOK",
         gd25qxxxDebugGetDeviceName(device),
         (unsigned int)lManufacturerId,
@@ -273,14 +273,14 @@ static eConsoleCommandResult gd25qxxxDebugHandleStatus(uint32_t transport, eGd25
     eGd25qxxxStatus lStatus = gd25qxxxReadStatus1(device, &lStatusValue);
 
     if (lStatus != GD25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s status=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s status=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s sr1=%02X\nOK", gd25qxxxDebugGetDeviceName(device), (unsigned int)lStatusValue) <= 0) {
+    if (logConsoleReply(transport, "%s sr1=%02X\nOK", gd25qxxxDebugGetDeviceName(device), (unsigned int)lStatusValue) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -292,14 +292,14 @@ static eConsoleCommandResult gd25qxxxDebugHandleInfo(uint32_t transport, eGd25qx
     const stGd25qxxxInfo *lInfo = gd25qxxxGetInfo(device);
 
     if (lInfo == NULL) {
-        if (consoleReply(transport, "%s info=not_ready", gd25qxxxDebugGetDeviceName(device)) <= 0) {
+        if (logConsoleReply(transport, "%s info=not_ready", gd25qxxxDebugGetDeviceName(device)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "%s size=%lu page=%u sector=%lu block=%lu addrw=%u\nOK",
         gd25qxxxDebugGetDeviceName(device),
         (unsigned long)lInfo->totalSizeBytes,
@@ -328,7 +328,7 @@ static eConsoleCommandResult gd25qxxxDebugHandleRead(uint32_t transport, eGd25qx
 
     lStatus = gd25qxxxRead(device, lAddress, lBuffer, lLength);
     if (lStatus != GD25QXXX_STATUS_OK) {
-        if (consoleReply(transport, "%s read=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+        if (logConsoleReply(transport, "%s read=%s", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
             return CONSOLE_COMMAND_RESULT_ERROR;
         }
 
@@ -339,7 +339,7 @@ static eConsoleCommandResult gd25qxxxDebugHandleRead(uint32_t transport, eGd25qx
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
-    if (consoleReply(transport, "%s data=%s\nOK", gd25qxxxDebugGetDeviceName(device), lReply) <= 0) {
+    if (logConsoleReply(transport, "%s data=%s\nOK", gd25qxxxDebugGetDeviceName(device), lReply) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -364,7 +364,7 @@ static eConsoleCommandResult gd25qxxxDebugHandleWrite(uint32_t transport, eGd25q
     }
 
     lStatus = gd25qxxxWrite(device, lAddress, lBuffer, (uint32_t)argc - 4U);
-    if (consoleReply(transport, "%s write=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s write=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -381,7 +381,7 @@ static eConsoleCommandResult gd25qxxxDebugHandleErase(uint32_t transport, eGd25q
     }
 
     lStatus = gd25qxxxEraseSector(device, lAddress);
-    if (consoleReply(transport, "%s erase=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
+    if (logConsoleReply(transport, "%s erase=%s\nOK", gd25qxxxDebugGetDeviceName(device), gd25qxxxDebugGetStatusText(lStatus)) <= 0) {
         return CONSOLE_COMMAND_RESULT_ERROR;
     }
 
@@ -393,7 +393,7 @@ static eConsoleCommandResult gd25qxxxDebugReplyHelp(uint32_t transport, int argc
     (void)argc;
     (void)argv;
 
-    if (consoleReply(transport,
+    if (logConsoleReply(transport,
         "gd25qxxx list\n"
         "gd25qxxx init <gd25q32_mem|gd25q32|mem|0>\n"
         "gd25qxxx jedec <gd25q32_mem|gd25q32|mem|0>\n"
@@ -462,7 +462,7 @@ static eConsoleCommandResult gd25qxxxDebugConsoleHandler(uint32_t transport, int
 
 bool gd25qxxxDebugConsoleRegister(void)
 {
-    return consoleRegisterCommand(&gGd25qxxxConsoleCommand);
+    return logRegisterConsole(&gGd25qxxxConsoleCommand);
 }
 
 #else
