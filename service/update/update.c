@@ -887,7 +887,15 @@ static void updateHandleCheckRequest(void)
                            gUpdateContext.bootRecord.stagingCrc32);
             break;
         case E_UPDATE_REQUEST_RUN_APP:
+#if (UPDATE_LOG_SUPPORT == 1)
+            LOG_I(UPDATE_LOG_TAG, "app image is pending startup confirmation");
+#endif
+            updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
+            break;
         case E_UPDATE_REQUEST_APP_RUNING:
+#if (UPDATE_LOG_SUPPORT == 1)
+            LOG_I(UPDATE_LOG_TAG, "app image startup was confirmed");
+#endif
             updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
             break;
         case E_UPDATE_REQUEST_ENTER_BOOT:
