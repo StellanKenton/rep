@@ -28,8 +28,12 @@ typedef struct stFc41dDataPlane {
     uint16_t txHead;
     uint16_t txTail;
     uint16_t txUsed;
+    uint16_t txPacketHead;
+    uint16_t txPacketTail;
+    uint16_t txPacketCount;
+    uint16_t txPacketLengths[FC41D_BLE_TX_PACKET_QUEUE_SIZE];
     uint16_t txPendingLen;
-    uint8_t txPendingBuf[FC41D_BLE_TX_CHUNK_SIZE];
+    uint8_t txPendingBuf[FC41D_BLE_TX_PACKET_MAX_SIZE];
 } stFc41dDataPlane;
 
 void fc41dDataReset(stFc41dDataPlane *dataPlane);
@@ -40,7 +44,11 @@ eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, 
 bool fc41dDataHasPendingTx(const stFc41dDataPlane *dataPlane);
 void fc41dDataClearPendingTx(stFc41dDataPlane *dataPlane);
 void fc41dDataConfirmPendingTx(stFc41dDataPlane *dataPlane);
-eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane, const char *charUuid, char *cmdBuf, uint16_t bufferSize);
+eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane,
+                                     const char *charUuid,
+                                     uint16_t maxPayloadLength,
+                                     char *cmdBuf,
+                                     uint16_t bufferSize);
 bool fc41dDataTryStoreUrcPayload(stFc41dDataPlane *dataPlane, const uint8_t *lineBuf, uint16_t lineLen);
 
 #ifdef __cplusplus

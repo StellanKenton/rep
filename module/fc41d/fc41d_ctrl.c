@@ -15,6 +15,8 @@
 #include "../../service/log/log.h"
 
 #define FC41D_CTRL_LOG_TAG              "fc41dCtl"
+#define FC41D_BLE_DEFAULT_MTU           23U
+#define FC41D_BLE_ATT_HEADER_SIZE       3U
 
 static const char *const gFc41dCommonDonePatterns[] = {"OK", "+QSTASTAT:WLAN_CONNECTED", "+QMTOPEN:*", "+QMTCONN:*", "+QMTSUB:*", "+QHTTPPOST:*", "+QHTTPREAD:*"};
 static const char *const gFc41dPromptDonePatterns[] = {"+HTTPCPOST:*", "+QHTTPPOST:*", "+MQTTPUB:*", "+QMTPUB:*"};
@@ -78,6 +80,7 @@ static bool fc41dTryParseMacAddress(const uint8_t *lineBuf, uint16_t lineLen, ch
 static bool fc41dTryParseMacCandidate(const uint8_t *lineBuf, uint16_t lineLen, uint16_t start, char *buffer, uint16_t bufferSize);
 static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value);
 static bool fc41dTryParseModuleVersion(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize);
+static bool fc41dTryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint16_t *mtu);
 static const char *fc41dCtrlGetStageName(eFc41dCtrlStage stage);
 static const char *fc41dCtrlGetRoleName(eFc41dRole role);
 static void fc41dCtrlSetStage(stFc41dDevice *device, eFc41dCtrlStage stage);
@@ -250,6 +253,7 @@ eFc41dStatus fc41dCtrlStart(stFc41dDevice *device, eFc41dRole role)
     device->state.isBusy = true;
     device->state.isBleAdvertising = false;
     device->state.isBleConnected = false;
+    device->state.bleMtu = 0U;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
     device->state.hasModuleVersion = false;
@@ -419,6 +423,7 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
     device->state.isBusy = true;
     device->state.isBleAdvertising = false;
     device->state.isBleConnected = false;
+    device->state.bleMtu = 0U;
     device->state.isReadyUrcSeen = false;
     device->state.hasMacAddress = false;
     device->state.hasModuleVersion = false;
@@ -447,6 +452,7 @@ void fc41dCtrlScheduleRetry(stFc41dDevice *device, eFc41dMapType deviceId, uint3
 bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_t lineLen)
 {
     uint32_t lIndex;
+    uint16_t lBleMtu;
     bool lHasBle;
 
     if ((device == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
@@ -462,6 +468,10 @@ bool fc41dCtrlIsUrc(const stFc41dDevice *device, const uint8_t *lineBuf, uint16_
         if (fc41dMatchPrefix(lineBuf, lineLen, gFc41dDefaultUrcPrefixes[lIndex])) {
             return true;
         }
+    }
+
+    if (fc41dTryParseBleMtu(lineBuf, lineLen, &lBleMtu)) {
+        return true;
     }
 
     lHasBle = fc41dHasBleToken(lineBuf, lineLen);
@@ -480,6 +490,7 @@ void fc41dCtrlHandleUrc(stFc41dDevice *device, const uint8_t *lineBuf, uint16_t 
     bool lHasBle;
     bool lHasDisconnect;
     bool lHasConnect;
+    uint16_t lBleMtu;
 
     if ((device == NULL) || (lineBuf == NULL) || (lineLen == 0U)) {
         return;
@@ -495,11 +506,20 @@ void fc41dCtrlHandleUrc(stFc41dDevice *device, const uint8_t *lineBuf, uint16_t 
     lHasDisconnect = lHasBle && fc41dHasBleDisconnectToken(lineBuf, lineLen);
     lHasConnect = lHasBle && fc41dHasBleConnectToken(lineBuf, lineLen);
 
+    if (fc41dTryParseBleMtu(lineBuf, lineLen, &lBleMtu)) {
+        device->state.bleMtu = lBleMtu;
+        LOG_I(FC41D_CTRL_LOG_TAG, "urc ble mtu=%u", (unsigned int)lBleMtu);
+    }
+
     if (lHasDisconnect) {
         device->state.isBleConnected = false;
+        device->state.bleMtu = 0U;
         LOG_I(FC41D_CTRL_LOG_TAG, "urc ble disconnected");
     } else if (lHasConnect) {
         device->state.isBleConnected = true;
+        if (device->state.bleMtu == 0U) {
+            device->state.bleMtu = FC41D_BLE_DEFAULT_MTU;
+        }
         LOG_I(FC41D_CTRL_LOG_TAG, "urc ble connected");
     }
 }
@@ -770,6 +790,7 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
         if ((device->ctrlPlane.stage == FC41D_CTRL_STAGE_RUNNING) &&
             (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_BLE_DISCONNECT)) {
             device->state.isBleConnected = false;
+            device->state.bleMtu = 0U;
             device->ctrlPlane.txnKind = FC41D_CTRL_TXN_NONE;
             LOG_W(FC41D_CTRL_LOG_TAG, "ble disconnect command failed status=%d", (int)lStatus);
             return FC41D_STATUS_OK;
@@ -842,6 +863,7 @@ static eFc41dStatus fc41dHandleCtrlDone(stFc41dDevice *device, eFc41dMapType dev
                 fc41dDataConfirmPendingTx(&device->dataPlane);
             } else if (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_BLE_DISCONNECT) {
                 device->state.isBleConnected = false;
+                device->state.bleMtu = 0U;
                 LOG_I(FC41D_CTRL_LOG_TAG, "ble disconnect confirmed");
             } else if (device->ctrlPlane.txnKind == FC41D_CTRL_TXN_USER_TEXT) {
                 device->ctrlPlane.userTextLineHandler = NULL;
@@ -998,6 +1020,8 @@ static eFc41dStatus fc41dProcessCtrlStage(stFc41dDevice *device, eFc41dMapType d
             if (device->state.isBleConnected && fc41dDataHasPendingTx(&device->dataPlane) && (device->bleCfg.txCharUuid[0] != '\0')) {
                 lStatus = fc41dDataBuildBleNotify(&device->dataPlane,
                                                   device->bleCfg.txCharUuid,
+                                                  (device->state.bleMtu > FC41D_BLE_ATT_HEADER_SIZE) ?
+                                                  (uint16_t)(device->state.bleMtu - FC41D_BLE_ATT_HEADER_SIZE) : 0U,
                                                   device->ctrlPlane.cmdBuf,
                                                   (uint16_t)sizeof(device->ctrlPlane.cmdBuf));
                 if (lStatus == FC41D_STATUS_NOT_READY) {
@@ -1257,6 +1281,41 @@ static bool fc41dTryHexNibble(uint8_t ch, uint8_t *value)
     }
 
     return false;
+}
+
+static bool fc41dTryParseBleMtu(const uint8_t *lineBuf, uint16_t lineLen, uint16_t *mtu)
+{
+    static const char lPrefix[] = "+QBLEMTU:";
+    uint16_t lIndex;
+    uint16_t lValue;
+    bool lHasDigit;
+
+    if ((lineBuf == NULL) || (mtu == NULL) || (lineLen <= (uint16_t)(sizeof(lPrefix) - 1U)) ||
+        (memcmp(lineBuf, lPrefix, sizeof(lPrefix) - 1U) != 0)) {
+        return false;
+    }
+
+    lIndex = (uint16_t)(sizeof(lPrefix) - 1U);
+    lValue = 0U;
+    lHasDigit = false;
+    while (lIndex < lineLen) {
+        if ((lineBuf[lIndex] >= (uint8_t)'0') && (lineBuf[lIndex] <= (uint8_t)'9')) {
+            lHasDigit = true;
+            lValue = (uint16_t)((lValue * 10U) + (uint16_t)(lineBuf[lIndex] - (uint8_t)'0'));
+            if (lValue > 512U) {
+                return false;
+            }
+        } else if (lHasDigit) {
+            break;
+        }
+        lIndex++;
+    }
+
+    if (!lHasDigit || (lValue < FC41D_BLE_DEFAULT_MTU)) {
+        return false;
+    }
+    *mtu = lValue;
+    return true;
 }
 
 static bool fc41dTryParseModuleVersion(const uint8_t *lineBuf, uint16_t lineLen, char *buffer, uint16_t bufferSize)

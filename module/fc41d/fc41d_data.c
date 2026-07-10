@@ -77,12 +77,18 @@ eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, 
     }
 
     lCapacity = (uint16_t)sizeof(dataPlane->txStorage);
-    if ((length > lCapacity) || ((uint16_t)(lCapacity - dataPlane->txUsed) < length)) {
+    if ((length > (uint16_t)sizeof(dataPlane->txPendingBuf)) ||
+        (length > lCapacity) ||
+        ((uint16_t)(lCapacity - dataPlane->txUsed) < length) ||
+        (dataPlane->txPacketCount >= FC41D_BLE_TX_PACKET_QUEUE_SIZE)) {
         LOG_W(FC41D_DATA_LOG_TAG,
-              "tx overflow len=%u used=%u cap=%u",
+              "tx packet overflow len=%u used=%u cap=%u packets=%u/%u packetCap=%u",
               (unsigned int)length,
               (unsigned int)dataPlane->txUsed,
-              (unsigned int)lCapacity);
+              (unsigned int)lCapacity,
+              (unsigned int)dataPlane->txPacketCount,
+              (unsigned int)FC41D_BLE_TX_PACKET_QUEUE_SIZE,
+              (unsigned int)sizeof(dataPlane->txPendingBuf));
         return FC41D_STATUS_OVERFLOW;
     }
 
@@ -92,12 +98,15 @@ eFc41dStatus fc41dDataWrite(stFc41dDataPlane *dataPlane, const uint8_t *buffer, 
     }
 
     dataPlane->txUsed = (uint16_t)(dataPlane->txUsed + length);
+    dataPlane->txPacketLengths[dataPlane->txPacketHead] = length;
+    dataPlane->txPacketHead = (uint16_t)((dataPlane->txPacketHead + 1U) % FC41D_BLE_TX_PACKET_QUEUE_SIZE);
+    dataPlane->txPacketCount++;
     return FC41D_STATUS_OK;
 }
 
 bool fc41dDataHasPendingTx(const stFc41dDataPlane *dataPlane)
 {
-    return (dataPlane != NULL) && ((dataPlane->txUsed > 0U) || (dataPlane->txPendingLen > 0U));
+    return (dataPlane != NULL) && ((dataPlane->txPacketCount > 0U) || (dataPlane->txPendingLen > 0U));
 }
 
 void fc41dDataClearPendingTx(stFc41dDataPlane *dataPlane)
@@ -116,24 +125,49 @@ void fc41dDataConfirmPendingTx(stFc41dDataPlane *dataPlane)
     }
 
     fc41dDataDropTx(dataPlane, dataPlane->txPendingLen);
+    if (dataPlane->txPacketCount > 0U) {
+        dataPlane->txPacketLengths[dataPlane->txPacketTail] = 0U;
+        dataPlane->txPacketTail = (uint16_t)((dataPlane->txPacketTail + 1U) % FC41D_BLE_TX_PACKET_QUEUE_SIZE);
+        dataPlane->txPacketCount--;
+    }
     dataPlane->txPendingLen = 0U;
 }
 
-eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane, const char *charUuid, char *cmdBuf, uint16_t bufferSize)
+eFc41dStatus fc41dDataBuildBleNotify(stFc41dDataPlane *dataPlane,
+                                     const char *charUuid,
+                                     uint16_t maxPayloadLength,
+                                     char *cmdBuf,
+                                     uint16_t bufferSize)
 {
     static const char lNotifyPrefix[] = "AT+QBLEGATTSNTFY=";
     uint16_t lLength;
+    uint16_t lPacketLength;
     eFc41dStatus lStatus;
 
-    if ((dataPlane == NULL) || (charUuid == NULL) || (charUuid[0] == '\0') || (cmdBuf == NULL) || (bufferSize == 0U)) {
+    if ((dataPlane == NULL) || (charUuid == NULL) || (charUuid[0] == '\0') ||
+        (maxPayloadLength == 0U) || (cmdBuf == NULL) || (bufferSize == 0U)) {
         return FC41D_STATUS_INVALID_PARAM;
     }
 
     if (dataPlane->txPendingLen == 0U) {
-        dataPlane->txPendingLen = fc41dDataPeekTx(dataPlane, dataPlane->txPendingBuf, FC41D_BLE_TX_CHUNK_SIZE);
-        if (dataPlane->txPendingLen == 0U) {
+        if (dataPlane->txPacketCount == 0U) {
             return FC41D_STATUS_NOT_READY;
         }
+        lPacketLength = dataPlane->txPacketLengths[dataPlane->txPacketTail];
+        if ((lPacketLength == 0U) || (lPacketLength > (uint16_t)sizeof(dataPlane->txPendingBuf))) {
+            return FC41D_STATUS_ERROR;
+        }
+        if (lPacketLength > maxPayloadLength) {
+            return FC41D_STATUS_NOT_READY;
+        }
+        dataPlane->txPendingLen = fc41dDataPeekTx(dataPlane, dataPlane->txPendingBuf, lPacketLength);
+        if (dataPlane->txPendingLen != lPacketLength) {
+            dataPlane->txPendingLen = 0U;
+            return FC41D_STATUS_ERROR;
+        }
+    }
+    if (dataPlane->txPendingLen > maxPayloadLength) {
+        return FC41D_STATUS_NOT_READY;
     }
 
     lLength = 0U;

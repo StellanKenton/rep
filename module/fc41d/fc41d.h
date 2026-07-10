@@ -67,6 +67,15 @@ typedef enum eFc41dRunState {
 #define FC41D_BLE_TX_CHUNK_SIZE              48U
 #endif
 
+/* Keep the legacy chunk setting as the maximum size of one atomic BLE packet. */
+#ifndef FC41D_BLE_TX_PACKET_MAX_SIZE
+#define FC41D_BLE_TX_PACKET_MAX_SIZE         FC41D_BLE_TX_CHUNK_SIZE
+#endif
+
+#ifndef FC41D_BLE_TX_PACKET_QUEUE_SIZE
+#define FC41D_BLE_TX_PACKET_QUEUE_SIZE       16U
+#endif
+
 #ifndef FC41D_CTRL_CMD_BUFFER_SIZE
 #define FC41D_CTRL_CMD_BUFFER_SIZE           384U
 #endif
@@ -191,6 +200,7 @@ typedef struct stFc41dState {
     bool isBusy;
     bool isBleAdvertising;
     bool isBleConnected;
+    uint16_t bleMtu;
     bool isReadyUrcSeen;
     bool hasMacAddress;
     bool hasModuleVersion;
