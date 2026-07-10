@@ -26,10 +26,14 @@ typedef struct stTm1651AssembleCfg {
     uint8_t linkId;
 } stTm1651AssembleCfg;
 
-void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg);
-const stTm1651IicInterface *tm1651GetPlatformIicInterface(eTm1651MapType device);
-bool tm1651PlatformIsValidAssemble(eTm1651MapType device);
-uint8_t tm1651PlatformGetLinkId(eTm1651MapType device);
+typedef struct stTm1651Ops {
+    void (*loadDefaultCfg)(eTm1651MapType device, stTm1651Cfg *cfg);
+    const stTm1651IicInterface *(*getIicInterface)(eTm1651MapType device);
+    bool (*isValidAssemble)(eTm1651MapType device);
+    uint8_t (*getLinkId)(eTm1651MapType device);
+} stTm1651Ops;
+
+const stTm1651Ops *tm1651PortGetOps(void);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 
 #define FC41D_DATA_LOG_TAG              "fc41dData"
 

@@ -7,38 +7,48 @@
 ***********************************************************************************/
 #include "w25qxxx.h"
 
+#include "w25qxxx_port.h"
+
 #include <stddef.h>
 
 
 static stW25qxxxDevice gW25qxxxDevices[W25QXXX_DEV_MAX];
 static bool gW25qxxxDefCfgDone[W25QXXX_DEV_MAX] = {false};
+static const stW25qxxxOps *w25qxxxGetOps(void);
+static void w25qxxxLoadDefaultCfgFromOps(eW25qxxxMapType device, stW25qxxxCfg *cfg);
+static bool w25qxxxIsValidCfgByOps(const stW25qxxxCfg *cfg);
+static void w25qxxxDelayMs(uint32_t delayMs);
 
-__attribute__((weak)) void w25qxxxLoadPlatformDefaultCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
+static const stW25qxxxOps *w25qxxxGetOps(void)
 {
-    (void)device;
+    return w25qxxxPortGetOps();
+}
 
-    if (cfg == NULL) {
+static void w25qxxxLoadDefaultCfgFromOps(eW25qxxxMapType device, stW25qxxxCfg *cfg)
+{
+    const stW25qxxxOps *lOps = w25qxxxGetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
         return;
     }
 
-    cfg->linkId = 0U;
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stW25qxxxSpiInterface *w25qxxxGetPlatformSpiInterface(const stW25qxxxCfg *cfg)
+static bool w25qxxxIsValidCfgByOps(const stW25qxxxCfg *cfg)
 {
-    (void)cfg;
-    return NULL;
+    const stW25qxxxOps *lOps = w25qxxxGetOps();
+
+    return (lOps != NULL) && (lOps->isValidCfg != NULL) && lOps->isValidCfg(cfg);
 }
 
-__attribute__((weak)) bool w25qxxxPlatformIsValidCfg(const stW25qxxxCfg *cfg)
+static void w25qxxxDelayMs(uint32_t delayMs)
 {
-    (void)cfg;
-    return false;
-}
+    const stW25qxxxOps *lOps = w25qxxxGetOps();
 
-__attribute__((weak)) void w25qxxxPlatformDelayMs(uint32_t delayMs)
-{
-    (void)delayMs;
+    if ((lOps != NULL) && (lOps->delayMs != NULL)) {
+        lOps->delayMs(delayMs);
+    }
 }
 
 static bool w25qxxxIsValidDevMap(eW25qxxxMapType device);
@@ -94,7 +104,7 @@ eW25qxxxStatus w25qxxxSetCfg(eW25qxxxMapType device, const stW25qxxxCfg *cfg)
 {
     stW25qxxxDevice *lDeviceCtx;
 
-    if ((cfg == NULL) || !w25qxxxPlatformIsValidCfg(cfg)) {
+    if ((cfg == NULL) || !w25qxxxIsValidCfgByOps(cfg)) {
         return W25QXXX_STATUS_INVALID_PARAM;
     }
 
@@ -122,7 +132,7 @@ eW25qxxxStatus w25qxxxInit(eW25qxxxMapType device)
     }
 
     if (w25qxxxGetSpiIf(lDeviceCtx) == NULL) {
-        return w25qxxxPlatformIsValidCfg(&lDeviceCtx->cfg) ?
+        return w25qxxxIsValidCfgByOps(&lDeviceCtx->cfg) ?
                W25QXXX_STATUS_NOT_READY :
                W25QXXX_STATUS_INVALID_PARAM;
     }
@@ -454,7 +464,7 @@ static void w25qxxxLoadDefCfg(eW25qxxxMapType device, stW25qxxxCfg *cfg)
         return;
     }
 
-    w25qxxxLoadPlatformDefaultCfg(device, cfg);
+    w25qxxxLoadDefaultCfgFromOps(device, cfg);
 }
 
 static void w25qxxxClrInfo(stW25qxxxInfo *info)
@@ -475,7 +485,7 @@ static void w25qxxxClrInfo(stW25qxxxInfo *info)
 
 static bool w25qxxxIsValidDev(const stW25qxxxDevice *device)
 {
-    return (device != NULL) && w25qxxxPlatformIsValidCfg(&device->cfg);
+    return (device != NULL) && w25qxxxIsValidCfgByOps(&device->cfg);
 }
 
 static bool w25qxxxIsReadyXfer(const stW25qxxxDevice *device)
@@ -542,7 +552,9 @@ static const stW25qxxxSpiInterface *w25qxxxGetSpiIf(const stW25qxxxDevice *devic
         return NULL;
     }
 
-    return w25qxxxGetPlatformSpiInterface(&device->cfg);
+    const stW25qxxxOps *lOps = w25qxxxGetOps();
+
+    return ((lOps != NULL) && (lOps->getSpiInterface != NULL)) ? lOps->getSpiInterface(&device->cfg) : NULL;
 }
 
 static eW25qxxxStatus w25qxxxTransferInt(const stW25qxxxDevice *device, const uint8_t *writeBuffer, uint16_t writeLength, const uint8_t *secondWriteBuffer, uint16_t secondWriteLength, uint8_t *readBuffer, uint16_t readLength)
@@ -666,7 +678,7 @@ static eW25qxxxStatus w25qxxxWaitReadyInt(const stW25qxxxDevice *device, uint32_
             return W25QXXX_STATUS_TIMEOUT;
         }
 
-        w25qxxxPlatformDelayMs(W25QXXX_BUSY_POLL_DELAY_MS);
+        w25qxxxDelayMs(W25QXXX_BUSY_POLL_DELAY_MS);
         lElapsedMs += W25QXXX_BUSY_POLL_DELAY_MS;
     }
 }

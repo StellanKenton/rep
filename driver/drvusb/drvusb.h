@@ -21,18 +21,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVUSB_LOG_SUPPORT
-#define DRVUSB_LOG_SUPPORT                    1
-#endif
-
-#ifndef DRVUSB_CONSOLE_SUPPORT
-#define DRVUSB_CONSOLE_SUPPORT                1
-#endif
-
-#ifndef DRVUSB_MAX
-#define DRVUSB_MAX                            1U
-#endif
-
 #ifndef DRVUSB_LOCK_WAIT_MS
 #define DRVUSB_LOCK_WAIT_MS                   5U
 #endif
@@ -102,6 +90,10 @@ typedef struct stDrvUsbBspInterface {
     eDrvUsbRole role;
 } stDrvUsbBspInterface;
 
+typedef struct stDrvUsbOps {
+    const stDrvUsbBspInterface *(*getBspInterfaces)(void);
+} stDrvUsbOps;
+
 eDrvStatus drvUsbInit(uint8_t usb);
 eDrvStatus drvUsbStart(uint8_t usb);
 eDrvStatus drvUsbStop(uint8_t usb);
@@ -118,8 +110,6 @@ bool drvUsbIsConnected(uint8_t usb);
 bool drvUsbIsConfigured(uint8_t usb);
 eDrvUsbSpeed drvUsbGetSpeed(uint8_t usb);
 eDrvUsbRole drvUsbGetRole(uint8_t usb);
-
-const stDrvUsbBspInterface *drvUsbGetPlatformBspInterfaces(void);
 
 #ifdef __cplusplus
 }

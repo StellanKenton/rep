@@ -19,18 +19,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVADC_LOG_SUPPORT
-#define DRVADC_LOG_SUPPORT                 1
-#endif
-
-#ifndef DRVADC_CONSOLE_SUPPORT
-#define DRVADC_CONSOLE_SUPPORT             1
-#endif
-
-#ifndef DRVADC_MAX
-#define DRVADC_MAX                         3U
-#endif
-
 #ifndef DRVADC_LOCK_WAIT_MS
 #define DRVADC_LOCK_WAIT_MS                5U
 #endif
@@ -73,15 +61,17 @@ typedef struct stDrvAdcData {
     uint16_t mvFiltered;
 } stDrvAdcData;
 
+typedef struct stDrvAdcOps {
+    const stDrvAdcBspInterface *(*getBspInterface)(void);
+    stDrvAdcData *(*getData)(void);
+} stDrvAdcOps;
+
 eDrvStatus drvAdcInit(uint8_t adc);
 eDrvStatus drvAdcReadRaw(uint8_t adc, uint16_t *value);
 eDrvStatus drvAdcReadRawTimeout(uint8_t adc, uint16_t *value, uint32_t timeoutMs);
 eDrvStatus drvAdcReadMv(uint8_t adc, uint16_t *valueMv);
 eDrvStatus drvAdcReadMvTimeout(uint8_t adc, uint16_t *valueMv, uint32_t timeoutMs);
 void drvAdcBackground(void);
-
-const stDrvAdcBspInterface *drvAdcGetPlatformBspInterface(void);
-stDrvAdcData *drvAdcGetPlatformData(void);
 
 #ifdef __cplusplus
 }

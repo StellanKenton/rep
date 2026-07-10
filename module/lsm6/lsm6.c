@@ -11,58 +11,100 @@
 #include "lsm6_assembly.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static stLsm6Device gLsm6Devices[LSM6_DEV_MAX];
 static bool gLsm6DefCfgDone[LSM6_DEV_MAX] = {false};
+static const uint32_t gLsm6ResetDelayMsDefault = 10U;
+static const uint32_t gLsm6ResetPollDelayMsDefault = 2U;
 
-__attribute__((weak)) void lsm6LoadPlatformDefaultCfg(eLsm6MapType device, stLsm6Cfg *cfg)
+static const stLsm6Ops *lsm6GetOps(void);
+static bool lsm6IsAssembleReady(eLsm6MapType device);
+static void lsm6LoadDefaultCfgFromOps(eLsm6MapType device, stLsm6Cfg *cfg);
+static uint8_t lsm6GetLinkIdByDevice(eLsm6MapType device);
+static uint32_t lsm6GetResetDelayMs(void);
+static uint32_t lsm6GetResetPollDelayMs(void);
+static void lsm6DelayMs(uint32_t delayMs);
+
+static const stLsm6Ops *lsm6GetOps(void)
 {
-    (void)device;
+    return lsm6PortGetOps();
+}
+
+static bool lsm6IsAssembleReady(eLsm6MapType device)
+{
+    const stLsm6Ops *lOps = lsm6GetOps();
+
+    if ((lOps == NULL) ||
+        (lOps->loadDefaultCfg == NULL) ||
+        (lOps->getIicInterface == NULL) ||
+        (lOps->isValidAssemble == NULL) ||
+        (lOps->getLinkId == NULL) ||
+        (lOps->delayMs == NULL)) {
+        return false;
+    }
+
+    return lOps->isValidAssemble(device);
+}
+
+static void lsm6LoadDefaultCfgFromOps(eLsm6MapType device, stLsm6Cfg *cfg)
+{
+    const stLsm6Ops *lOps = lsm6GetOps();
 
     if (cfg == NULL) {
         return;
     }
 
-    cfg->address = LSM6_IIC_ADDRESS_LOW;
-    cfg->accelDataRate = LSM6_ACCEL_ODR_104HZ;
-    cfg->gyroDataRate = LSM6_GYRO_ODR_104HZ;
-    cfg->accelRange = LSM6_ACCEL_RANGE_4G;
-    cfg->gyroRange = LSM6_GYRO_RANGE_2000DPS;
-    cfg->blockDataUpdate = true;
-    cfg->autoIncrement = true;
+    (void)memset(cfg, 0, sizeof(*cfg));
+    if ((lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
+        return;
+    }
+
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stLsm6IicInterface *lsm6GetPlatformIicInterface(eLsm6MapType device)
+static uint8_t lsm6GetLinkIdByDevice(eLsm6MapType device)
 {
-    (void)device;
-    return NULL;
+    const stLsm6Ops *lOps = lsm6GetOps();
+
+    if ((lOps == NULL) || (lOps->getLinkId == NULL)) {
+        return 0U;
+    }
+
+    return lOps->getLinkId(device);
 }
 
-__attribute__((weak)) bool lsm6PlatformIsValidAssemble(eLsm6MapType device)
+static uint32_t lsm6GetResetDelayMs(void)
 {
-    (void)device;
-    return false;
+    const stLsm6Ops *lOps = lsm6GetOps();
+
+    if ((lOps == NULL) || (lOps->getResetDelayMs == NULL)) {
+        return gLsm6ResetDelayMsDefault;
+    }
+
+    return lOps->getResetDelayMs();
 }
 
-__attribute__((weak)) uint8_t lsm6PlatformGetLinkId(eLsm6MapType device)
+static uint32_t lsm6GetResetPollDelayMs(void)
 {
-    (void)device;
-    return 0U;
+    const stLsm6Ops *lOps = lsm6GetOps();
+
+    if ((lOps == NULL) || (lOps->getResetPollDelayMs == NULL)) {
+        return gLsm6ResetPollDelayMsDefault;
+    }
+
+    return lOps->getResetPollDelayMs();
 }
 
-__attribute__((weak)) uint32_t lsm6PlatformGetResetDelayMs(void)
+static void lsm6DelayMs(uint32_t delayMs)
 {
-    return 10U;
-}
+    const stLsm6Ops *lOps = lsm6GetOps();
 
-__attribute__((weak)) uint32_t lsm6PlatformGetResetPollDelayMs(void)
-{
-    return 2U;
-}
+    if ((lOps == NULL) || (lOps->delayMs == NULL)) {
+        return;
+    }
 
-__attribute__((weak)) void lsm6PlatformDelayMs(uint32_t delayMs)
-{
-    (void)delayMs;
+    lOps->delayMs(delayMs);
 }
 
 static bool lsm6IsValidDevMap(eLsm6MapType device);
@@ -147,13 +189,13 @@ eDrvStatus lsm6Init(eLsm6MapType device)
     }
 
     if (lsm6GetIicIf(lDeviceCtx) == NULL) {
-        return lsm6PlatformIsValidAssemble(device) ?
+        return lsm6IsAssembleReady(device) ?
                LSM6_STATUS_NOT_READY :
                LSM6_STATUS_INVALID_PARAM;
     }
 
     lIicIf = lsm6GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(lsm6PlatformGetLinkId(device));
+    lStatus = lIicIf->init(lsm6GetLinkIdByDevice(device));
     if (lStatus != LSM6_STATUS_OK) {
         return lStatus;
     }
@@ -200,7 +242,7 @@ eDrvStatus lsm6ReadId(eLsm6MapType device, uint8_t *devId)
         return LSM6_STATUS_NOT_READY;
     }
 
-    lStatus = lIicIf->init(lsm6PlatformGetLinkId(device));
+    lStatus = lIicIf->init(lsm6GetLinkIdByDevice(device));
     if (lStatus != LSM6_STATUS_OK) {
         return lStatus;
     }
@@ -322,7 +364,7 @@ static eLsm6MapType lsm6GetDevMapByCtx(const stLsm6Device *device)
 
 static void lsm6LoadDefCfg(eLsm6MapType device, stLsm6Cfg *cfg)
 {
-    lsm6LoadPlatformDefaultCfg(device, cfg);
+    lsm6LoadDefaultCfgFromOps(device, cfg);
 
     if (!lsm6IsValidCfg(cfg)) {
         cfg->address = LSM6_IIC_ADDRESS_LOW;
@@ -391,7 +433,13 @@ static const stLsm6IicInterface *lsm6GetIicIf(const stLsm6Device *device)
         return NULL;
     }
 
-    return lsm6GetPlatformIicInterface(lDevice);
+    const stLsm6Ops *lOps = lsm6GetOps();
+
+    if ((lOps == NULL) || (lOps->getIicInterface == NULL)) {
+        return NULL;
+    }
+
+    return lOps->getIicInterface(lDevice);
 }
 
 static eDrvStatus lsm6WriteRegInt(const stLsm6Device *device, uint8_t regAddr, uint8_t value)
@@ -402,7 +450,7 @@ static eDrvStatus lsm6WriteRegInt(const stLsm6Device *device, uint8_t regAddr, u
         return LSM6_STATUS_NOT_READY;
     }
 
-    return lIicIf->writeReg(lsm6PlatformGetLinkId(lsm6GetDevMapByCtx(device)),
+    return lIicIf->writeReg(lsm6GetLinkIdByDevice(lsm6GetDevMapByCtx(device)),
                             device->cfg.address,
                             &regAddr,
                             1U,
@@ -427,7 +475,7 @@ static eDrvStatus lsm6ReadRegsInt(const stLsm6Device *device, uint8_t regAddr, u
         return LSM6_STATUS_NOT_READY;
     }
 
-    return lIicIf->readReg(lsm6PlatformGetLinkId(lsm6GetDevMapByCtx(device)),
+    return lIicIf->readReg(lsm6GetLinkIdByDevice(lsm6GetDevMapByCtx(device)),
                            device->cfg.address,
                            &regAddr,
                            1U,
@@ -462,7 +510,7 @@ static eDrvStatus lsm6ResetDevice(stLsm6Device *device)
         return lStatus;
     }
 
-    lsm6PlatformDelayMs(lsm6PlatformGetResetDelayMs());
+    lsm6DelayMs(lsm6GetResetDelayMs());
 
     for (lRetry = 0U; lRetry < 10U; ++lRetry) {
         lStatus = lsm6ReadRegInt(device, LSM6_REG_CTRL3_C, &lCtrl3);
@@ -474,7 +522,7 @@ static eDrvStatus lsm6ResetDevice(stLsm6Device *device)
             return LSM6_STATUS_OK;
         }
 
-        lsm6PlatformDelayMs(lsm6PlatformGetResetPollDelayMs());
+        lsm6DelayMs(lsm6GetResetPollDelayMs());
     }
 
     return LSM6_STATUS_TIMEOUT;

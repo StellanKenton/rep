@@ -199,16 +199,4 @@ eRepRtosStatus repRtosStatsInit(void)
     return ops->statsInit();
 }
 
-const char *repRtosGetName(void)
-{
-    const char *name = rtosPortGetName();
-
-    return (name == NULL) ? "unknown" : name;
-}
-
-uint32_t repRtosGetSystem(void)
-{
-    return rtosPortGetSystem();
-}
-
 /**************************End of file********************************/

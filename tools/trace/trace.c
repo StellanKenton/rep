@@ -3,13 +3,15 @@
 * @brief    : Cortex-M fault snapshot capture implementation.
 * @details  : Provides reusable Cortex-M fault handlers, captures exception context,
 *             formats diagnostic output, and delegates transport binding through
-*             weak platform hooks.
+*             an explicit ops/provider table.
 * @author   : \.rumi
 * @date     : 2026-04-24
 * @version  : V1.0.0
 * @copyright: Copyright (c) 2050
 ***********************************************************************************/
 #include "trace.h"
+
+#include "trace_port.h"
 
 #if defined(__IAR_SYSTEMS_ICC__)
 #include <intrinsics.h>
@@ -19,6 +21,10 @@ static uint32_t traceGetMainStackPointer(void);
 static uint32_t traceGetProcessStackPointer(void);
 static void traceDisableInterrupts(void);
 static uint32_t traceReadSystemRegister32(uint32_t address);
+static const stTraceOps *traceGetOps(void);
+static void traceFaultTransportInit(void);
+static int32_t traceFaultTransportWrite(const uint8_t *buffer, uint16_t length);
+static void traceFaultHalt(const stTraceFaultSnapshot *snapshot);
 static void traceWriteText(const char *text);
 static void traceWriteHex32(uint32_t value);
 static void traceWriteLabelHex32(const char *label, uint32_t value);
@@ -92,19 +98,40 @@ static uint32_t traceReadSystemRegister32(uint32_t address)
     return *((volatile const uint32_t *)address);
 }
 
-__attribute__((weak)) void traceFaultPlatformTransportInit(void)
+static const stTraceOps *traceGetOps(void)
 {
+    return tracePortGetOps();
 }
 
-__attribute__((weak)) int32_t traceFaultPlatformTransportWrite(const uint8_t *buffer, uint16_t length)
+static void traceFaultTransportInit(void)
 {
-    (void)buffer;
-    (void)length;
-    return 0;
+    const stTraceOps *lOps = traceGetOps();
+
+    if ((lOps != NULL) && (lOps->transportInit != NULL)) {
+        lOps->transportInit();
+    }
 }
 
-__attribute__((weak)) void traceFaultPlatformHalt(const stTraceFaultSnapshot *snapshot)
+static int32_t traceFaultTransportWrite(const uint8_t *buffer, uint16_t length)
 {
+    const stTraceOps *lOps = traceGetOps();
+
+    if ((lOps == NULL) || (lOps->transportWrite == NULL)) {
+        return 0;
+    }
+
+    return lOps->transportWrite(buffer, length);
+}
+
+static void traceFaultHalt(const stTraceFaultSnapshot *snapshot)
+{
+    const stTraceOps *lOps = traceGetOps();
+
+    if ((lOps != NULL) && (lOps->halt != NULL)) {
+        lOps->halt(snapshot);
+        return;
+    }
+
     (void)snapshot;
 
     while (1) {
@@ -131,7 +158,7 @@ static void traceWriteText(const char *text)
         return;
     }
 
-    (void)traceFaultPlatformTransportWrite((const uint8_t *)text, lLength);
+    (void)traceFaultTransportWrite((const uint8_t *)text, lLength);
 }
 
 static void traceWriteHex32(uint32_t value)
@@ -146,7 +173,7 @@ static void traceWriteHex32(uint32_t value)
         lBuffer[2U + lIndex] = lHexChars[(value >> (28U - (lIndex * 4U))) & 0x0FU];
     }
 
-    (void)traceFaultPlatformTransportWrite((const uint8_t *)lBuffer, sizeof(lBuffer));
+    (void)traceFaultTransportWrite((const uint8_t *)lBuffer, sizeof(lBuffer));
 }
 
 static void traceWriteLabelHex32(const char *label, uint32_t value)
@@ -242,9 +269,9 @@ void traceFaultHandle(eTraceFaultType faultType, const stTraceFaultStackFrame *f
 
     traceDisableInterrupts();
     traceFaultCapture(&lSnapshot, frame, excReturn);
-    traceFaultPlatformTransportInit();
+    traceFaultTransportInit();
     traceFaultReport(faultType, &lSnapshot);
-    traceFaultPlatformHalt(&lSnapshot);
+    traceFaultHalt(&lSnapshot);
 }
 
 void traceHardFaultHandlerC(const stTraceFaultStackFrame *frame, uint32_t excReturn)

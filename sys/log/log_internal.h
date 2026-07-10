@@ -1,14 +1,14 @@
 /************************************************************************************
-* @file     : console.h
-* @brief    : Text command console built on top of the log transport layer.
-* @details  : Provides command registration, transport-aware reply, and polling APIs.
+* @file     : log_internal.h
+* @brief    : Internal declarations shared by log core and console core.
+* @details  : This header is private to rep/sys/log and must not be included by modules.
 * @author   : GitHub Copilot
-* @date     : 2026-03-31
+* @date     : 2026-05-12
 * @version  : V1.0.0
 * @copyright: Copyright (c) 2050
 ***********************************************************************************/
-#ifndef CONSOLE_H
-#define CONSOLE_H
+#ifndef LOG_INTERNAL_H
+#define LOG_INTERNAL_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -57,25 +57,14 @@ uint32_t logGetInputCount(void);
 uint32_t logGetInputTransport(uint32_t index);
 stRingBuffer *logGetInputBuffer(uint32_t transport);
 int32_t logWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
-bool logGetStats(uint32_t transport, stLogOutputStats *stats);
-void logSetTimestampProvider(logTimestampProvider provider);
 
 bool consoleCoreInit(void);
 bool consoleCoreRegisterCommand(const stConsoleCommand *command);
 void consoleCoreProcess(void);
-int32_t logConsoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
-void logPlatformConsolePoll(void);
-
-#ifndef LOG_CONSOLE_INTERNAL_BUILD
-#define consoleInit() logInit()
-#define consoleRegisterCommand(command) logRegisterConsole(command)
-#define consoleProcess() ConsoleBackGournd()
-#define consoleReply logConsoleReply
-#endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // CONSOLE_H
+#endif
 /**************************End of file********************************/

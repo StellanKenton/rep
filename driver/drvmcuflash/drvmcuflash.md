@@ -4,14 +4,14 @@
 
 `drvmcuflash` 提供 MCU 片内 Flash 的最小稳定写存储接口。它对上暴露“绝对地址 + 长度 + bool 返回值”的访问方式，便于直接接到上层存储操作表；对下继续通过 port/BSP 维护可写区域和 sector 细节，避免业务层直接碰底层 Flash 控制器。
 
-当前默认配置只开放 1MB Flash 的最后一个 128KB sector 作为用户区，便于存放参数、校准值或掉电保存数据。
+当前目录已迁移为显式 `ops/provider` 形态，core 不再依赖 weak hook。当前工程只提供最小 `User/port/drvmcuflash_port.c` skeleton，未绑定真实 MCU Flash BSP 时会明确失败返回。
 
 ## 2. 文件分工
 
 - `drvmcuflash.h`: 定义公共 API、区域信息结构和 BSP 钩子表契约。
 - `drvmcuflash.c`: 负责参数校验、范围保护、并发串行化和公共读写擦流程。
-- `drvmcuflash_port.h`: 定义模块开关、锁等待时间和默认用户区范围。
-- `drvmcuflash_port.c`: 绑定 `gDrvMcuFlashBspInterface`，并给出当前工程的默认区域映射。
+- `drvmcuflash_port.h`: 声明 `drvMcuFlashPortGetOps()` 和项目侧区域常量。
+- `drvmcuflash_port.c`: 提供项目侧静态 `ops` 表；当前 skeleton 默认不绑定实际 BSP 和区域映射。
 - `drvmcuflash.md`: 说明 core 对 port/BSP 的依赖契约和默认配置。
 - `bspmcuflash.h/.c`: 负责 GD32F4 FMC 相关的 sector 布局、擦除和编程实现。
 
@@ -37,7 +37,7 @@
 
 ## 4. core 对 port/BSP 的依赖
 
-公共层只依赖以下钩子：
+公共层只依赖 `drvMcuFlashPortGetOps()` 返回的 `stDrvMcuFlashOps`，再经由 `ops` 间接访问以下钩子：
 
 - `init`
 - `unlock`
@@ -54,18 +54,15 @@
 
 只要这些钩子完整，公共层就不需要知道 GD32 的 FMC 寄存器细节。
 
-## 5. 默认区域映射
+## 5. 当前工程 port 状态
 
-当前 `drvmcuflash_port.h` 里默认定义：
+当前 `User/port/drvmcuflash_port.c` 只提供最小 skeleton：
 
-- `DRVMCUFLASH_BOOT_RECORD_START_ADDR = 0x0801F000`
-- `DRVMCUFLASH_BOOT_RECORD_SIZE = 0x00001000`
-- `DRVMCUFLASH_APP_START_ADDR = 0x08020000`
-- `DRVMCUFLASH_APP_SIZE = 0x00060000`
+- `getBspInterface()` 返回 `NULL`
+- `getAreaInfo()` 返回 `DRV_STATUS_UNSUPPORTED`
+- `getAreaCount()` 返回 `0`
 
-这对应当前 Bootloader 工程的两段内部 Flash 可写区：`BOOT_RECORD` 使用 `0x08020000` 之前最后两个 2KB page，`RUN_APP` 使用 `0x08020000` 之后的 App 区。之所以仍保留 port 层区域映射，是为了让公共层能在接受绝对地址时继续阻止越界擦写程序区。
-
-如果以后需要把用户区改到别的 sector，只改 port 宏即可，公共层 API 不需要变化。
+因此，只要项目尚未补齐真实 Flash BSP 和区域白名单，`drvMcuFlashInit()`、`drvMcuFlashGetAreaInfo()` 和范围校验都会明确失败，不会再静默落回 weak stub。
 
 ## 6. 并发与安全性
 

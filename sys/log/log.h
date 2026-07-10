@@ -59,6 +59,7 @@ typedef uint32_t (*logTimestampProvider)(void);
 typedef void (*logInitFunc)(void);
 typedef int32_t (*logOutputWriteFunc)(const uint8_t *buffer, uint16_t length);
 typedef stRingBuffer *(*logInputGetBufferFunc)(void);
+typedef void (*logConsolePollFunc)(void);
 
 typedef struct stLogInterface {
     uint32_t transport;
@@ -68,6 +69,12 @@ typedef struct stLogInterface {
     bool isOutputEnabled;
     bool isInputEnabled;
 } stLogInterface;
+
+typedef struct stLogOps {
+    const stLogInterface *interfaces;
+    uint32_t interfaceCount;
+    logConsolePollFunc consolePoll;
+} stLogOps;
 
 typedef struct stLogOutputStats {
     uint32_t transport;
@@ -113,8 +120,8 @@ typedef struct stLogOutputState {
 bool logInit(void);
 int32_t logDirectWriteToTransport(uint32_t transport, const uint8_t *buffer, uint16_t length);
 bool logRegisterConsole(const stConsoleCommand *command);
-void logProcessOutput(void);
-void ConsoleBackGournd(void);
+int32_t logConsoleReply(uint32_t transport, const char *format, ...) __attribute__((format(printf, 2, 3)));
+void logProcess(void);
 
 void logWrite(eLogLevel level, const char *tag, const char *format, ...) __attribute__((format(printf, 3, 4)));
 void logVWrite(eLogLevel level, const char *tag, const char *format, va_list args);

@@ -24,7 +24,6 @@ optional_hooks: []
 common_utils:
   - tools/ringbuffer
 copy_minimal_set:
-  - log/console.h
   - log/console.c
   - log/log.h
 read_next:
@@ -33,7 +32,7 @@ read_next:
 
 # Console 架构设计
 
-这是 `service/log/` 目录中 console 子模块的权威入口文档。
+这是 `sys/log/` 目录中 console 子模块的权威入口文档。
 
 ## 1. 本层目标和边界
 
@@ -59,12 +58,12 @@ read_next:
 
 - `logInit()`
 - `logRegisterConsole()`
-- `ConsoleBackGournd()`
+- `logConsoleReply()`
+- `logProcess()`
 
 兼容说明：
 
-- `console.h` 保留为目录内和 debug 子模块的兼容头，不再作为系统装配层首选入口。
-- `consoleReply()` 等名字只建议在目录内兼容使用；系统装配层应以 `log.h` 为准。
+- 旧的 `consoleReply()`、`consoleRegisterCommand()`、`consoleProcess()` 名字已不再作为公开入口。
 
 内置保留命令：
 
@@ -74,13 +73,12 @@ read_next:
 
 1. 先完成 `logInit()`。
 2. 再由各模块调用 `logRegisterConsole()` 注册自己的命令。
-3. 在任务上下文周期调用 `ConsoleBackGournd()`。
+3. 在任务上下文周期调用 `logProcess()`。
 
 ## 3. 目录内文件职责
 
 | 文件 | 职责 |
 | --- | --- |
-| `console.h` | console 内部声明与兼容宏；对外首选 `log.h` |
 | `console.c` | session 轮询、拆行、分词、查表分发、回复 |
 | `console.md` | console contract |
 | `log.h/.c` | 对外统一入口，负责 log core、console 装配和后台轮询 |
@@ -113,13 +111,13 @@ read_next:
 | `log` | `logGetInputTransport` | `console.c` | 获取 transport 标识 | index 合法 | `Process` 中遍历 | 非法值直接跳过 | 把 transport 当业务 ID |
 | `log` | `logGetInputBuffer` | `console.c` | 取得输入 ring buffer | transport 已启用 | `Init/Process` | `NULL` 视为该口不可用 | 让业务模块直接消费输入缓冲 |
 | `log` | `logWriteToTransport` | `console.c` | 定向回复 | transport 合法 | handler 执行后 | 失败返回错误回复或丢弃 | 用广播日志替代命令回复 |
-| `log` | `logRegisterConsole` | manager / system / debug 注册文件 | 统一注册命令 | `logInit()` 后 | `Init -> Register -> ConsoleBackGournd` | `false` 表示注册失败或重名不一致 | 外部继续直接依赖 `consoleRegisterCommand()` |
+| `log` | `logRegisterConsole` | manager / system / debug 注册文件 | 统一注册命令 | `logInit()` 后 | `Init -> Register -> logProcess` | `false` 表示注册失败或重名不一致 | 外部继续直接依赖旧 console 名字 |
 
 ## 7. 改动落点矩阵
 
 | 需求 | 应改文件 | 不该改的文件 |
 | --- | --- | --- |
-| 新增命令框架能力 | `console.h/.c` | 业务驱动 core |
+| 新增命令框架能力 | `console.c`、`log.h/.c` | 业务驱动 core |
 | 新增某模块命令 | 该模块 `*_debug.*` 或注册文件 | `console.c` 中硬编码业务 |
 | 调整回复路径 | `log.h/.c`、`console.c` | 业务模块公共 API |
 | 调整系统侧初始化顺序 | `log.c`、系统装配文件 | 各 debug 模块里手工补 `consoleInit()` |
@@ -128,7 +126,7 @@ read_next:
 
 最小依赖集：
 
-- `console.h/.c`
+- `console.c`
 - `log.h/.c` 暴露的 transport 抽象
 - `ringbuffer` 模块
 
@@ -143,4 +141,4 @@ read_next:
 - 多 transport 输入时 session 不串线。
 - 未知命令、参数错误和 transport 不可用时返回明确回复。
 - 回复默认只回到来源 transport。
-- `ConsoleBackGournd()` 单轮处理量有界。
+- `logProcess()` 单轮处理量有界。

@@ -50,12 +50,18 @@ typedef enum eTraceFaultType {
     TRACE_FAULT_USAGEFAULT,
 } eTraceFaultType;
 
+typedef void (*traceFaultTransportInitFunc)(void);
+typedef int32_t (*traceFaultTransportWriteFunc)(const uint8_t *buffer, uint16_t length);
+typedef void (*traceFaultHaltFunc)(const stTraceFaultSnapshot *snapshot);
+
+typedef struct stTraceOps {
+    traceFaultTransportInitFunc transportInit;
+    traceFaultTransportWriteFunc transportWrite;
+    traceFaultHaltFunc halt;
+} stTraceOps;
+
 void traceFaultCapture(stTraceFaultSnapshot *snapshot, const stTraceFaultStackFrame *frame, uint32_t excReturn);
 void traceFaultHandle(eTraceFaultType faultType, const stTraceFaultStackFrame *frame, uint32_t excReturn);
-
-void traceFaultPlatformTransportInit(void);
-int32_t traceFaultPlatformTransportWrite(const uint8_t *buffer, uint16_t length);
-void traceFaultPlatformHalt(const stTraceFaultSnapshot *snapshot);
 
 void HardFault_Handler(void);
 void MemManage_Handler(void);

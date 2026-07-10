@@ -21,7 +21,9 @@ core_files:
   - esp32c5_data.h
   - esp32c5_data.c
   - esp32c5_assembly.h
-port_files: []
+port_files:
+  - ../../../User/port/esp32c5_port.h
+  - ../../../User/port/esp32c5_port.c
 debug_files: []
 depends_on:
   - ../../comm/flowparser/flowparser.md
@@ -30,11 +32,9 @@ depends_on:
 forbidden_depends_on:
   - 在 core 中直连具体 UART BSP 或 system 私有头
 required_hooks:
-  - esp32c5LoadPlatformDefaultCfg
-  - esp32c5GetPlatformTransportInterface
-  - esp32c5GetPlatformControlInterface
+  - esp32c5PortGetOps
 optional_hooks:
-  - esp32c5PlatformIsValidCfg
+  - stEsp32c5Ops::isValidCfg
 common_utils:
   - ../../comm/flowparser
 copy_minimal_set:
@@ -81,6 +81,8 @@ read_next:
 | `esp32c5_data.h` | 内部数据面声明 |
 | `esp32c5_data.c` | RX/TX ring 管理、通知 prompt 组包 |
 | `esp32c5_assembly.h` | 项目侧 transport/tick/control 绑定契约 |
+| `User/port/esp32c5_port.h` | 项目侧 provider 入口声明，暴露 `esp32c5PortGetOps()` |
+| `User/port/esp32c5_port.c` | 项目侧静态 `stEsp32c5Ops` 表实现，装配默认配置、transport 和 control 能力 |
 | `esp32c5.md` | 当前目录 contract |
 
 ## 3. 对外公共接口
@@ -132,10 +134,11 @@ BLE 数据长度约束：
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 备注 |
 | --- | --- | --- | --- | --- |
-| `esp32c5LoadPlatformDefaultCfg` | 必需 | 项目侧 `User/port` | `esp32c5GetDefCfg` | 写默认 UART/linkId/control pin |
-| `esp32c5GetPlatformTransportInterface` | 必需 | 项目侧 `User/port` | `esp32c5Init`、后台收发 | 必须提供 init/write/getRxLen/read/getTickMs |
-| `esp32c5GetPlatformControlInterface` | 必需 | 项目侧 `User/port` | `esp32c5Init`、`esp32c5Start`、`esp32c5Process` | 当前最少要能初始化和拉高/拉低上电控制脚 |
-| `esp32c5PlatformIsValidCfg` | 建议 | 项目侧 `User/port` | `esp32c5SetCfg`、`esp32c5Init` | 约束项目允许的 linkId/resetPin |
+| `esp32c5PortGetOps()` | 必需 | 项目侧 `User/port/esp32c5_port.*` | `esp32c5GetDefCfg`、`esp32c5Init`、后台收发 | 返回长期有效的静态 `stEsp32c5Ops` 表 |
+| `stEsp32c5Ops.loadDefaultCfg` | 必需 | `User/port/esp32c5_port.c` | `esp32c5GetDefCfg` | 写默认 UART/linkId/control pin |
+| `stEsp32c5Ops.getTransportInterface` | 必需 | `User/port/esp32c5_port.c` | `esp32c5Init`、后台收发 | 必须提供 init/write/getRxLen/read/getTickMs |
+| `stEsp32c5Ops.getControlInterface` | 必需 | `User/port/esp32c5_port.c` | `esp32c5Init`、`esp32c5Start`、`esp32c5Process` | 当前最少要能初始化和拉高/拉低上电控制脚 |
+| `stEsp32c5Ops.isValidCfg` | 建议 | `User/port/esp32c5_port.c` | `esp32c5SetCfg`、`esp32c5Init` | 约束项目允许的 linkId/resetPin |
 
 ## 6. 公共函数使用契约
 

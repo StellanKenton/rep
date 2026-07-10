@@ -13,7 +13,9 @@ core_files:
   - fc41d_data.h
   - fc41d_data.c
   - fc41d_assembly.h
-port_files: []
+port_files:
+  - ../../../User/port/fc41dport.h
+  - ../../../User/port/fc41dport.c
 debug_files: []
 depends_on:
   - ../../comm/flowparser/flowparser.md
@@ -22,11 +24,9 @@ depends_on:
 forbidden_depends_on:
   - 在 core 中直连具体 UART BSP 或 system 私有头
 required_hooks:
-  - fc41dLoadPlatformDefaultCfg
-  - fc41dGetPlatformTransportInterface
-  - fc41dGetPlatformControlInterface
+  - fc41dPortGetOps
 optional_hooks:
-  - fc41dPlatformIsValidCfg
+  - stFc41dOps::isValidCfg
 common_utils:
   - ../../comm/flowparser
 copy_minimal_set:
@@ -68,6 +68,8 @@ read_next:
 | `fc41d_data.h` | 内部数据面声明 |
 | `fc41d_data.c` | BLE payload 提取、RX/TX ring 管理 |
 | `fc41d_assembly.h` | 项目侧 transport/tick/reset control 绑定契约 |
+| `User/port/fc41dport.h` | 项目侧 provider 入口声明，暴露 `fc41dPortGetOps()` |
+| `User/port/fc41dport.c` | 项目侧静态 `stFc41dOps` 表实现，装配默认配置、transport 和 control 能力 |
 | `fc41d.md` | 当前目录 contract |
 
 ## 3. 对外公共接口
@@ -129,10 +131,11 @@ BLE ready 条件：
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `fc41dLoadPlatformDefaultCfg` | 必需 | 项目侧 `User/port` | `fc41dGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId / reset pin / timeout | 不写则退回 weak 默认值 | `cfg != NULL` | 默认值应体现当前板级接线 |
-| `fc41dGetPlatformTransportInterface` | 必需 | 项目侧 `User/port` | `fc41dInit`、`fc41dBackGourd`、发送 hook | `const stFc41dTransportInterface *(*)(cfg)` | 返回可用 transport 接口 | 返回 `NULL` 视为未绑定 | cfg 已装载 | core 不直接 include `drvuart_port.h` |
-| `fc41dGetPlatformControlInterface` | 必需 | 项目侧 `User/port` | `fc41dInit`、`fc41dStart`、`fc41dProcess` | `const stFc41dControlInterface *(*)(device)` | 返回可用 reset control hook | 返回 `NULL` 时 `Start` 失败 | device 合法 | 当前最少要提供 `init(resetPin)` 和 `setResetLevel(resetPin, isActive)` |
-| `fc41dPlatformIsValidCfg` | 建议 | 项目侧 `User/port` | `fc41dSetCfg`、`fc41dInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId、reset pin 到项目允许范围 |
+| `fc41dPortGetOps()` | 必需 | 项目侧 `User/port/fc41dport.*` | `fc41dGetDefCfg`、`fc41dInit`、`fc41dProcess` | `const stFc41dOps *(*)(void)` | 返回长期有效的静态 `stFc41dOps` 表 | 返回 `NULL` 时 `GetDefCfg()` 和 `Init()` 明确失败 | 无 | core 只经由 `ops/provider` 消费项目侧能力 |
+| `stFc41dOps.loadDefaultCfg` | 必需 | `User/port/fc41dport.c` | `fc41dGetDefCfg` | `void (*)(device, cfg)` | 写入默认 linkId / reset pin / timeout | 缺失时默认配置保持零值，`Init()` 后续会失败 | `cfg != NULL` | 默认值应体现当前板级接线 |
+| `stFc41dOps.getTransportInterface` | 必需 | `User/port/fc41dport.c` | `fc41dInit`、`fc41dProcess`、发送 hook | `const stFc41dTransportInterface *(*)(cfg)` | 返回可用 transport 接口 | 返回 `NULL` 视为未绑定 | cfg 已装载 | core 不直接 include `drvuart_port.h` |
+| `stFc41dOps.getControlInterface` | 必需 | `User/port/fc41dport.c` | `fc41dInit`、`fc41dStart`、`fc41dProcess` | `const stFc41dControlInterface *(*)(device)` | 返回可用 reset control hook | 返回 `NULL` 时 `Start` 失败 | device 合法 | 当前最少要提供 `init(resetPin)` 和 `setResetLevel(resetPin, isActive)` |
+| `stFc41dOps.isValidCfg` | 建议 | `User/port/fc41dport.c` | `fc41dSetCfg`、`fc41dInit` | `bool (*)(cfg)` | 返回 `true` | 返回 `false` 视为配置非法 | `cfg != NULL` | 用于限制 linkId、reset pin 到项目允许范围 |
 
 ## 6. 公共函数使用契约
 

@@ -35,7 +35,9 @@ BSP 层负责：
 - `drvadc.h` 的公共 API 入口使用 `uint8_t adc` 表示逻辑通道编号，不再在公共头里暴露逻辑通道枚举。
 - `eDrvAdcPortMap` 只保留在 `drvadc_port.h`，供 port/BSP 层和需要逻辑通道常量的工程文件使用。
 
-## 3. core 层真实依赖的 BSP 接口
+## 3. core 层真实依赖的 ops 与 BSP 接口
+
+`drvadc.c` 现在先通过 `drvAdcPortGetOps()` 获取项目侧静态 `ops` 表，再分别读取 BSP 钩子和数据缓存。
 
 `drvadc.c` 依赖的接口结构如下：
 
@@ -110,6 +112,7 @@ typedef struct stDrvAdcBspInterface {
 
 - 绑定单个 `gDrvAdcBspInterface`。
 - 维护 `gDrvAdcData[DRVADC_MAX]` 作为每个通道的采样结果缓存。
+- 提供 `drvAdcPortGetOps()`，统一暴露 `getBspInterface` 和 `getData`。
 
 也就是说：
 

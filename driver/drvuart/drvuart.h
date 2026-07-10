@@ -19,18 +19,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVUART_LOG_SUPPORT
-#define DRVUART_LOG_SUPPORT             1
-#endif
-
-#ifndef DRVUART_CONSOLE_SUPPORT
-#define DRVUART_CONSOLE_SUPPORT         1
-#endif
-
-#ifndef DRVUART_MAX
-#define DRVUART_MAX                     1U
-#endif
-
 #define DRVUART_BSP_SYNC_CHUNK_SIZE    256U
 
 typedef eDrvStatus (*drvUartBspInitFunc)(uint8_t uart);
@@ -49,6 +37,12 @@ typedef struct stDrvUartBspInterface {
     drvUartBspReceiveFunc receive;
     uint8_t *Buffer;
 } stDrvUartBspInterface;
+
+typedef struct stDrvUartOps {
+    const stDrvUartBspInterface *(*getBspInterfaces)(void);
+    stRingBuffer *(*getRingBuffer)(uint8_t uart);
+    eDrvStatus (*getStorageConfig)(uint8_t uart, uint8_t **storage, uint32_t *capacity);
+} stDrvUartOps;
 
 eDrvStatus drvUartInit(uint8_t uart);
 eDrvStatus drvUartTransmit(uint8_t uart, const uint8_t *buffer, uint16_t length, uint32_t timeoutMs);

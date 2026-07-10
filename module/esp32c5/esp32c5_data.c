@@ -11,7 +11,7 @@
 
 #include <string.h>
 
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 
 #define ESP32C5_DATA_LOG_TAG              "esp32c5Dat"
 

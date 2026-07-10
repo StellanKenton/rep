@@ -1,6 +1,6 @@
 ---
 doc_role: layer-guide
-layer: service
+layer: sys
 module: update
 status: active
 portability: layer-dependent
@@ -35,10 +35,10 @@ common_utils:
     - drvmcuflash
     - log
 copy_minimal_set:
-    - service/update/update.h
-    - service/update/update.c
-    - service/update/update_port.h
-    - service/update/update_port.c
+    - sys/update/update.h
+    - sys/update/update.c
+    - sys/update/update_port.h
+    - sys/update/update_port.c
 read_next:
     - ../../driver/drvmcuflash/drvmcuflash.md
     - ../log/log.md
@@ -46,7 +46,7 @@ read_next:
 
 # Update Service Guide
 
-这是 `rep/service/update/` 目录的权威入口文档。
+这是 `rep/sys/update/` 目录的权威入口文档。
 
 ## 1. 本层目标和边界
 
@@ -71,11 +71,11 @@ read_next:
 
 一句话约束：`update core` 只理解“逻辑镜像”和“逻辑区域”，不直接理解 `GD25Q32_MEM`、`SPI1`、`0x08020000` 这类项目细节。
 
-进一步约束：`rep/service/update/` 只负责通用升级框架，不承载当前工程的升级 manager。`User/` 目录下的 update manager 负责把具体工程的升级流程串起来，例如进入升级模式、接收升级请求、驱动 Boot/App 切换、决定何时调用通用 `update` 接口；而 `rep/service/update/` 只负责这些项目实现会复用的公共状态机、公共升级状态、公共镜像结构和公共 header 调度语义。
+进一步约束：`rep/sys/update/` 只负责通用升级框架，不承载当前工程的升级 manager。`User/` 目录下的 update manager 负责把具体工程的升级流程串起来，例如进入升级模式、接收升级请求、驱动 Boot/App 切换、决定何时调用通用 `update` 接口；而 `rep/sys/update/` 只负责这些项目实现会复用的公共状态机、公共升级状态、公共镜像结构和公共 header 调度语义。
 
 ## 2. 推荐目录拆分
 
-为了把通用性做出来，建议 `rep/service/update/` 采用下面的 core-port-debug 三层拆分。
+为了把通用性做出来，建议 `rep/sys/update/` 采用下面的 core-port-debug 三层拆分。
 
 | 文件 | 层级 | 职责 |
 | --- | --- | --- |
@@ -498,7 +498,7 @@ typedef struct stUpdateMetaRecord {
 - `requestFlag`、`imageState` 这类状态字段只有在状态切换点才落盘，不要在轮询过程中重复写同值。
 - 如果经过老化评估发现“双擦除单元轮转”仍然擦得太频繁，再把单个擦除单元内部细分为多个固定长度 `slot`，改成“单元内追加写 + 单元间换页”的增强方案；这应视为优化项，不再作为基础实现门槛。
 
-这样收敛后的默认方案更适合作为 `rep/service/update` 的基线实现，因为它先解决了最关键的掉电一致性问题：
+这样收敛后的默认方案更适合作为 `rep/sys/update` 的基线实现，因为它先解决了最关键的掉电一致性问题：
 
 - 避免“刚擦完还没写回”时断电导致上一份记录消失。
 - 保证恢复逻辑只需要在两个擦除单元之间选出最新一份已提交记录，复杂度更低。
@@ -508,7 +508,7 @@ typedef struct stUpdateMetaRecord {
 
 ## 8. 当前工程可参考的绑定示例
 
-当前工程已有一套项目侧升级实现，可作为 `rep/service/update` 的实例化参考：
+当前工程已有一套项目侧升级实现，可作为 `rep/sys/update` 的实例化参考：
 
 - `User/manager/update/update.c`
 - `User/manager/update/update.h`
@@ -518,9 +518,9 @@ typedef struct stUpdateMetaRecord {
 这里要明确区分“项目实现”和“公共层”：
 
 - `User/manager/update/` 负责当前工程的具体升级流程编排，是项目侧 update manager。
-- `rep/service/update/` 负责可移植的通用升级能力，只输出公共状态机、公共状态定义、公共镜像头和升级记录结构，以及通用 header / record 调度规则。
-- 如果需求是修改当前产品的升级入口、升级模式切换、与无线或串口流程的联动，优先改 `User/` 目录，不应把这些项目策略回灌到 `rep/service/update/`。
-- 如果需求是抽象所有工程都会复用的升级语义，例如状态机状态、镜像结构、元数据落盘规则，才应修改 `rep/service/update/`。
+- `rep/sys/update/` 负责可移植的通用升级能力，只输出公共状态机、公共状态定义、公共镜像头和升级记录结构，以及通用 header / record 调度规则。
+- 如果需求是修改当前产品的升级入口、升级模式切换、与无线或串口流程的联动，优先改 `User/` 目录，不应把这些项目策略回灌到 `rep/sys/update/`。
+- 如果需求是抽象所有工程都会复用的升级语义，例如状态机状态、镜像结构、元数据落盘规则，才应修改 `rep/sys/update/`。
 
 现有绑定关系大致是：
 
@@ -535,7 +535,7 @@ typedef struct stUpdateMetaRecord {
 
 也就是说，当前工程已经不再推荐把 `stUpdateImageHeader` 内嵌在 `STAGING_APP` 或 `BACKUP_APP` 起始处，而是通过独立 `*_HEADER` 逻辑区域保存头信息。这类调整应落在 port 映射和布局文档，不应该反向污染 core 状态机语义。
 
-这正好说明为什么 `rep/service/update` 应该抽出 port 层：
+这正好说明为什么 `rep/sys/update` 应该抽出 port 层：
 
 - 当前工程把升级记录放在外部 Flash。
 - 下一个工程可能把升级记录放在内部 Flash 最后一个 page。
@@ -582,7 +582,7 @@ typedef struct stUpdateMetaRecord {
 | 新增 Boot 镜像升级 | `update.h`、`update.c`、必要的 port 默认映射 | 具体 SPI 驱动实现 |
 | 调整失败后是否自动回滚 | `update.c` | port 的设备读写接口 |
 | 调整日志打印粒度 | `update_debug.c` 或 `update.c` | 底层 Flash 驱动 |
-| 调整当前产品的升级流程编排或升级入口 | `User/` 目录下的项目 update manager | `rep/service/update/` 的通用状态机语义 |
+| 调整当前产品的升级流程编排或升级入口 | `User/` 目录下的项目 update manager | `rep/sys/update/` 的通用状态机语义 |
 
 ## 12. 复制到其他工程的最小步骤
 

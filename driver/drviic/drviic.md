@@ -8,7 +8,9 @@ public_headers:
 	- drviic.h
 core_files:
 	- drviic.c
-port_files: []
+port_files:
+	- ../../../User/port/drviic_port.h
+	- ../../../User/port/drviic_port.c
 debug_files:
 	- drviic_debug.h
 	- drviic_debug.c
@@ -16,8 +18,7 @@ depends_on: []
 forbidden_depends_on:
 	- 在 core 中直连 IIC 控制器私有实现
 required_hooks:
-	- drvIicBspInterface.init
-	- drvIicBspInterface.transfer
+	- stDrvIicOps.getBspInterfaces
 optional_hooks:
 	- drvIicBspInterface.recoverBus
 common_utils: []
@@ -40,12 +41,13 @@ read_next:
 
 | 文件 | 职责 |
 | --- | --- |
-| `drviic.h` | 事务结构体、BSP hook 类型、公共 API |
-| `drviic.c` | 参数检查、互斥、默认超时、helper 封装 |
+| `drviic.h` | 事务结构体、BSP hook 类型、`stDrvIicOps`、公共 API |
+| `drviic.c` | 参数检查、互斥、默认超时、通过 `drvIicPortGetOps()` 获取 BSP 表 |
+| `User/port/drviic_port.h/.c` | 项目侧 `ops` 入口与静态 BSP 表绑定 |
 | `drviic_debug.h/.c` | 可选 debug / console 能力 |
 | `drviic.md` | 当前目录 contract |
 
-当前目录没有独立 `_port.*` 文件，平台绑定通过 `stDrvIicBspInterface` provider 完成。
+当前目录的项目绑定固定落在 `User/port/drviic_port.h/.c`，core 不再依赖 weak provider。
 
 ## 3. 对外公共接口
 
@@ -81,6 +83,7 @@ read_next:
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `stDrvIicOps.getBspInterfaces` | 必需 | `User/port/drviic_port.c` | `drviic.c` 内部 helper | `const stDrvIicBspInterface *(*)(void)` | 返回长期有效的 BSP 表 | 返回 `NULL` 时 core 进入 `NOT_READY` | 无 | 统一替代旧 weak provider |
 | `init` | 必需 | 当前工程 IIC BSP | `drvIicInit()` | `eDrvStatus (*)(uint8_t iic)` | 总线可用 | 返回明确错误码 | iic 合法 | 可重复初始化 |
 | `transfer` | 必需 | 当前工程 IIC BSP | 所有事务 helper | `eDrvStatus (*)(uint8_t, const stDrvIicTransfer *, uint32_t)` | 一次事务完整完成 | 超时/NACK/忙/错误 | 已初始化 | 必须保留 repeated start 语义 |
 | `recoverBus` | 可选 | 当前工程 IIC BSP | `drvIicRecoverBus()` | `eDrvStatus (*)(uint8_t iic)` | 总线恢复到可再试状态 | 未实现时公共层返回 `UNSUPPORTED` | 总线异常 | 不支持时不要伪实现 |
@@ -94,7 +97,7 @@ read_next:
 | 需求 | 应改文件 | 不该改的文件 |
 | --- | --- | --- |
 | 改事务语义或 helper 行为 | `drviic.c/.h` | BSP 控制器实现 |
-| 改默认超时或总线绑定 | 当前工程 IIC provider / BSP | `drviic.c` helper 流程 |
+| 改默认超时或总线绑定 | `User/port/drviic_port.*` / BSP | `drviic.c` helper 流程 |
 | 加调试命令 | `drviic_debug.*` | `drviic.c` 主流程 |
 
 ## 9. 复制到其他工程的最小步骤

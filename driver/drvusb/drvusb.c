@@ -12,21 +12,22 @@
 #include "drvusb.h"
 
 #if (DRVUSB_LOG_SUPPORT == 1)
-#include "../../service/log/log.h"
+#include "../../sys/log/log.h"
 #endif
 
 #include <stdbool.h>
 
-#include "../../service/rtos/rtos.h"
+#include "drvusb_port.h"
+#include "../../sys/rtos/rtos.h"
 
 #define DRVUSB_LOG_TAG                   "drvUsb"
 
 static bool gDrvUsbInitialized[DRVUSB_MAX];
 static stRepRtosMutex gDrvUsbMutex[DRVUSB_MAX];
 
-__attribute__((weak)) const stDrvUsbBspInterface *drvUsbGetPlatformBspInterfaces(void)
+static const stDrvUsbOps *drvUsbGetOps(void)
 {
-    return NULL;
+    return drvUsbPortGetOps();
 }
 
 static eDrvStatus drvUsbMapRtosStatus(eRepRtosStatus status)
@@ -93,13 +94,19 @@ static bool drvUsbIsInitialized(uint8_t usb)
 
 static stDrvUsbBspInterface *drvUsbGetBspInterface(uint8_t usb)
 {
+    const stDrvUsbOps *lOps;
     const stDrvUsbBspInterface *lInterfaces;
 
     if (!drvUsbIsValid(usb)) {
         return NULL;
     }
 
-    lInterfaces = drvUsbGetPlatformBspInterfaces();
+    lOps = drvUsbGetOps();
+    if ((lOps == NULL) || (lOps->getBspInterfaces == NULL)) {
+        return NULL;
+    }
+
+    lInterfaces = lOps->getBspInterfaces();
     if (lInterfaces == NULL) {
         return NULL;
     }

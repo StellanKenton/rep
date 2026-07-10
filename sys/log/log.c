@@ -9,12 +9,13 @@
 ***********************************************************************************/
 #include "log.h"
 
+#include "log_port.h"
+
 #include <inttypes.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#define LOG_CONSOLE_INTERNAL_BUILD 1
-#include "console.h"
+#include "log_internal.h"
 #include "../rtos/rtos.h"
 
 #if (REP_RTOS_SYSTEM == REP_RTOS_NONE) && (REP_MCU_PLATFORM == REP_MCU_PLATFORM_GD32)
@@ -59,14 +60,9 @@ static bool logLoadNextFrame(stLogOutputState *state);
 static void logProcessInterface(const stLogInterface *interface, stLogOutputState *state);
 static void logProcessOutputCore(void);
 
-__attribute__((weak)) const stLogInterface *logGetPlatformInterfaces(void)
+static const stLogOps *logGetOps(void)
 {
-    return NULL;
-}
-
-__attribute__((weak)) uint32_t logGetPlatformInterfaceCount(void)
-{
-    return 0U;
+    return logPortGetOps();
 }
 
 static uint32_t logGetDefaultTimestamp(void)
@@ -82,7 +78,13 @@ static stLogOutputState gLogOutputStates[REP_LOG_OUTPUT_PORT];
 
 static const stLogInterface *logGetInterfaces(void)
 {
-    return logGetPlatformInterfaces();
+    const stLogOps *lOps = logGetOps();
+
+    if (lOps == NULL) {
+        return NULL;
+    }
+
+    return lOps->interfaces;
 }
 
 static bool logIsValidOutputInterface(const stLogInterface *interface)
@@ -373,7 +375,13 @@ static bool logLoadNextFrame(stLogOutputState *state)
 
 static uint32_t logGetAvailableInterfaceCount(void)
 {
-    return logGetPlatformInterfaceCount();
+    const stLogOps *lOps = logGetOps();
+
+    if ((lOps == NULL) || (lOps->interfaces == NULL)) {
+        return 0U;
+    }
+
+    return lOps->interfaceCount;
 }
 
 static uint32_t logGetInterfaceCount(void)
@@ -687,23 +695,18 @@ static void logProcessOutputCore(void)
     }
 }
 
-void logProcessOutput(void)
+void logProcess(void)
 {
+    const stLogOps *lOps = logGetOps();
+
     if (!logInit()) {
         return;
     }
 
     logProcessOutputCore();
-}
-
-void ConsoleBackGournd(void)
-{
-    if (!logInit()) {
-        return;
+    if ((lOps != NULL) && (lOps->consolePoll != NULL)) {
+        lOps->consolePoll();
     }
-
-    logProcessOutputCore();
-    logPlatformConsolePoll();
     consoleCoreProcess();
 }
 

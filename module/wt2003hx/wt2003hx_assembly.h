@@ -41,10 +41,12 @@ typedef struct stWt2003hxControlInterface {
     wt2003hxControlDelayMsFunc delayMs;
 } stWt2003hxControlInterface;
 
-void wt2003hxLoadPlatformDefaultCfg(eWt2003hxMapType device, stWt2003hxCfg *cfg);
-const stWt2003hxTransportInterface *wt2003hxGetPlatformTransportInterface(const stWt2003hxCfg *cfg);
-const stWt2003hxControlInterface *wt2003hxGetPlatformControlInterface(eWt2003hxMapType device);
-bool wt2003hxPlatformIsValidCfg(const stWt2003hxCfg *cfg);
+typedef struct stWt2003hxOps {
+    void (*loadDefaultCfg)(eWt2003hxMapType device, stWt2003hxCfg *cfg);
+    const stWt2003hxTransportInterface *(*getTransportInterface)(const stWt2003hxCfg *cfg);
+    const stWt2003hxControlInterface *(*getControlInterface)(eWt2003hxMapType device);
+    bool (*isValidCfg)(const stWt2003hxCfg *cfg);
+} stWt2003hxOps;
 
 #ifdef __cplusplus
 }

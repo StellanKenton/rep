@@ -6,7 +6,7 @@
 
 - 统一 `stm32`、`gd32`、`esp32` 等不同平台的 USB 控制器接入方式。
 - 上层只依赖稳定的 `drvUsb*` 接口，不直接依赖 `HAL_PCD`、`TinyUSB`、`ESP-IDF USB` 等厂商 API。
-- 平台差异通过 `drvUsbGetPlatformBspInterfaces()` 返回的 BSP hook 表实现。
+- 平台差异通过 `User/port/drvusb_port.c` 中的 `drvUsbPortGetOps()` 返回的静态 `ops` 表实现。
 
 ## 接口范围
 
@@ -40,9 +40,13 @@ static const stDrvUsbBspInterface gDrvUsbInterfaces[DRVUSB_MAX] = {
     },
 };
 
-const stDrvUsbBspInterface *drvUsbGetPlatformBspInterfaces(void)
+static const stDrvUsbOps gDrvUsbOps = {
+    .getBspInterfaces = drvUsbPortGetBspInterfacesImpl,
+};
+
+const stDrvUsbOps *drvUsbPortGetOps(void)
 {
-    return gDrvUsbInterfaces;
+    return &gDrvUsbOps;
 }
 ```
 

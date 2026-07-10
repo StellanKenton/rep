@@ -8,7 +8,9 @@ public_headers:
     - drvuart.h
 core_files:
     - drvuart.c
-port_files: []
+port_files:
+    - ../../../User/port/drvuart_port.h
+    - ../../../User/port/drvuart_port.c
 debug_files:
     - drvuart_debug.h
     - drvuart_debug.c
@@ -17,10 +19,9 @@ depends_on:
 forbidden_depends_on:
     - 在 core 中直连 UART BSP 或 DMA 私有结构
 required_hooks:
-    - drvUartBspInterface.init
-    - drvUartBspInterface.transmit
-    - drvUartBspInterface.getDataLen
-    - drvUartBspInterface.receive
+    - stDrvUartOps.getBspInterfaces
+    - stDrvUartOps.getRingBuffer
+    - stDrvUartOps.getStorageConfig
 optional_hooks:
     - drvUartBspInterface.transmitIt
     - drvUartBspInterface.transmitDma
@@ -49,12 +50,13 @@ read_next:
 
 | 文件 | 职责 |
 | --- | --- |
-| `drvuart.h` | 公共 API、BSP hook 类型、ring buffer 查询接口 |
-| `drvuart.c` | 参数校验、初始化、接收同步、公共缓存访问 |
+| `drvuart.h` | 公共 API、BSP hook 类型、`stDrvUartOps`、ring buffer 查询接口 |
+| `drvuart.c` | 参数校验、初始化、接收同步、通过 `drvUartPortGetOps()` 访问项目侧资源 |
+| `User/port/drvuart_port.h/.c` | 项目侧 `ops` 入口、UART BSP 表、ring buffer 与存储区绑定 |
 | `drvuart_debug.h/.c` | 可选 debug / console 能力 |
 | `drvuart.md` | 当前目录 contract |
 
-说明：当前目录没有独立 `_port.*` 文件，平台绑定通过 BSP hook 表和外部 provider 完成。
+说明：当前目录的项目绑定固定落在 `User/port/drvuart_port.h/.c`，core 不再依赖 weak provider。
 
 ## 3. 对外公共接口
 
@@ -92,6 +94,9 @@ read_next:
 
 | 名称 | 必需/可选 | 由谁实现 | 在哪里被调用 | 原型摘要 | 成功语义 | 失败语义 | 前置条件 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `stDrvUartOps.getBspInterfaces` | 必需 | `User/port/drvuart_port.c` | `drvuart.c` 内部 helper | `const stDrvUartBspInterface *(*)(void)` | 返回长期有效的 BSP 表 | 返回 `NULL` 时 core 进入 `NOT_READY` | 无 | 统一替代旧 weak provider |
+| `stDrvUartOps.getRingBuffer` | 必需 | `User/port/drvuart_port.c` | 接收同步流程 | `stRingBuffer *(*)(uint8_t uart)` | 返回逻辑 UART 对应 ring buffer | 返回 `NULL` 时 core 返回错误 | uart 合法 | ring buffer 生命周期必须覆盖全局运行期 |
+| `stDrvUartOps.getStorageConfig` | 必需 | `User/port/drvuart_port.c` | `drvUartInit()` | `eDrvStatus (*)(uint8_t, uint8_t **, uint32_t *)` | 返回底层接收存储区与容量 | 返回明确错误码 | uart 合法 | 用于初始化公共 ring buffer |
 | `init` | 必需 | 当前工程 UART BSP | `drvUartInit()` | `eDrvStatus (*)(uint8_t uart)` | 逻辑 UART 可收发 | 返回明确错误码 | uart 合法 | 可重复初始化，但行为必须可预期 |
 | `transmit` | 必需 | 当前工程 UART BSP | `drvUartTransmit()` | `eDrvStatus (*)(uint8_t, const uint8_t *, uint16_t, uint32_t)` | 同步发送成功 | 超时/忙/错误 | 已初始化 | 必须真实处理 `timeoutMs` |
 | `getDataLen` | 必需 | 当前工程 UART BSP | 接收同步流程 | `uint16_t (*)(uint8_t uart)` | 返回 BSP 原始缓冲可读字节数 | 失败时返回 `0` | 已初始化 | 不是公共 ring buffer 已用量 |
@@ -110,7 +115,7 @@ read_next:
 | 需求 | 应改文件 | 不该改的文件 |
 | --- | --- | --- |
 | 改发送 / 接收公共语义 | `drvuart.c/.h` | BSP 寄存器实现 |
-| 改默认逻辑 UART 绑定或原始缓冲实现 | 当前工程 UART BSP / provider | `drvuart.c` 公共流程 |
+| 改默认逻辑 UART 绑定或原始缓冲实现 | `User/port/drvuart_port.*` / BSP | `drvuart.c` 公共流程 |
 | 改 console / debug 命令 | `drvuart_debug.*` | `drvuart.c` 主流程 |
 
 ## 9. 复制到其他工程的最小步骤

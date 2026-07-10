@@ -33,7 +33,9 @@ BSP 层负责:
 - `drvanlogiic.h` 的公共 API 使用 `uint8_t iic` 表示逻辑总线编号。
 - `eDrvAnlogIicPortMap` 只定义在 `drvanlogiic_port.h`，用于 port/BSP 层和工程内逻辑总线常量。
 
-## 3. core 层真实依赖的 BSP 接口
+## 3. core 层真实依赖的 ops 与 BSP 接口
+
+`drvanlogiic.c` 现在先通过 `drvAnlogIicPortGetOps()` 获取项目侧静态 `ops` 表，再读取每条逻辑总线对应的 BSP 钩子表。
 
 `drvanlogiic.c` 依赖的接口结构如下:
 
@@ -131,7 +133,7 @@ typedef struct stDrvAnlogIicBspInterface {
 
 公共头不再暴露这些逻辑总线枚举；上层若需要命名常量，应显式包含 `drvanlogiic_port.h`。
 
-`drvanlogiic_port.c` 负责为每个逻辑总线绑定一组底层 GPIO/延时函数，并给出默认时序参数，例如:
+`drvanlogiic_port.c` 负责为每个逻辑总线绑定一组底层 GPIO/延时函数，并通过 `drvAnlogIicPortGetOps()` 暴露统一 provider，例如:
 
 ```c
 stDrvAnlogIicBspInterface gDrvAnlogIicBspInterface[DRVANLOGIIC_MAX] = {

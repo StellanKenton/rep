@@ -19,18 +19,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVGPIO_LOG_SUPPORT
-#define DRVGPIO_LOG_SUPPORT             1
-#endif
-
-#ifndef DRVGPIO_CONSOLE_SUPPORT
-#define DRVGPIO_CONSOLE_SUPPORT         1
-#endif
-
-#ifndef DRVGPIO_MAX
-#define DRVGPIO_MAX                     4U
-#endif
-
 typedef enum eDrvGpioPinState {
     DRVGPIO_PIN_RESET = 0,
     DRVGPIO_PIN_SET,
@@ -49,12 +37,14 @@ typedef struct stDrvGpioBspInterface {
     drvGpioBspToggleFunc toggle;
 } stDrvGpioBspInterface;
 
+typedef struct stDrvGpioOps {
+    const stDrvGpioBspInterface *(*getBspInterface)(void);
+} stDrvGpioOps;
+
 void drvGpioInit(void);
 void drvGpioWrite(uint8_t pin, eDrvGpioPinState state);
 eDrvGpioPinState drvGpioRead(uint8_t pin);
 void drvGpioToggle(uint8_t pin);
-
-const stDrvGpioBspInterface *drvGpioGetPlatformBspInterface(void);
 
 #ifdef __cplusplus
 }

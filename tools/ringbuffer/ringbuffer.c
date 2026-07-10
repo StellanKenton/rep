@@ -9,18 +9,40 @@
 **********************************************************************************/
 #include "ringbuffer.h"
 
+#include "ringbuffer_port.h"
+
 #include <string.h>
 
-__attribute__((weak)) void ringBufferEnterCritical(void)
+static const stRingBufferOps *ringBufferGetOps(void)
 {
+    return ringBufferPortGetOps();
 }
 
-__attribute__((weak)) void ringBufferExitCritical(void)
+static void ringBufferEnterCritical(void)
 {
+    const stRingBufferOps *lOps = ringBufferGetOps();
+
+    if ((lOps != NULL) && (lOps->enterCritical != NULL)) {
+        lOps->enterCritical();
+    }
 }
 
-__attribute__((weak)) void ringBufferMemoryBarrier(void)
+static void ringBufferExitCritical(void)
 {
+    const stRingBufferOps *lOps = ringBufferGetOps();
+
+    if ((lOps != NULL) && (lOps->exitCritical != NULL)) {
+        lOps->exitCritical();
+    }
+}
+
+static void ringBufferMemoryBarrier(void)
+{
+    const stRingBufferOps *lOps = ringBufferGetOps();
+
+    if ((lOps != NULL) && (lOps->memoryBarrier != NULL)) {
+        lOps->memoryBarrier();
+    }
 }
 /**
 * @brief : Check whether the requested capacity is a power of two.

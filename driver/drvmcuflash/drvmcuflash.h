@@ -20,13 +20,6 @@
 extern "C" {
 #endif
 
-#ifndef DRVMCUFLASH_LOG_SUPPORT
-#define DRVMCUFLASH_LOG_SUPPORT              1
-#endif
-
-#ifndef DRVMCUFLASH_CONSOLE_SUPPORT
-#define DRVMCUFLASH_CONSOLE_SUPPORT          0
-#endif
 
 #ifndef DRVMCUFLASH_LOCK_WAIT_MS
 #define DRVMCUFLASH_LOCK_WAIT_MS             50U
@@ -52,6 +45,12 @@ typedef struct stDrvMcuFlashBspInterface {
     drvMcuFlashBspProgramFunc program;
     drvMcuFlashBspGetSectorInfoFunc getSectorInfo;
 } stDrvMcuFlashBspInterface;
+
+typedef struct stDrvMcuFlashOps {
+    const stDrvMcuFlashBspInterface *(*getBspInterface)(void);
+    eDrvStatus (*getAreaInfo)(uint8_t area, stDrvMcuFlashAreaInfo *info);
+    uint8_t (*getAreaCount)(void);
+} stDrvMcuFlashOps;
 
 bool drvMcuFlashInit(void);
 bool drvMcuFlashIsReady(void);

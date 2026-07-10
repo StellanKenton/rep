@@ -15,36 +15,51 @@
 
 static stTm1651Device gTm1651Devices[TM1651_DEV_MAX];
 static bool gTm1651DefCfgDone[TM1651_DEV_MAX] = {false};
+static const stTm1651Ops *tm1651GetOps(void);
+static bool tm1651IsAssembleReady(eTm1651MapType device);
+static void tm1651LoadDefaultCfgFromOps(eTm1651MapType device, stTm1651Cfg *cfg);
+static uint8_t tm1651GetLinkIdByDevice(eTm1651MapType device);
 
-__attribute__((weak)) void tm1651LoadPlatformDefaultCfg(eTm1651MapType device, stTm1651Cfg *cfg)
+static const stTm1651Ops *tm1651GetOps(void)
 {
-    (void)device;
+    return tm1651PortGetOps();
+}
 
-    if (cfg == NULL) {
+static bool tm1651IsAssembleReady(eTm1651MapType device)
+{
+    const stTm1651Ops *lOps = tm1651GetOps();
+
+    if ((lOps == NULL) ||
+        (lOps->loadDefaultCfg == NULL) ||
+        (lOps->getIicInterface == NULL) ||
+        (lOps->isValidAssemble == NULL) ||
+        (lOps->getLinkId == NULL)) {
+        return false;
+    }
+
+    return lOps->isValidAssemble(device);
+}
+
+static void tm1651LoadDefaultCfgFromOps(eTm1651MapType device, stTm1651Cfg *cfg)
+{
+    const stTm1651Ops *lOps = tm1651GetOps();
+
+    if ((cfg == NULL) || (lOps == NULL) || (lOps->loadDefaultCfg == NULL)) {
         return;
     }
 
-    cfg->brightness = 0U;
-    cfg->digitCount = TM1651_DEFAULT_DIGIT_COUNT;
-    cfg->isDisplayOn = false;
+    lOps->loadDefaultCfg(device, cfg);
 }
 
-__attribute__((weak)) const stTm1651IicInterface *tm1651GetPlatformIicInterface(eTm1651MapType device)
+static uint8_t tm1651GetLinkIdByDevice(eTm1651MapType device)
 {
-    (void)device;
-    return NULL;
-}
+    const stTm1651Ops *lOps = tm1651GetOps();
 
-__attribute__((weak)) bool tm1651PlatformIsValidAssemble(eTm1651MapType device)
-{
-    (void)device;
-    return false;
-}
+    if ((lOps == NULL) || (lOps->getLinkId == NULL)) {
+        return 0U;
+    }
 
-__attribute__((weak)) uint8_t tm1651PlatformGetLinkId(eTm1651MapType device)
-{
-    (void)device;
-    return 0U;
+    return lOps->getLinkId(device);
 }
 
 static bool tm1651IsValidDevMap(eTm1651MapType device);
@@ -118,13 +133,13 @@ eTm1651Status tm1651Init(eTm1651MapType device)
     }
 
     if (tm1651GetIicIf(lDeviceCtx) == NULL) {
-        return tm1651PlatformIsValidAssemble(device) ?
+        return tm1651IsAssembleReady(device) ?
                TM1651_STATUS_NOT_READY :
                TM1651_STATUS_INVALID_PARAM;
     }
 
     lIicIf = tm1651GetIicIf(lDeviceCtx);
-    lStatus = lIicIf->init(tm1651PlatformGetLinkId(device));
+    lStatus = lIicIf->init(tm1651GetLinkIdByDevice(device));
     if (lStatus != TM1651_STATUS_OK) {
         return lStatus;
     }
@@ -301,7 +316,7 @@ static void tm1651LoadDefCfg(eTm1651MapType device, stTm1651Cfg *cfg)
         return;
     }
 
-    tm1651LoadPlatformDefaultCfg(device, cfg);
+    tm1651LoadDefaultCfgFromOps(device, cfg);
 }
 
 static bool tm1651IsValidCfg(const stTm1651Cfg *cfg)
@@ -337,11 +352,13 @@ static const stTm1651IicInterface *tm1651GetIicIf(const stTm1651Device *device)
     }
 
     lDevice = tm1651GetDevMapByCtx(device);
-    if ((lDevice >= TM1651_DEV_MAX) || !tm1651PlatformIsValidAssemble(lDevice)) {
+    const stTm1651Ops *lOps = tm1651GetOps();
+
+    if ((lDevice >= TM1651_DEV_MAX) || !tm1651IsAssembleReady(lDevice)) {
         return NULL;
     }
 
-    return tm1651GetPlatformIicInterface(lDevice);
+    return ((lOps != NULL) && (lOps->getIicInterface != NULL)) ? lOps->getIicInterface(lDevice) : NULL;
 }
 
 static uint8_t tm1651EncodeSymbol(uint8_t symbol)
@@ -401,7 +418,7 @@ static eTm1651Status tm1651WriteFrame(const stTm1651Device *device, const uint8_
         return TM1651_STATUS_INVALID_PARAM;
     }
 
-    return lIicIf->writeFrame(tm1651PlatformGetLinkId(lDevice), buffer, length);
+    return lIicIf->writeFrame(tm1651GetLinkIdByDevice(lDevice), buffer, length);
 }
 
 static eTm1651Status tm1651ApplyDisplayCtrl(const stTm1651Device *device)

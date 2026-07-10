@@ -37,9 +37,13 @@ typedef struct stSdcardInterface {
     sdcardIoctlFunc ioctl;
 } stSdcardInterface;
 
-void sdcardLoadPlatformDefaultCfg(eSdcardMapType device, stSdcardCfg *cfg);
-const stSdcardInterface *sdcardGetPlatformInterface(const stSdcardCfg *cfg);
-bool sdcardPlatformIsValidCfg(const stSdcardCfg *cfg);
+typedef struct stSdcardOps {
+    void (*loadDefaultCfg)(eSdcardMapType device, stSdcardCfg *cfg);
+    const stSdcardInterface *(*getInterface)(const stSdcardCfg *cfg);
+    bool (*isValidCfg)(const stSdcardCfg *cfg);
+} stSdcardOps;
+
+const stSdcardOps *sdcardPortGetOps(void);
 
 #ifdef __cplusplus
 }

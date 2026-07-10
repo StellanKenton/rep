@@ -23,12 +23,19 @@ struct stVfsLittlefsFileHandle {
     bool isOpen;
 };
 
+struct stVfsLittlefsDirHandle {
+    lfs_dir_t dir;
+    bool isOpen;
+};
+
 static int vfsLittlefsRead(const struct lfs_config *cfg, lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size);
 static int vfsLittlefsProg(const struct lfs_config *cfg, lfs_block_t block, lfs_off_t off, const void *buffer, lfs_size_t size);
 static int vfsLittlefsErase(const struct lfs_config *cfg, lfs_block_t block);
 static int vfsLittlefsSync(const struct lfs_config *cfg);
 static eVfsResult vfsLittlefsMapError(int error);
 static uint32_t vfsLittlefsGetAddress(const stVfsLittlefsContext *context, lfs_block_t block, lfs_off_t off);
+static bool vfsLittlefsLock(stVfsLittlefsContext *context, eVfsResult *error);
+static void vfsLittlefsUnlock(stVfsLittlefsContext *context);
 static bool vfsLittlefsProbeBlank(const stVfsLittlefsContext *context);
 static bool vfsLittlefsProbeSignature(const stVfsLittlefsContext *context);
 static bool vfsLittlefsFillNodeInfo(const struct lfs_info *lfsInfo, stVfsNodeInfo *info);
@@ -37,6 +44,9 @@ static bool vfsLittlefsUnmount(void *backendContext, eVfsResult *error);
 static bool vfsLittlefsFormat(void *backendContext, eVfsResult *error);
 static bool vfsLittlefsGetSpaceInfo(void *backendContext, stVfsSpaceInfo *info, eVfsResult *error);
 static bool vfsLittlefsStat(void *backendContext, const char *path, stVfsNodeInfo *info, eVfsResult *error);
+static bool vfsLittlefsDirOpen(void *backendContext, const char *path, void *dirContext, eVfsResult *error);
+static bool vfsLittlefsDirRead(void *backendContext, void *dirContext, stVfsNodeInfo *entry, bool *hasEntry, eVfsResult *error);
+static bool vfsLittlefsDirClose(void *backendContext, void *dirContext, eVfsResult *error);
 static bool vfsLittlefsListDir(void *backendContext,
                                const char *path,
                                uint32_t startIndex,
@@ -60,6 +70,9 @@ static const stVfsBackendOps gVfsLittlefsOps = {
     .format = vfsLittlefsFormat,
     .getSpaceInfo = vfsLittlefsGetSpaceInfo,
     .stat = vfsLittlefsStat,
+    .dirOpen = vfsLittlefsDirOpen,
+    .dirRead = vfsLittlefsDirRead,
+    .dirClose = vfsLittlefsDirClose,
     .listDir = vfsLittlefsListDir,
     .mkdir = vfsLittlefsMkdir,
     .remove = vfsLittlefsRemove,
@@ -72,6 +85,7 @@ static const stVfsBackendOps gVfsLittlefsOps = {
 };
 
 static char gVfsLittlefsFileContextSizeCheck[(sizeof(struct stVfsLittlefsFileHandle) <= VFS_FILE_CONTEXT_SIZE) ? 1 : -1];
+static char gVfsLittlefsDirContextSizeCheck[(sizeof(struct stVfsLittlefsDirHandle) <= VFS_DIR_CONTEXT_SIZE) ? 1 : -1];
 
 static int vfsLittlefsRead(const struct lfs_config *cfg, lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size)
 {
@@ -167,6 +181,32 @@ static eVfsResult vfsLittlefsMapError(int error)
 static uint32_t vfsLittlefsGetAddress(const stVfsLittlefsContext *context, lfs_block_t block, lfs_off_t off)
 {
     return context->cfg.regionOffset + ((uint32_t)block * context->cfg.blockSize) + (uint32_t)off;
+}
+
+static bool vfsLittlefsLock(stVfsLittlefsContext *context, eVfsResult *error)
+{
+    if ((context == NULL) || !context->mutex.isCreated) {
+        if (error != NULL) {
+            *error = eVFS_NOT_READY;
+        }
+        return false;
+    }
+
+    if (repRtosMutexTake(&context->mutex, REP_RTOS_WAIT_FOREVER) != REP_RTOS_STATUS_OK) {
+        if (error != NULL) {
+            *error = eVFS_BUSY;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+static void vfsLittlefsUnlock(stVfsLittlefsContext *context)
+{
+    if ((context != NULL) && context->mutex.isCreated) {
+        (void)repRtosMutexGive(&context->mutex);
+    }
 }
 
 static bool vfsLittlefsProbeBlank(const stVfsLittlefsContext *context)
@@ -267,7 +307,12 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     if ((lContext->cfg.blockDeviceOps->init != NULL) && !lContext->cfg.blockDeviceOps->init(lContext->cfg.blockDeviceContext)) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = eVFS_IO;
         }
@@ -276,6 +321,7 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
 
     lResult = lfs_mount(&lContext->lfs, &lContext->lfsCfg);
     if (lResult == LFS_ERR_OK) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = eVFS_OK;
         }
@@ -283,6 +329,7 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
     }
 
     if ((lResult != LFS_ERR_CORRUPT) && (lResult != LFS_ERR_INVAL)) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError(lResult);
         }
@@ -303,6 +350,7 @@ static bool vfsLittlefsMount(void *backendContext, bool isReadOnly, eVfsResult *
     if (error != NULL) {
         *error = eVFS_CORRUPT;
     }
+    vfsLittlefsUnlock(lContext);
     return false;
 }
 
@@ -318,7 +366,12 @@ static bool vfsLittlefsUnmount(void *backendContext, eVfsResult *error)
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lResult = lfs_unmount(&lContext->lfs);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
@@ -337,11 +390,17 @@ static bool vfsLittlefsFormat(void *backendContext, eVfsResult *error)
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     (void)lfs_unmount(&lContext->lfs);
     lResult = lfs_format(&lContext->lfs, &lContext->lfsCfg);
     if (lResult == LFS_ERR_OK) {
         lResult = lfs_mount(&lContext->lfs, &lContext->lfsCfg);
     }
+
+    vfsLittlefsUnlock(lContext);
 
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
@@ -361,8 +420,13 @@ static bool vfsLittlefsGetSpaceInfo(void *backendContext, stVfsSpaceInfo *info, 
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lUsedBlocks = lfs_fs_size(&lContext->lfs);
     if (lUsedBlocks < 0) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError((int)lUsedBlocks);
         }
@@ -375,6 +439,7 @@ static bool vfsLittlefsGetSpaceInfo(void *backendContext, stVfsSpaceInfo *info, 
         info->usedSize = info->totalSize;
     }
     info->freeSize = info->totalSize - info->usedSize;
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = eVFS_OK;
     }
@@ -394,11 +459,16 @@ static bool vfsLittlefsStat(void *backendContext, const char *path, stVfsNodeInf
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     if ((path[0] == '/') && (path[1] == '\0')) {
         (void)memset(info, 0, sizeof(*info));
         info->type = eVFS_NODE_DIR;
         info->name[0] = '/';
         info->name[1] = '\0';
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = eVFS_OK;
         }
@@ -406,10 +476,130 @@ static bool vfsLittlefsStat(void *backendContext, const char *path, stVfsNodeInf
     }
 
     lResult = lfs_stat(&lContext->lfs, path, &lInfo);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
     return (lResult == LFS_ERR_OK) && vfsLittlefsFillNodeInfo(&lInfo, info);
+}
+
+static bool vfsLittlefsDirOpen(void *backendContext, const char *path, void *dirContext, eVfsResult *error)
+{
+    stVfsLittlefsContext *lContext = (stVfsLittlefsContext *)backendContext;
+    struct stVfsLittlefsDirHandle *lDirHandle = (struct stVfsLittlefsDirHandle *)dirContext;
+    int lResult;
+
+    if ((lContext == NULL) || (path == NULL) || (lDirHandle == NULL)) {
+        if (error != NULL) {
+            *error = eVFS_INVALID_PARAM;
+        }
+        return false;
+    }
+
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
+    (void)memset(lDirHandle, 0, sizeof(*lDirHandle));
+    lResult = lfs_dir_open(&lContext->lfs, &lDirHandle->dir, path);
+    vfsLittlefsUnlock(lContext);
+    if (error != NULL) {
+        *error = vfsLittlefsMapError(lResult);
+    }
+
+    lDirHandle->isOpen = (lResult == LFS_ERR_OK);
+    return lResult == LFS_ERR_OK;
+}
+
+static bool vfsLittlefsDirRead(void *backendContext, void *dirContext, stVfsNodeInfo *entry, bool *hasEntry, eVfsResult *error)
+{
+    stVfsLittlefsContext *lContext = (stVfsLittlefsContext *)backendContext;
+    struct stVfsLittlefsDirHandle *lDirHandle = (struct stVfsLittlefsDirHandle *)dirContext;
+    struct lfs_info lInfo;
+    int lResult;
+
+    if ((lContext == NULL) || (lDirHandle == NULL) || (entry == NULL) || (hasEntry == NULL) || !lDirHandle->isOpen) {
+        if (error != NULL) {
+            *error = eVFS_INVALID_PARAM;
+        }
+        return false;
+    }
+
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
+    while (true) {
+        lResult = lfs_dir_read(&lContext->lfs, &lDirHandle->dir, &lInfo);
+        if (lResult < LFS_ERR_OK) {
+            vfsLittlefsUnlock(lContext);
+            if (error != NULL) {
+                *error = vfsLittlefsMapError(lResult);
+            }
+            return false;
+        }
+
+        if (lResult == LFS_ERR_OK) {
+            *hasEntry = false;
+            vfsLittlefsUnlock(lContext);
+            if (error != NULL) {
+                *error = eVFS_OK;
+            }
+            return true;
+        }
+
+        if ((strcmp(lInfo.name, ".") == 0) || (strcmp(lInfo.name, "..") == 0)) {
+            continue;
+        }
+
+        if (!vfsLittlefsFillNodeInfo(&lInfo, entry)) {
+            vfsLittlefsUnlock(lContext);
+            if (error != NULL) {
+                *error = eVFS_IO;
+            }
+            return false;
+        }
+
+        *hasEntry = true;
+        vfsLittlefsUnlock(lContext);
+        if (error != NULL) {
+            *error = eVFS_OK;
+        }
+        return true;
+    }
+}
+
+static bool vfsLittlefsDirClose(void *backendContext, void *dirContext, eVfsResult *error)
+{
+    stVfsLittlefsContext *lContext = (stVfsLittlefsContext *)backendContext;
+    struct stVfsLittlefsDirHandle *lDirHandle = (struct stVfsLittlefsDirHandle *)dirContext;
+    int lResult;
+
+    if ((lContext == NULL) || (lDirHandle == NULL)) {
+        if (error != NULL) {
+            *error = eVFS_INVALID_PARAM;
+        }
+        return false;
+    }
+
+    if (!lDirHandle->isOpen) {
+        if (error != NULL) {
+            *error = eVFS_OK;
+        }
+        return true;
+    }
+
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
+    lResult = lfs_dir_close(&lContext->lfs, &lDirHandle->dir);
+    vfsLittlefsUnlock(lContext);
+    lDirHandle->isOpen = false;
+    if (error != NULL) {
+        *error = vfsLittlefsMapError(lResult);
+    }
+    return lResult == LFS_ERR_OK;
 }
 
 static bool vfsLittlefsListDir(void *backendContext,
@@ -435,11 +625,16 @@ static bool vfsLittlefsListDir(void *backendContext,
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     *entryCount = 0U;
     *hasMore = false;
 
     lResult = lfs_dir_open(&lContext->lfs, &lDir, path);
     if (lResult != LFS_ERR_OK) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError(lResult);
         }
@@ -450,6 +645,7 @@ static bool vfsLittlefsListDir(void *backendContext,
         lResult = lfs_dir_read(&lContext->lfs, &lDir, &lInfo);
         if (lResult < LFS_ERR_OK) {
             (void)lfs_dir_close(&lContext->lfs, &lDir);
+            vfsLittlefsUnlock(lContext);
             if (error != NULL) {
                 *error = vfsLittlefsMapError(lResult);
             }
@@ -476,6 +672,7 @@ static bool vfsLittlefsListDir(void *backendContext,
 
         if (!vfsLittlefsFillNodeInfo(&lInfo, &entries[lCount])) {
             (void)lfs_dir_close(&lContext->lfs, &lDir);
+            vfsLittlefsUnlock(lContext);
             if (error != NULL) {
                 *error = eVFS_IO;
             }
@@ -488,6 +685,7 @@ static bool vfsLittlefsListDir(void *backendContext,
 
     lResult = lfs_dir_close(&lContext->lfs, &lDir);
     *entryCount = lCount;
+    vfsLittlefsUnlock(lContext);
 
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
@@ -507,7 +705,12 @@ static bool vfsLittlefsMkdir(void *backendContext, const char *path, eVfsResult 
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lResult = lfs_mkdir(&lContext->lfs, path);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
@@ -526,7 +729,12 @@ static bool vfsLittlefsRemove(void *backendContext, const char *path, eVfsResult
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lResult = lfs_remove(&lContext->lfs, path);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
@@ -545,7 +753,12 @@ static bool vfsLittlefsRename(void *backendContext, const char *oldPath, const c
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lResult = lfs_rename(&lContext->lfs, oldPath, newPath);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
@@ -563,6 +776,10 @@ static bool vfsLittlefsFileOpen(void *backendContext, const char *path, uint32_t
         if (error != NULL) {
             *error = eVFS_INVALID_PARAM;
         }
+        return false;
+    }
+
+    if (!vfsLittlefsLock(lContext, error)) {
         return false;
     }
 
@@ -593,6 +810,7 @@ static bool vfsLittlefsFileOpen(void *backendContext, const char *path, uint32_t
     lFileHandle->fileCfg.attr_count = 0U;
 
     lResult = lfs_file_opencfg(&lContext->lfs, &lFileHandle->file, path, lLfsFlags, &lFileHandle->fileCfg);
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
     }
@@ -614,8 +832,13 @@ static bool vfsLittlefsFileGetSize(void *backendContext, void *fileContext, uint
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lFileSize = lfs_file_size(&lContext->lfs, &lFileHandle->file);
     if (lFileSize < 0) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError((int)lFileSize);
         }
@@ -623,6 +846,7 @@ static bool vfsLittlefsFileGetSize(void *backendContext, void *fileContext, uint
     }
 
     *size = (uint32_t)lFileSize;
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = eVFS_OK;
     }
@@ -642,8 +866,13 @@ static bool vfsLittlefsFileRead(void *backendContext, void *fileContext, void *b
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lReadSize = lfs_file_read(&lContext->lfs, &lFileHandle->file, buffer, (lfs_size_t)bufferSize);
     if (lReadSize < 0) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError((int)lReadSize);
         }
@@ -651,6 +880,7 @@ static bool vfsLittlefsFileRead(void *backendContext, void *fileContext, void *b
     }
 
     *actualSize = (uint32_t)lReadSize;
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = eVFS_OK;
     }
@@ -670,8 +900,13 @@ static bool vfsLittlefsFileWrite(void *backendContext, void *fileContext, const 
         return false;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lWriteSize = lfs_file_write(&lContext->lfs, &lFileHandle->file, data, (lfs_size_t)size);
     if (lWriteSize < 0) {
+        vfsLittlefsUnlock(lContext);
         if (error != NULL) {
             *error = vfsLittlefsMapError((int)lWriteSize);
         }
@@ -679,6 +914,7 @@ static bool vfsLittlefsFileWrite(void *backendContext, void *fileContext, const 
     }
 
     *actualSize = (uint32_t)lWriteSize;
+    vfsLittlefsUnlock(lContext);
     if (error != NULL) {
         *error = (*actualSize == size) ? eVFS_OK : eVFS_IO;
     }
@@ -705,7 +941,12 @@ static bool vfsLittlefsFileClose(void *backendContext, void *fileContext, eVfsRe
         return true;
     }
 
+    if (!vfsLittlefsLock(lContext, error)) {
+        return false;
+    }
+
     lResult = lfs_file_close(&lContext->lfs, &lFileHandle->file);
+    vfsLittlefsUnlock(lContext);
     lFileHandle->isOpen = false;
     if (error != NULL) {
         *error = vfsLittlefsMapError(lResult);
@@ -715,6 +956,9 @@ static bool vfsLittlefsFileClose(void *backendContext, void *fileContext, eVfsRe
 
 bool vfsLittlefsInitContext(stVfsLittlefsContext *context, const stVfsLittlefsCfg *cfg)
 {
+    (void)gVfsLittlefsFileContextSizeCheck[0];
+    (void)gVfsLittlefsDirContextSizeCheck[0];
+
     if ((context == NULL) || (cfg == NULL) || (cfg->blockDeviceOps == NULL) || (cfg->blockDeviceOps->read == NULL) ||
         (cfg->blockDeviceOps->prog == NULL) || (cfg->blockDeviceOps->erase == NULL) ||
         (cfg->regionSizeBytes == 0U) || (cfg->blockSize == 0U) || ((cfg->regionSizeBytes % cfg->blockSize) != 0U) ||
@@ -724,6 +968,10 @@ bool vfsLittlefsInitContext(stVfsLittlefsContext *context, const stVfsLittlefsCf
     }
 
     (void)memset(context, 0, sizeof(*context));
+    if (repRtosMutexCreate(&context->mutex) != REP_RTOS_STATUS_OK) {
+        return false;
+    }
+
     context->cfg = *cfg;
     context->lfsCfg.context = context;
     context->lfsCfg.read = vfsLittlefsRead;

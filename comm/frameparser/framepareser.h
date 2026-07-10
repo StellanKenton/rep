@@ -49,7 +49,6 @@ typedef struct stFrmPsrHeadHit {
 typedef uint32_t (*frmPsrHeadLenFunc)(const uint8_t *buf, uint32_t availLen, void *userCtx);
 typedef uint32_t (*frmPsrPktLenFunc)(const uint8_t *buf, uint32_t headLen, uint32_t availLen, void *userCtx);
 typedef uint32_t (*frmPsrCrcCalcFunc)(const uint8_t *buf, uint32_t len, void *userCtx);
-typedef uint32_t (*frmPsrGetTickFunc)(void);
 
 typedef struct stFrmPsrPkt {
     const uint8_t *buf;
@@ -90,9 +89,13 @@ typedef struct stFrmPsrProtoCfg {
     frmPsrHeadLenFunc headLenFunc;
     frmPsrPktLenFunc pktLenFunc;
     frmPsrCrcCalcFunc crcCalcFunc;
-    frmPsrGetTickFunc getTick;
     void *userCtx;
 } stFrmPsrProtoCfg;
+
+typedef struct stFrmPsrOps {
+    uint32_t (*getTickMs)(void);
+    void (*loadDefaultProtoCfg)(uint32_t protocolId, stFrmPsrProtoCfg *protoCfg);
+} stFrmPsrOps;
 
 typedef struct stFrmPsrCfg {
     uint32_t protocolId;

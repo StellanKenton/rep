@@ -32,7 +32,8 @@ static bool vfsEnsureMountedInt(uint32_t mountIndex);
 static bool vfsMountInt(uint32_t mountIndex);
 static bool vfsUnmountInt(uint32_t mountIndex);
 static bool vfsOpenFileInt(const char *path, uint32_t flags, struct stVfsBackendFile *file);
-static void vfsCloseFileInt(struct stVfsBackendFile *file);
+static bool vfsCloseFileInt(struct stVfsBackendFile *file);
+static bool vfsCloseDirInt(struct stVfsBackendDir *dir);
 static bool vfsCopyFileInt(const char *sourcePath, const char *targetPath);
 
 static stRepRtosMutex gVfsMutex;
@@ -42,7 +43,6 @@ static stVfsStatus gVfsStatus = {
     .lastError = eVFS_OK,
 };
 static struct stVfsMountEntry gVfsMounts[VFS_MAX_MOUNTS];
-static uint8_t gVfsCopyBuffer[VFS_COPY_BUFFER_SIZE];
 
 static bool vfsLock(void)
 {
@@ -67,12 +67,16 @@ static bool vfsValidateBackendOps(const stVfsBackendOps *backendOps)
         return false;
     }
 
+    if ((backendOps->listDir == NULL) &&
+        ((backendOps->dirOpen == NULL) || (backendOps->dirRead == NULL) || (backendOps->dirClose == NULL))) {
+        return false;
+    }
+
     return (backendOps->mount != NULL) &&
            (backendOps->unmount != NULL) &&
            (backendOps->format != NULL) &&
            (backendOps->getSpaceInfo != NULL) &&
            (backendOps->stat != NULL) &&
-           (backendOps->listDir != NULL) &&
            (backendOps->mkdir != NULL) &&
            (backendOps->remove != NULL) &&
            (backendOps->rename != NULL) &&
@@ -320,32 +324,54 @@ static bool vfsOpenFileInt(const char *path, uint32_t flags, struct stVfsBackend
     }
 
     file->mountIndex = (uint8_t)lMountIndex;
+    file->flags = flags;
+    file->backendOps = gVfsMounts[lMountIndex].backendOps;
+    file->backendContext = gVfsMounts[lMountIndex].backendContext;
     file->isOpen = true;
     vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
     return true;
 }
 
-static void vfsCloseFileInt(struct stVfsBackendFile *file)
+static bool vfsCloseFileInt(struct stVfsBackendFile *file)
 {
     eVfsResult lError = eVFS_OK;
 
-    if ((file == NULL) || !file->isOpen || (file->mountIndex >= VFS_MAX_MOUNTS) || !gVfsMounts[file->mountIndex].isUsed) {
-        return;
+    if ((file == NULL) || !file->isOpen || (file->backendOps == NULL) || (file->backendOps->fileClose == NULL)) {
+        return true;
     }
 
-    if (!gVfsMounts[file->mountIndex].backendOps->fileClose(gVfsMounts[file->mountIndex].backendContext,
-                                                            file->context,
-                                                            &lError)) {
+    if (!file->backendOps->fileClose(file->backendContext, file->context, &lError)) {
         vfsSetStatus(eVFS_STATE_READY, true, lError);
+        file->isOpen = false;
+        return false;
     }
 
     file->isOpen = false;
+    return true;
+}
+
+static bool vfsCloseDirInt(struct stVfsBackendDir *dir)
+{
+    eVfsResult lError = eVFS_OK;
+
+    if ((dir == NULL) || !dir->isOpen || (dir->backendOps == NULL) || (dir->backendOps->dirClose == NULL)) {
+        return true;
+    }
+
+    dir->isOpen = false;
+    if (!dir->backendOps->dirClose(dir->backendContext, dir->context, &lError)) {
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
+        return false;
+    }
+
+    return true;
 }
 
 static bool vfsCopyFileInt(const char *sourcePath, const char *targetPath)
 {
     struct stVfsBackendFile lSourceFile;
     struct stVfsBackendFile lTargetFile;
+    uint8_t lCopyBuffer[VFS_COPY_BUFFER_SIZE];
     uint32_t lActualSize;
     uint32_t lWrittenSize;
     eVfsResult lError = eVFS_OK;
@@ -367,17 +393,18 @@ static bool vfsCopyFileInt(const char *sourcePath, const char *targetPath)
         return false;
     }
 
+    vfsUnlock();
+
     while (true) {
-        if (!gVfsMounts[lSourceFile.mountIndex].backendOps->fileRead(gVfsMounts[lSourceFile.mountIndex].backendContext,
-                                                                     lSourceFile.context,
-                                                                     gVfsCopyBuffer,
-                                                                     sizeof(gVfsCopyBuffer),
-                                                                     &lActualSize,
-                                                                     &lError)) {
+        if (!lSourceFile.backendOps->fileRead(lSourceFile.backendContext,
+                                              lSourceFile.context,
+                                              lCopyBuffer,
+                                              sizeof(lCopyBuffer),
+                                              &lActualSize,
+                                              &lError)) {
             vfsSetStatus(eVFS_STATE_READY, true, lError);
-            vfsCloseFileInt(&lTargetFile);
-            vfsCloseFileInt(&lSourceFile);
-            vfsUnlock();
+            (void)vfsCloseFileInt(&lTargetFile);
+            (void)vfsCloseFileInt(&lSourceFile);
             return false;
         }
 
@@ -385,25 +412,30 @@ static bool vfsCopyFileInt(const char *sourcePath, const char *targetPath)
             break;
         }
 
-        if (!gVfsMounts[lTargetFile.mountIndex].backendOps->fileWrite(gVfsMounts[lTargetFile.mountIndex].backendContext,
-                                                                      lTargetFile.context,
-                                                                      gVfsCopyBuffer,
-                                                                      lActualSize,
-                                                                      &lWrittenSize,
-                                                                      &lError) ||
+        if (!lTargetFile.backendOps->fileWrite(lTargetFile.backendContext,
+                                               lTargetFile.context,
+                                               lCopyBuffer,
+                                               lActualSize,
+                                               &lWrittenSize,
+                                               &lError) ||
             (lWrittenSize != lActualSize)) {
             vfsSetStatus(eVFS_STATE_READY, true, lError);
-            vfsCloseFileInt(&lTargetFile);
-            vfsCloseFileInt(&lSourceFile);
-            vfsUnlock();
+            (void)vfsCloseFileInt(&lTargetFile);
+            (void)vfsCloseFileInt(&lSourceFile);
             return false;
         }
     }
 
-    vfsCloseFileInt(&lTargetFile);
-    vfsCloseFileInt(&lSourceFile);
+    if (!vfsCloseFileInt(&lTargetFile)) {
+        (void)vfsCloseFileInt(&lSourceFile);
+        return false;
+    }
+
+    if (!vfsCloseFileInt(&lSourceFile)) {
+        return false;
+    }
+
     vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
-    vfsUnlock();
     return true;
 }
 
@@ -557,6 +589,8 @@ bool vfsFormat(const char *mountPath)
 {
     char lMountPath[VFS_PATH_MAX];
     uint32_t lIndex;
+    const stVfsBackendOps *lBackendOps;
+    void *lBackendContext;
     eVfsResult lError = eVFS_OK;
     bool lResult;
 
@@ -581,15 +615,22 @@ bool vfsFormat(const char *mountPath)
         return false;
     }
 
-    lResult = gVfsMounts[lIndex].backendOps->format(gVfsMounts[lIndex].backendContext, &lError);
+    lBackendOps = gVfsMounts[lIndex].backendOps;
+    lBackendContext = gVfsMounts[lIndex].backendContext;
+    vfsUnlock();
+
+    lResult = lBackendOps->format(lBackendContext, &lError);
     if (!lResult) {
         vfsSetStatus(eVFS_STATE_READY, true, lError);
     } else {
-        gVfsMounts[lIndex].isMounted = true;
+        if (vfsLock()) {
+            if (vfsFindMountByMountPathInt(lMountPath, &lIndex)) {
+                gVfsMounts[lIndex].isMounted = true;
+            }
+            vfsUnlock();
+        }
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
     }
-
-    vfsUnlock();
     return lResult;
 }
 
@@ -771,15 +812,15 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
 {
     char lPath[VFS_PATH_MAX];
     char lBackendPath[VFS_PATH_MAX];
-    stVfsNodeInfo lEntries[VFS_LIST_BATCH_SIZE];
-    stVfsNodeInfo lMountEntries[VFS_MAX_MOUNTS];
+    stVfsNodeInfo lEntry;
+    struct stVfsBackendDir lDir;
     uint32_t lMountIndex;
     uint32_t lIndex;
-    uint32_t lBatchIndex;
     uint32_t lStartIndex = 0U;
     uint32_t lBatchCount = 0U;
     uint32_t lCount = 0U;
     eVfsResult lError = eVFS_OK;
+    bool lHasEntry = false;
     bool lHasMore = false;
     bool lResult;
 
@@ -794,20 +835,39 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
     }
 
     if (strcmp(lPath, "/") == 0) {
-        for (lIndex = 0U; lIndex < VFS_MAX_MOUNTS; ++lIndex) {
-            if (!gVfsMounts[lIndex].isUsed) {
-                continue;
+        lIndex = 0U;
+        while (lIndex < VFS_MAX_MOUNTS) {
+            while ((lIndex < VFS_MAX_MOUNTS) && !gVfsMounts[lIndex].isUsed) {
+                lIndex++;
             }
 
-            (void)memset(&lMountEntries[lCount], 0, sizeof(lMountEntries[lCount]));
-            lMountEntries[lCount].type = eVFS_NODE_DIR;
-            if (!vfsCopyText(lMountEntries[lCount].name, &gVfsMounts[lIndex].mountPath[1], sizeof(lMountEntries[lCount].name))) {
+            if (lIndex >= VFS_MAX_MOUNTS) {
+                break;
+            }
+
+            (void)memset(&lEntry, 0, sizeof(lEntry));
+            lEntry.type = eVFS_NODE_DIR;
+            if (!vfsCopyText(lEntry.name, &gVfsMounts[lIndex].mountPath[1], sizeof(lEntry.name))) {
                 vfsSetStatus(eVFS_STATE_READY, true, eVFS_NAME_TOO_LONG);
                 vfsUnlock();
                 return false;
             }
 
             lCount++;
+            lIndex++;
+            vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+            vfsUnlock();
+
+            if ((visitor != NULL) && !visitor(context, &lEntry)) {
+                if (entryCount != NULL) {
+                    *entryCount = lCount;
+                }
+                return true;
+            }
+
+            if (!vfsLock()) {
+                return false;
+            }
         }
 
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
@@ -815,14 +875,6 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
 
         if (entryCount != NULL) {
             *entryCount = lCount;
-        }
-
-        if (visitor != NULL) {
-            for (lIndex = 0U; lIndex < lCount; ++lIndex) {
-                if (!visitor(context, &lMountEntries[lIndex])) {
-                    break;
-                }
-            }
         }
 
         return true;
@@ -840,11 +892,69 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
             return false;
         }
 
+        if ((gVfsMounts[lMountIndex].backendOps->dirOpen != NULL) &&
+            (gVfsMounts[lMountIndex].backendOps->dirRead != NULL) &&
+            (gVfsMounts[lMountIndex].backendOps->dirClose != NULL)) {
+            (void)memset(&lDir, 0, sizeof(lDir));
+            lResult = gVfsMounts[lMountIndex].backendOps->dirOpen(gVfsMounts[lMountIndex].backendContext,
+                                                                  lBackendPath,
+                                                                  lDir.context,
+                                                                  &lError);
+            vfsSetStatus(eVFS_STATE_READY, true, lResult ? eVFS_OK : lError);
+            if (!lResult) {
+                vfsUnlock();
+                return false;
+            }
+
+            lDir.isOpen = true;
+            lDir.backendOps = gVfsMounts[lMountIndex].backendOps;
+            lDir.backendContext = gVfsMounts[lMountIndex].backendContext;
+            vfsUnlock();
+
+            while (true) {
+                lResult = lDir.backendOps->dirRead(lDir.backendContext,
+                                                   lDir.context,
+                                                   &lEntry,
+                                                   &lHasEntry,
+                                                   &lError);
+                vfsSetStatus(eVFS_STATE_READY, true, lResult ? eVFS_OK : lError);
+                if (!lResult) {
+                    (void)vfsCloseDirInt(&lDir);
+                    return false;
+                }
+
+                if (!lHasEntry) {
+                    break;
+                }
+
+                lCount++;
+                if ((visitor != NULL) && !visitor(context, &lEntry)) {
+                    if (!vfsCloseDirInt(&lDir)) {
+                        return false;
+                    }
+
+                    if (entryCount != NULL) {
+                        *entryCount = lCount;
+                    }
+                    return true;
+                }
+            }
+
+            if (!vfsCloseDirInt(&lDir)) {
+                return false;
+            }
+
+            if (entryCount != NULL) {
+                *entryCount = lCount;
+            }
+            return true;
+        }
+
         lResult = gVfsMounts[lMountIndex].backendOps->listDir(gVfsMounts[lMountIndex].backendContext,
                                                               lBackendPath,
                                                               lStartIndex,
-                                                              lEntries,
-                                                              VFS_LIST_BATCH_SIZE,
+                                                              &lEntry,
+                                                              1U,
                                                               &lBatchCount,
                                                               &lHasMore,
                                                               &lError);
@@ -855,14 +965,12 @@ bool vfsListDir(const char *path, pfVfsDirVisitor visitor, void *context, uint32
         }
 
         lCount += lBatchCount;
-        if (visitor != NULL) {
-            for (lBatchIndex = 0U; lBatchIndex < lBatchCount; ++lBatchIndex) {
-                if (!visitor(context, &lEntries[lBatchIndex])) {
-                    if (entryCount != NULL) {
-                        *entryCount = lCount;
-                    }
-                    return true;
+        if ((visitor != NULL) && (lBatchCount > 0U)) {
+            if (!visitor(context, &lEntry)) {
+                if (entryCount != NULL) {
+                    *entryCount = lCount;
                 }
+                return true;
             }
         }
 
@@ -1128,78 +1236,56 @@ bool vfsGetFileSize(const char *path, uint32_t *size)
 
 bool vfsReadFile(const char *path, void *buffer, uint32_t bufferSize, uint32_t *actualSize)
 {
-    struct stVfsBackendFile lFile;
-    uint32_t lFileSize = 0U;
-    uint32_t lReadSize = 0U;
+    stVfsFile lFile;
+    uint32_t lFileSize;
     uint32_t lTotalRead = 0U;
-    eVfsResult lError = eVFS_OK;
+    uint32_t lReadSize;
 
     if ((path == NULL) || ((buffer == NULL) && (bufferSize > 0U))) {
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
         return false;
     }
 
-    if (!vfsLock()) {
+    if (!vfsFileOpen(path, VFS_FILE_FLAG_READ, &lFile)) {
         return false;
     }
 
-    if (!vfsOpenFileInt(path, VFS_FILE_FLAG_READ, &lFile)) {
-        vfsUnlock();
-        return false;
-    }
-
-    if (!gVfsMounts[lFile.mountIndex].backendOps->fileGetSize(gVfsMounts[lFile.mountIndex].backendContext,
-                                                              lFile.context,
-                                                              &lFileSize,
-                                                              &lError)) {
-        vfsSetStatus(eVFS_STATE_READY, true, lError);
-        vfsCloseFileInt(&lFile);
-        vfsUnlock();
+    if (!vfsFileGetSize(&lFile, &lFileSize)) {
+        (void)vfsFileClose(&lFile);
         return false;
     }
 
     if (lFileSize > bufferSize) {
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_NO_SPACE);
-        vfsCloseFileInt(&lFile);
-        vfsUnlock();
+        (void)vfsFileClose(&lFile);
         return false;
     }
 
     while (lTotalRead < lFileSize) {
-        if (!gVfsMounts[lFile.mountIndex].backendOps->fileRead(gVfsMounts[lFile.mountIndex].backendContext,
-                                                               lFile.context,
-                                                               &((uint8_t *)buffer)[lTotalRead],
-                                                               lFileSize - lTotalRead,
-                                                               &lReadSize,
-                                                               &lError)) {
-            vfsSetStatus(eVFS_STATE_READY, true, lError);
-            vfsCloseFileInt(&lFile);
-            vfsUnlock();
+        if (!vfsFileRead(&lFile,
+                         &((uint8_t *)buffer)[lTotalRead],
+                         lFileSize - lTotalRead,
+                         &lReadSize) ||
+            (lReadSize == 0U)) {
+            (void)vfsFileClose(&lFile);
             return false;
-        }
-
-        if (lReadSize == 0U) {
-            break;
         }
 
         lTotalRead += lReadSize;
     }
 
+    (void)vfsFileClose(&lFile);
     if (actualSize != NULL) {
         *actualSize = lTotalRead;
     }
-
-    vfsCloseFileInt(&lFile);
     vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
-    vfsUnlock();
     return lTotalRead == lFileSize;
 }
 
 bool vfsWriteFile(const char *path, const void *data, uint32_t size)
 {
-    struct stVfsBackendFile lFile;
-    uint32_t lWriteSize = 0U;
-    eVfsResult lError = eVFS_OK;
+    stVfsFile lFile;
+    uint32_t lWriteSize;
     bool lResult;
 
     if ((path == NULL) || ((data == NULL) && (size > 0U))) {
@@ -1207,37 +1293,60 @@ bool vfsWriteFile(const char *path, const void *data, uint32_t size)
         return false;
     }
 
-    if (!vfsLock()) {
+    if (!vfsFileOpen(path, VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_CREATE | VFS_FILE_FLAG_TRUNC, &lFile)) {
         return false;
     }
 
-    if (!vfsOpenFileInt(path,
-                        VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_CREATE | VFS_FILE_FLAG_TRUNC,
-                        &lFile)) {
-        vfsUnlock();
+    lResult = vfsFileWrite(&lFile, data, size, &lWriteSize);
+    if (!vfsFileClose(&lFile)) {
         return false;
     }
+    if (lResult && (lWriteSize == size)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+        return true;
+    }
 
-    lResult = gVfsMounts[lFile.mountIndex].backendOps->fileWrite(gVfsMounts[lFile.mountIndex].backendContext,
-                                                                 lFile.context,
-                                                                 data,
-                                                                 size,
-                                                                 &lWriteSize,
-                                                                 &lError);
-    vfsCloseFileInt(&lFile);
-    vfsSetStatus(eVFS_STATE_READY, true, (lResult && (lWriteSize == size)) ? eVFS_OK : lError);
-    vfsUnlock();
-    return lResult && (lWriteSize == size);
+    if (lResult) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_IO);
+    }
+    return false;
 }
 
 bool vfsAppendFile(const char *path, const void *data, uint32_t size)
 {
-    struct stVfsBackendFile lFile;
-    uint32_t lWriteSize = 0U;
-    eVfsResult lError = eVFS_OK;
+    stVfsFile lFile;
+    uint32_t lWriteSize;
     bool lResult;
 
     if ((path == NULL) || ((data == NULL) && (size > 0U))) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
+        return false;
+    }
+
+    if (!vfsFileOpen(path, VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_CREATE | VFS_FILE_FLAG_APPEND, &lFile)) {
+        return false;
+    }
+
+    lResult = vfsFileWrite(&lFile, data, size, &lWriteSize);
+    if (!vfsFileClose(&lFile)) {
+        return false;
+    }
+    if (lResult && (lWriteSize == size)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+        return true;
+    }
+
+    if (lResult) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_IO);
+    }
+    return false;
+}
+
+bool vfsFileOpen(const char *path, uint32_t flags, stVfsFile *file)
+{
+    bool lResult;
+
+    if ((path == NULL) || (file == NULL) || ((flags & (VFS_FILE_FLAG_READ | VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_APPEND)) == 0U)) {
         vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
         return false;
     }
@@ -1246,23 +1355,86 @@ bool vfsAppendFile(const char *path, const void *data, uint32_t size)
         return false;
     }
 
-    if (!vfsOpenFileInt(path,
-                        VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_CREATE | VFS_FILE_FLAG_APPEND,
-                        &lFile)) {
-        vfsUnlock();
+    lResult = vfsOpenFileInt(path, flags, (struct stVfsBackendFile *)file);
+    vfsUnlock();
+    return lResult;
+}
+
+bool vfsFileGetSize(stVfsFile *file, uint32_t *size)
+{
+    eVfsResult lError = eVFS_OK;
+
+    if ((file == NULL) || !file->isOpen || (file->backendOps == NULL) || (file->backendOps->fileGetSize == NULL) || (size == NULL)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
         return false;
     }
 
-    lResult = gVfsMounts[lFile.mountIndex].backendOps->fileWrite(gVfsMounts[lFile.mountIndex].backendContext,
-                                                                 lFile.context,
-                                                                 data,
-                                                                 size,
-                                                                 &lWriteSize,
-                                                                 &lError);
-    vfsCloseFileInt(&lFile);
-    vfsSetStatus(eVFS_STATE_READY, true, (lResult && (lWriteSize == size)) ? eVFS_OK : lError);
-    vfsUnlock();
-    return lResult && (lWriteSize == size);
+    if (!file->backendOps->fileGetSize(file->backendContext, file->context, size, &lError)) {
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
+        return false;
+    }
+
+    vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+    return true;
+}
+
+bool vfsFileRead(stVfsFile *file, void *buffer, uint32_t bufferSize, uint32_t *actualSize)
+{
+    eVfsResult lError = eVFS_OK;
+
+    if ((file == NULL) || !file->isOpen || ((file->flags & VFS_FILE_FLAG_READ) == 0U) ||
+        (file->backendOps == NULL) || (file->backendOps->fileRead == NULL) ||
+        ((buffer == NULL) && (bufferSize > 0U)) || (actualSize == NULL)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
+        return false;
+    }
+
+    if (!file->backendOps->fileRead(file->backendContext, file->context, buffer, bufferSize, actualSize, &lError)) {
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
+        return false;
+    }
+
+    vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+    return true;
+}
+
+bool vfsFileWrite(stVfsFile *file, const void *data, uint32_t size, uint32_t *actualSize)
+{
+    eVfsResult lError = eVFS_OK;
+
+    if ((file == NULL) || !file->isOpen || ((file->flags & (VFS_FILE_FLAG_WRITE | VFS_FILE_FLAG_APPEND)) == 0U) ||
+        (file->backendOps == NULL) || (file->backendOps->fileWrite == NULL) ||
+        ((data == NULL) && (size > 0U)) || (actualSize == NULL)) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_INVALID_PARAM);
+        return false;
+    }
+
+    if (!file->backendOps->fileWrite(file->backendContext, file->context, data, size, actualSize, &lError)) {
+        vfsSetStatus(eVFS_STATE_READY, true, lError);
+        return false;
+    }
+
+    if (*actualSize != size) {
+        vfsSetStatus(eVFS_STATE_READY, true, eVFS_IO);
+        return false;
+    }
+
+    vfsSetStatus(eVFS_STATE_READY, true, eVFS_OK);
+    return true;
+}
+
+bool vfsFileClose(stVfsFile *file)
+{
+    if ((file == NULL) || !file->isOpen) {
+        return true;
+    }
+
+    return vfsCloseFileInt((struct stVfsBackendFile *)file);
+}
+
+bool vfsFileIsOpen(const stVfsFile *file)
+{
+    return (file != NULL) && file->isOpen;
 }
 
 /**************************End of file********************************/

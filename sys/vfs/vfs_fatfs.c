@@ -577,7 +577,7 @@ static bool vfsFatfsFileRead(void *backendContext, void *fileContext, void *buff
     FRESULT lResult;
 
     (void)backendContext;
-    if ((lHandle == NULL) || (buffer == NULL) || (actualSize == NULL) || !lHandle->isOpen || (bufferSize > 0xFFFFUL)) {
+    if ((lHandle == NULL) || ((buffer == NULL) && (bufferSize > 0U)) || (actualSize == NULL) || !lHandle->isOpen || (bufferSize > 0xFFFFUL)) {
         if (error != NULL) {
             *error = eVFS_INVALID_PARAM;
         }
@@ -599,7 +599,7 @@ static bool vfsFatfsFileWrite(void *backendContext, void *fileContext, const voi
     FRESULT lResult;
 
     (void)backendContext;
-    if ((lHandle == NULL) || (data == NULL) || (actualSize == NULL) || !lHandle->isOpen || (size > 0xFFFFUL)) {
+    if ((lHandle == NULL) || ((data == NULL) && (size > 0U)) || (actualSize == NULL) || !lHandle->isOpen || (size > 0xFFFFUL)) {
         if (error != NULL) {
             *error = eVFS_INVALID_PARAM;
         }
