@@ -74,14 +74,15 @@ typedef enum eUpdateState {
 
 typedef enum eUpdateRequestFlag {
     E_UPDATE_REQUEST_IDLE = 0,
-    E_UPDATE_REQUEST_PROGRAM_APP,
-    E_UPDATE_REQUEST_PROGRAM_BOOT,
-    E_UPDATE_REQUEST_BACKUP_DONE,
-    E_UPDATE_REQUEST_PROGRAM_DONE,
-    E_UPDATE_REQUEST_RUN_APP,
-    E_UPDATE_REQUEST_ENTER_BOOT,
-    E_UPDATE_REQUEST_APP_RUNING,
-    E_UPDATE_REQUEST_FAILED,
+    E_UPDATE_REQUEST_PROGRAM_APP = 1,
+    E_UPDATE_REQUEST_PROGRAM_BOOT = 2,
+    E_UPDATE_REQUEST_BACKUP_DONE = 3,
+    E_UPDATE_REQUEST_PROGRAM_DONE = 4,
+    E_UPDATE_REQUEST_RUN_APP = 5,
+    E_UPDATE_REQUEST_ENTER_BOOT = 6,
+    E_UPDATE_REQUEST_APP_RUNING = 7,
+    E_UPDATE_REQUEST_FAILED = 8,
+    E_UPDATE_REQUEST_RECOVERY_APP = 9,
 } eUpdateRequestFlag;
 
 typedef enum eUpdateImageType {
@@ -113,6 +114,7 @@ typedef enum eUpdateError {
     E_UPDATE_ERROR_VERIFY_FAILED,
     E_UPDATE_ERROR_ROLLBACK_FAILED,
     E_UPDATE_ERROR_JUMP_UNAVAILABLE,
+    E_UPDATE_ERROR_TRANSPORT_TIMEOUT,
 } eUpdateError;
 
 #pragma pack(push, 1)
@@ -174,6 +176,7 @@ const stUpdateStatus *updateGetStatus(void);
 bool updateRequestProgramRegion(uint32_t targetRegion);
 bool updateReadBootRecord(stUpdateBootRecord *record);
 bool updateWriteBootRecord(const stUpdateBootRecord *record);
+bool updateReadImageHeader(uint32_t headerRegion, stUpdateImageHeader *header, uint32_t *sequenceOut);
 bool updateJumpToTargetIfValid(void);
 
 #ifdef __cplusplus

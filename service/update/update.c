@@ -40,6 +40,7 @@ typedef struct stUpdateContext {
     uint32_t processChunkSize;
     bool hasBackupRegion;
     bool targetWasErased;
+    bool backupWasVerified;
     bool isInitialized;
 } stUpdateContext;
 
@@ -405,7 +406,7 @@ static bool updateIsBootRecordValid(const stUpdateBootRecord *record)
     }
 
     if ((record->magic != UPDATE_BOOT_RECORD_MAGIC) ||
-        (record->requestFlag > (uint32_t)E_UPDATE_REQUEST_FAILED) ||
+        (record->requestFlag > (uint32_t)E_UPDATE_REQUEST_RECOVERY_APP) ||
         (record->targetRegion >= E_UPDATE_REGION_MAX)) {
         return false;
     }
@@ -791,9 +792,36 @@ static bool updateShouldUseBackup(void)
 static bool updateShouldRollback(void)
 {
     return updateShouldUseBackup() && !gUpdateStatus.isRollbackActive && gUpdateContext.targetWasErased &&
+           gUpdateContext.backupWasVerified &&
            updateIsHeaderValid(&gUpdateContext.backupHeader,
                                gUpdateContext.cfg.regions[E_UPDATE_REGION_BACKUP_APP].size,
                                true);
+}
+
+static bool updateShouldVerifyBackupForRollback(void)
+{
+    return updateShouldUseBackup() && !gUpdateStatus.isRollbackActive && gUpdateContext.targetWasErased &&
+           !gUpdateContext.backupWasVerified &&
+           updateIsHeaderValid(&gUpdateContext.backupHeader,
+                               gUpdateContext.cfg.regions[E_UPDATE_REGION_BACKUP_APP].size,
+                               true);
+}
+
+static bool updateCanReturnToCurrentApp(void)
+{
+    if (gUpdateStatus.isRollbackActive) {
+        return false;
+    }
+
+    switch (gUpdateStatus.requestFlag) {
+        case E_UPDATE_REQUEST_IDLE:
+        case E_UPDATE_REQUEST_PROGRAM_APP:
+        case E_UPDATE_REQUEST_PROGRAM_BOOT:
+        case E_UPDATE_REQUEST_ENTER_BOOT:
+            return updateValidateExecutableRegion((uint8_t)E_UPDATE_REGION_RUN_APP);
+        default:
+            return false;
+    }
 }
 
 static bool updateValidateExecutableRegion(uint8_t regionId)
@@ -843,6 +871,26 @@ static void updateHandleFailure(eUpdateError error)
         return;
     }
 
+    if (updateShouldVerifyBackupForRollback()) {
+        gUpdateStatus.isRollbackActive = true;
+        updateSetState(E_UPDATE_STATE_VERIFY_BACKUP,
+                       gUpdateContext.backupHeader.imageSize,
+                       gUpdateContext.backupHeader.imageCrc32);
+        return;
+    }
+
+    if (updateCanReturnToCurrentApp()) {
+        gUpdateContext.bootRecord.requestFlag = (uint32_t)E_UPDATE_REQUEST_RECOVERY_APP;
+        gUpdateContext.bootRecord.targetRegion = (uint32_t)E_UPDATE_REGION_RUN_APP;
+        gUpdateStatus.requestFlag = E_UPDATE_REQUEST_RECOVERY_APP;
+        gUpdateStatus.isUpdateRequested = false;
+        if (updateStoreBootRecord(&gUpdateContext.bootRecord, &gUpdateContext.bootRecordMetaSequence)) {
+            updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
+            return;
+        }
+        updateMarkError(E_UPDATE_ERROR_META_WRITE_FAILED);
+    }
+
     gUpdateContext.bootRecord.requestFlag = (uint32_t)E_UPDATE_REQUEST_FAILED;
     gUpdateStatus.requestFlag = E_UPDATE_REQUEST_FAILED;
     gUpdateStatus.isUpdateRequested = false;
@@ -877,11 +925,27 @@ static void updateHandleCheckRequest(void)
             updateHandleFailure(E_UPDATE_ERROR_REQUEST_INVALID);
             break;
         case E_UPDATE_REQUEST_BACKUP_DONE:
-            updateSetState(E_UPDATE_STATE_ERASE_TARGET,
-                           gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size,
-                           gUpdateContext.bootRecord.stagingCrc32);
+            gUpdateContext.targetWasErased = true;
+            if (!updateLoadImageHeader(E_UPDATE_REGION_BACKUP_APP_HEADER,
+                                       &gUpdateContext.backupHeader,
+                                       &gUpdateContext.backupHeaderMetaSequence,
+                                       E_UPDATE_IMAGE_TYPE_APP) ||
+                !updateIsHeaderValid(&gUpdateContext.backupHeader,
+                                     gUpdateContext.cfg.regions[E_UPDATE_REGION_BACKUP_APP].size,
+                                     true)) {
+                updateHandleFailure(E_UPDATE_ERROR_BACKUP_INVALID);
+                break;
+            }
+            updateSetState(E_UPDATE_STATE_VERIFY_BACKUP,
+                           gUpdateContext.backupHeader.imageSize,
+                           gUpdateContext.backupHeader.imageCrc32);
             break;
         case E_UPDATE_REQUEST_PROGRAM_DONE:
+            gUpdateContext.targetWasErased = true;
+            (void)updateLoadImageHeader(E_UPDATE_REGION_BACKUP_APP_HEADER,
+                                        &gUpdateContext.backupHeader,
+                                        &gUpdateContext.backupHeaderMetaSequence,
+                                        E_UPDATE_IMAGE_TYPE_APP);
             updateSetState(E_UPDATE_STATE_VERIFY_TARGET,
                            gUpdateContext.bootRecord.imageSize,
                            gUpdateContext.bootRecord.stagingCrc32);
@@ -898,10 +962,39 @@ static void updateHandleCheckRequest(void)
 #endif
             updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
             break;
+        case E_UPDATE_REQUEST_RECOVERY_APP:
+            updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
+            break;
         case E_UPDATE_REQUEST_ENTER_BOOT:
             updateSetState(E_UPDATE_STATE_IDLE, 0U, 0U);
             break;
         case E_UPDATE_REQUEST_FAILED:
+            gUpdateContext.targetWasErased = true;
+            (void)updateLoadImageHeader(E_UPDATE_REGION_STAGING_APP_HEADER,
+                                        &gUpdateContext.stagingHeader,
+                                        &gUpdateContext.stagingHeaderMetaSequence,
+                                        E_UPDATE_IMAGE_TYPE_APP);
+            (void)updateLoadImageHeader(E_UPDATE_REGION_BACKUP_APP_HEADER,
+                                        &gUpdateContext.backupHeader,
+                                        &gUpdateContext.backupHeaderMetaSequence,
+                                        E_UPDATE_IMAGE_TYPE_APP);
+
+            if ((gUpdateContext.bootRecord.imageSize > 0U) &&
+                (gUpdateContext.bootRecord.imageSize <= gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size)) {
+                updateSetState(E_UPDATE_STATE_VERIFY_TARGET,
+                               gUpdateContext.bootRecord.imageSize,
+                               gUpdateContext.bootRecord.stagingCrc32);
+            } else if (updateIsHeaderValid(&gUpdateContext.backupHeader,
+                                            gUpdateContext.cfg.regions[E_UPDATE_REGION_BACKUP_APP].size,
+                                            true)) {
+                gUpdateStatus.isRollbackActive = true;
+                updateSetState(E_UPDATE_STATE_VERIFY_BACKUP,
+                               gUpdateContext.backupHeader.imageSize,
+                               gUpdateContext.backupHeader.imageCrc32);
+            } else {
+                updateSetState(E_UPDATE_STATE_ERROR, 0U, 0U);
+            }
+            break;
         default:
             updateSetState(E_UPDATE_STATE_ERROR, 0U, 0U);
             break;
@@ -1097,9 +1190,17 @@ static void updateHandleVerifyBackup(void)
         return;
     }
 
-    updateSetState(E_UPDATE_STATE_ERASE_TARGET,
-                   gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size,
-                   gUpdateContext.stagingHeader.imageCrc32);
+    gUpdateContext.backupWasVerified = true;
+
+    if (gUpdateStatus.isRollbackActive) {
+        updateSetState(E_UPDATE_STATE_ROLLBACK_ERASE_TARGET,
+                       gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size,
+                       gUpdateContext.backupHeader.imageCrc32);
+    } else {
+        updateSetState(E_UPDATE_STATE_ERASE_TARGET,
+                       gUpdateContext.cfg.regions[E_UPDATE_REGION_RUN_APP].size,
+                       gUpdateContext.stagingHeader.imageCrc32);
+    }
 }
 
 static void updateHandleEraseTarget(void)
@@ -1339,13 +1440,14 @@ static void updateHandleVerifyRollback(void)
         return;
     }
 
-    gUpdateContext.bootRecord.requestFlag = (uint32_t)E_UPDATE_REQUEST_FAILED;
+    gUpdateContext.bootRecord.requestFlag = (uint32_t)E_UPDATE_REQUEST_RECOVERY_APP;
+    gUpdateContext.bootRecord.targetRegion = (uint32_t)E_UPDATE_REGION_RUN_APP;
     if (!updateStoreBootRecord(&gUpdateContext.bootRecord, &gUpdateContext.bootRecordMetaSequence)) {
         updateHandleFailure(E_UPDATE_ERROR_META_WRITE_FAILED);
         return;
     }
 
-    gUpdateStatus.requestFlag = E_UPDATE_REQUEST_FAILED;
+    gUpdateStatus.requestFlag = E_UPDATE_REQUEST_RECOVERY_APP;
     gUpdateStatus.isRollbackActive = false;
     updateSetState(E_UPDATE_STATE_JUMP_TARGET, 0U, 0U);
 }
@@ -1499,7 +1601,7 @@ bool updateWriteBootRecord(const stUpdateBootRecord *record)
     uint32_t lSequence = 0U;
 
     if (!gUpdateContext.isInitialized || (record == NULL) ||
-        (record->requestFlag > (uint32_t)E_UPDATE_REQUEST_FAILED) ||
+        (record->requestFlag > (uint32_t)E_UPDATE_REQUEST_RECOVERY_APP) ||
         (record->targetRegion >= E_UPDATE_REGION_MAX)) {
         return false;
     }
@@ -1529,6 +1631,20 @@ bool updateWriteBootRecord(const stUpdateBootRecord *record)
     gUpdateContext.targetWasErased = false;
     updateSetState(E_UPDATE_STATE_CHECK_REQUEST, 0U, 0U);
     return true;
+}
+
+bool updateReadImageHeader(uint32_t headerRegion, stUpdateImageHeader *header, uint32_t *sequenceOut)
+{
+    if (!gUpdateContext.isInitialized || (header == NULL) ||
+        ((headerRegion != (uint32_t)E_UPDATE_REGION_STAGING_APP_HEADER) &&
+         (headerRegion != (uint32_t)E_UPDATE_REGION_BACKUP_APP_HEADER))) {
+        return false;
+    }
+
+    return updateLoadImageHeader((uint8_t)headerRegion,
+                                 header,
+                                 sequenceOut,
+                                 (uint32_t)E_UPDATE_IMAGE_TYPE_APP);
 }
 
 bool updateJumpToTargetIfValid(void)
